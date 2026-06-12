@@ -2,7 +2,7 @@
 
 ## Overview
 
-This repository is a template with sensible defaults for building Tauri React apps.
+Collier is a cross-platform desktop application that provides a graphical user interface for Beads. It is built with Tauri v2, React, and TypeScript, following the opinionated patterns described in this file and `docs/developer/`.
 
 ## Core Rules
 
@@ -17,14 +17,14 @@ This repository is a template with sensible defaults for building Tauri React ap
 
 **CRITICAL:** Follow these strictly:
 
-0. **Use npm only**: This project uses `npm`, NOT `pnpm`. Always use `npm install`, `npm run`, etc.
+0. **Use bun only**: This project uses `bun`, NOT `npm`. Always use `bun install`, `bun run`, etc.
 1. **Read Before Editing**: Always read files first to understand context
 2. **Follow Established Patterns**: Use patterns from this file and `docs/developer`
 3. **Senior Architect Mindset**: Consider performance, maintainability, testability
 4. **Batch Operations**: Use multiple tool calls in single responses
 5. **Match Code Style**: Follow existing formatting and patterns
 6. **Test Coverage**: Write comprehensive tests for business logic
-7. **Quality Gates**: Run `npm run check:all` after significant changes
+7. **Quality Gates**: Run `bun run check:all` after significant changes
 8. **No Dev Server**: Ask user to run and report back
 9. **No Unsolicited Commits**: Only when explicitly requested
 10. **Documentation**: Update relevant `docs/developer/` files for new patterns
@@ -131,7 +131,7 @@ These are specific to Claude Code but documented here for context.
 ### Skills
 
 - `/init` - One-time template initialization (includes package manager selection)
-- `/check` - Check work against architecture, run `npm run check:all`, suggest commit message
+- `/check` - Check work against architecture, run `bun run check:all`, suggest commit message
 - `/cleanup` - Run static analysis (knip, jscpd, check:all), get structured recommendations
 - `/change-package-manager <bun|pnpm|npm>` - Switch package manager across all config, scripts, docs, CI, and AI instructions
 

@@ -1,6 +1,6 @@
-# Tauri React Template
+# Collier
 
-A "batteries-included" template for building production-ready desktop applications with **Tauri v2**, **React**, and **TypeScript**. Designed with opinionated patterns that help both human developers and AI coding agents build well-architected apps from the start.
+Collier is a cross-platform desktop application that provides a graphical user interface for **Beads**. Built with **Tauri v2**, **React**, and **TypeScript**, following opinionated patterns that help both human developers and AI coding agents build well-architected apps.
 
 ## Why This Template?
 
@@ -61,7 +61,7 @@ Platform detection utilities, platform-specific UI strings ("Reveal in Finder" v
 
 - **Type-safe Tauri commands** - tauri-specta generates TypeScript bindings from Rust, with full autocomplete and compile-time checking
 - **Static analysis** - ESLint, Prettier, ast-grep (architecture enforcement), knip (unused code), jscpd (duplication)
-- **Single quality gate** - `npm run check:all` runs TypeScript, ESLint, Prettier, ast-grep, clippy, and all tests
+- **Single quality gate** - `bun run check:all` runs TypeScript, ESLint, Prettier, ast-grep, clippy, and all tests
 - **Testing patterns** - Vitest setup with Tauri command mocking
 
 ## Tauri Plugins Included
@@ -97,10 +97,10 @@ See **[Using This Template](docs/USING_THIS_TEMPLATE.md)** for setup instruction
 # Prerequisites: Node.js 18+, Rust (latest stable)
 # See https://tauri.app/start/prerequisites/ for platform-specific deps
 
-git clone <your-repo>
-cd your-app
-npm install
-npm run dev
+git clone https://github.com/gardenbaum/Collier.git
+cd Collier
+bun install
+bun run dev
 ```
 
 ## Documentation

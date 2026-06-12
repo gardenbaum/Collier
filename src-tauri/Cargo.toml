@@ -1,8 +1,8 @@
 [package]
-name = "tauri-app"
+name = "collier"
 version = "0.1.0"
-description = "A Tauri App"
-authors = ["you"]
+description = "A desktop graphical user interface for Beads."
+authors = ["Fabian Baumgartner"]
 edition = "2021"
 rust-version = "1.82"
 
@@ -39,6 +39,13 @@ regex = "1"
 specta = { version = "=2.0.0-rc.22", features = ["derive", "serde_json"] }
 tauri-specta = { version = "=2.0.0-rc.21", features = ["typescript"] }
 specta-typescript = "=0.0.9"
+
+# Transitive-dependency pin (NOT used directly in our code). `cookie 0.18.1` —
+# pulled in by Tauri core — fails to compile against `time` >= 0.3.48 due to an
+# E0119 coherence conflict. Constraining `time` here makes Cargo's resolver
+# refuse the broken version, so a plain `cargo update` stays safe and green.
+# Remove this line once `cookie` (or `time`) ships a compatible release.
+time = "=0.3.47"
 
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 tauri-plugin-single-instance = "2"

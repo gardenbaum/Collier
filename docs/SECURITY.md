@@ -11,7 +11,7 @@
 
 Do not report security vulnerabilities through public GitHub issues.
 
-**Contact**: YOUR_SECURITY_EMAIL
+**Contact**: fabian.baumgartner@dynasoft.ch
 
 Include:
 
@@ -59,7 +59,7 @@ std::fs::write(user_input, data)
 ### Dependency Audits
 
 ```bash
-npm audit
+bun audit
 cargo audit
 ```
 

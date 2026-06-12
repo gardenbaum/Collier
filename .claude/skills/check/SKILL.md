@@ -9,5 +9,5 @@ allowed-tools: [Read, Bash, Glob, Edit]
 
 1. Check all work in this session for adherence with `docs/developer/architecture-guide.md`.
 2. Remove any unnecessary comments or `console.log` statements introduced during development, and clean up any "leftovers" from approaches that didn't work.
-3. Run `npm run check:all` and fix any errors.
+3. Run `bun run check:all` and fix any errors.
 4. Suggest a concise commit message summarizing the work done in this session.
