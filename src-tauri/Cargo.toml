@@ -23,6 +23,8 @@ tauri = { version = "2", features = ["macos-private-api"] }
 tauri-plugin-opener = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+serde_repr = "0.1"
+chrono = { version = "0.4", features = ["serde"] }
 tauri-plugin-clipboard-manager = "2"
 tauri-plugin-dialog = "2"
 tauri-plugin-fs = "2"
@@ -35,8 +37,18 @@ tauri-plugin-global-shortcut = "2"
 log = "0.4"
 regex = "1"
 
+# Filesystem watcher for the Beads `.beads/` directory. Justification: no
+# reliable cross-platform fs-watch exists in JS, and the watcher must
+# survive a JS panic (it lives on the Rust side as a tauri-managed state).
+# `notify-debouncer-mini` provides a fixed-window debounce on top of
+# `notify::RecommendedWatcher`, which is the simplest debouncer that
+# meets our 250ms requirement without bringing in the larger
+# `notify-debouncer-full` rename-detection machinery we don't need.
+notify = "8"
+notify-debouncer-mini = "0.7"
+
 # Type-safe Tauri command bindings
-specta = { version = "=2.0.0-rc.22", features = ["derive", "serde_json"] }
+specta = { version = "=2.0.0-rc.22", features = ["derive", "serde_json", "chrono"] }
 tauri-specta = { version = "=2.0.0-rc.21", features = ["typescript"] }
 specta-typescript = "=0.0.9"
 
@@ -55,6 +67,9 @@ tauri-plugin-window-state = "2"
 # macOS-only: NSPanel for native panel behavior (fullscreen overlay, click-outside dismiss)
 [target.'cfg(target_os = "macos")'.dependencies]
 tauri-nspanel = { git = "https://github.com/ahkohd/tauri-nspanel", branch = "v2.1" }
+
+[dev-dependencies]
+tempfile = "3"
 
 # Optimize for smaller binary size in release builds
 [profile.release]

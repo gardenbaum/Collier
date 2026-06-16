@@ -9,6 +9,8 @@ mod commands;
 mod types;
 mod utils;
 
+mod beads;
+
 use tauri::{Manager, RunEvent, WindowEvent};
 
 // Re-export only what's needed externally
@@ -135,6 +137,19 @@ pub fn run() {
             if let Err(e) = commands::quick_pane::init_quick_pane(app.handle()) {
                 log::error!("Failed to create quick pane: {e}");
                 // Non-fatal: app can still run without quick pane
+            }
+
+            // Start the Beads `.beads/` fs-watcher. The handle lives in
+            // managed state so it is dropped (and the watch thread is
+            // joined) on app exit.
+            // TODO(wave-1): replace the placeholder with the active
+            // repo path from preferences or user selection.
+            let active_repo_path = std::path::PathBuf::from(".");
+            match beads::watcher::spawn_watcher(app.handle().clone(), active_repo_path) {
+                Ok(handle) => {
+                    app.manage(handle);
+                }
+                Err(e) => log::error!("Failed to start beads watcher: {e}"),
             }
 
             // NOTE: Application menu is built from JavaScript for i18n support
