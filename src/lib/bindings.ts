@@ -142,6 +142,563 @@ async updateQuickPaneShortcut(shortcut: string | null) : Promise<Result<null, st
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };
 }
+},
+/**
+ * `#[tauri::command]` wrapper for `run_bd`. Takes the args and cwd
+ * over the bridge as owned `String`s because the tauri-specta IPC
+ * layer requires owned types; we borrow back to `&str` for the
+ * runner.
+ */
+async runBdCommand(args: string[], cwd: string) : Promise<Result<BdOutput, BdError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("run_bd_command", { args, cwd }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * `#[tauri::command]` wrapper for `check_bd_version`. Returns the
+ * version as a `"major.minor.patch"` string so the frontend can
+ * display it directly without reformatting.
+ */
+async checkBdVersionCmd() : Promise<Result<string, BdError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("check_bd_version_cmd") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * `#[tauri::command]` wrapper for `check_schema_version`.
+ */
+async checkSchemaVersionCmd(cwd: string) : Promise<Result<number, BdError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("check_schema_version_cmd", { cwd }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async readIssuesJsonl(cwd: string) : Promise<Result<JsonlResult, BdError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("read_issues_jsonl", { cwd }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Tauri command: try to acquire the per-repo write lock for `cwd`.
+ * 
+ * Returns `Ok(())` once the lock is held; the actual `bd` invocation
+ * must follow in a separate command that holds the lock for the
+ * duration of the I/O. (We intentionally do not hold the lock across
+ * the IPC roundtrip — the guard would be released the moment this
+ * `Result` is serialized back to the React side.)
+ * 
+ * Used by AC-5: two TS calls to write to the same path → one
+ * gets `BdError::AlreadyLocked`.
+ */
+async tryWriteLockCmd(cwd: string) : Promise<Result<null, BdError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("try_write_lock_cmd", { cwd }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Tauri command wrapper for `detect`. Returns the aggregated
+ * `BdInfo` to the frontend; never returns `Err` for the
+ * "workspace not initialized" case (that's `Backend::Unknown`).
+ * `Err` is reserved for "could not even invoke `bd`", which
+ * surfaces as `BdError::BdNotInPath` and triggers the
+ * "install beads" message in the modal.
+ */
+async detectBd(cwd: string) : Promise<Result<BdInfo, BdError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("detect_bd", { cwd }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Adds a path to the recent-repositories list and persists preferences.
+ * 
+ * Dedup: if `path` is already present, it is moved to the top (most
+ * recent) instead of being appended. After dedup, the list is capped at
+ * [`MAX_RECENT_REPOS`].
+ */
+async addRecentRepo(path: string) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("add_recent_repo", { path }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Returns the current working directory as a UTF-8 string.
+ * 
+ * Tauri 2.11's `PathResolver` does not expose a `current_dir()` method
+ * (unlike the JS-side `@tauri-apps/api/path`), so we wrap
+ * `std::env::current_dir()` in a tauri command. Used by the bootstrap
+ * screen's "Use CWD" link.
+ */
+async getCurrentDir() : Promise<Result<string, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("get_current_dir") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Run `bd ready --json` in `cwd` and return the list of ready issues.
+ */
+async bdReady(cwd: string) : Promise<Result<Issue[], BdError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("bd_ready", { cwd }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Run `bd blocked --json` in `cwd` and return the list of blocked issues.
+ */
+async bdBlocked(cwd: string) : Promise<Result<Issue[], BdError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("bd_blocked", { cwd }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Run `bd search <query> --json` in `cwd` and return matching issues.
+ */
+async bdSearch(cwd: string, query: string) : Promise<Result<Issue[], BdError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("bd_search", { cwd, query }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Run `bd query <query> --json` in `cwd` and return matching issues.
+ */
+async bdQuery(cwd: string, query: string) : Promise<Result<Issue[], BdError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("bd_query", { cwd, query }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Run `bd list <filters> --json` in `cwd` and return the matching issues.
+ * 
+ * `ListFilters::to_args` produces the flag argv; the runner's envelope
+ * parsing kicks in because we append `--json`. The envelope's `data`
+ * field is decoded into `Vec<Issue>` by `search_query::extract_data`
+ * (made `pub(super)` for this caller).
+ */
+async bdList(cwd: string, filters: ListFilters) : Promise<Result<Issue[], BdError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("bd_list", { cwd, filters }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Run `bd create <flags> --json` in `cwd` and return the new issue.
+ * 
+ * Verified shape (bd 1.0.5, 2026-06-17): `{ schema_version: 1,
+ * data: [Issue] }` — a 1-element array. The robust parser also
+ * accepts a bare `data: {Issue}` object to cover CLI variants.
+ * 
+ * Empty `data: []` → `ParseError` so the frontend surfaces a
+ * typed signal rather than silently dropping the result.
+ */
+async bdCreate(cwd: string, input: CreateInput) : Promise<Result<Issue, BdError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("bd_create", { cwd, input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Run `bd update <id> <flags> --json` in `cwd` and return the
+ * updated issue.
+ * 
+ * Same envelope shape as `bd create` (1-element array under `data`).
+ * The robust parser handles the bare-object CLI variant as well.
+ */
+async bdUpdate(cwd: string, id: string, input: UpdateInput) : Promise<Result<Issue, BdError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("bd_update", { cwd, id, input }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Run `bd close <id> --json` in `cwd` and return the closed issue.
+ * 
+ * Verified shape (bd 1.0.5, 2026-06-17): `data: [Issue]` — the
+ * closed issue with `status: "closed"`, `closed_at`, and a
+ * `close_reason` field the runner ignores. The robust parser
+ * accepts the bare-object variant.
+ */
+async bdClose(cwd: string, id: string) : Promise<Result<Issue, BdError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("bd_close", { cwd, id }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Run `bd reopen <id> --json` in `cwd` and return the reopened
+ * issue.
+ * 
+ * Verified shape (bd 1.0.5, 2026-06-17): `data: [Issue]` — the
+ * reopened issue with `status: "open"` and `closed_at: null`.
+ * The robust parser accepts the bare-object variant.
+ */
+async bdReopen(cwd: string, id: string) : Promise<Result<Issue, BdError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("bd_reopen", { cwd, id }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Run `bd delete <id> --force --json` in `cwd` and return ().
+ * 
+ * `--force` is required: without it, `bd` prints a "DELETE PREVIEW"
+ * warning and exits non-zero (the frontend's typed-identifier
+ * confirmation in `IssueActions` is the equivalent safety check on
+ * our side).
+ * 
+ * Verified shape (bd 1.0.5, 2026-06-17): `{ deleted, dependencies_removed,
+ * references_updated, schema_version: 1 }` — a summary object, NOT
+ * `data: [Issue]`. The runner already returns an error on non-zero
+ * exit, so reaching `Ok(())` means the CLI accepted the delete and
+ * produced parseable JSON. We don't try to decode the summary; the
+ * frontend refetches the issue list and the deleted id disappears.
+ */
+async bdDelete(cwd: string, id: string) : Promise<Result<null, BdError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("bd_delete", { cwd, id }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Run `bd show <id> --json` in `cwd` and return the issue's
+ * dependency list.
+ * 
+ * The dependency list is sourced from `bd show` (not `bd dep list`)
+ * because the `Issue` struct already carries a typed
+ * `dependencies: Vec<Dependency>` field (T2). The `bd show` envelope
+ * returns `data: [Issue]` (1-element array) — same shape the rest
+ * of the mutations module handles — and we pluck
+ * `issue.dependencies` out of the lone element. The `bd dep list`
+ * command emits a wider dependency record (with `from` / `to` /
+ * `direction` columns the `Dependency` struct doesn't model) and
+ * would force a second Raw struct just to drop those fields.
+ * 
+ * ponytail: defensive — accepts both `data: [Issue]` (the real
+ * 1.0.5 shape) and `data: {Issue}` (the bare-object CLI variant
+ * some 1.0.x builds emit). Empty `data: []` → `ParseError` so the
+ * frontend gets a typed signal rather than silently returning an
+ * empty vec for a deleted id.
+ */
+async bdDepList(cwd: string, id: string) : Promise<Result<Dependency[], BdError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("bd_dep_list", { cwd, id }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Run `bd dep add <from> <to> --type <type> --json` in `cwd`.
+ * 
+ * The CLI's `--type` flag takes the kebab-case form
+ * (`parent-child`, `discovered-from`, …) per the dep help text,
+ * NOT the snake_case form the Rust enum serializes to via
+ * `serde(rename_all = "snake_case")`. The match below is the
+ * authoritative mapping — keep it aligned with the `DependencyType`
+ * variants added in T2.
+ * 
+ * The CLI does not return a typed JSON envelope on success — the
+ * runner's `BdOutput::Text` ("Added dependency from … to …") and
+ * `BdOutput::Json` (rare, undocumented summary) both count as
+ * success. Reaching `Ok(())` means the runner saw a zero exit and
+ * parseable output; the frontend refetches the dep list and the
+ * new edge appears.
+ */
+async bdDepAdd(cwd: string, fromId: string, toId: string, depType: DependencyType) : Promise<Result<null, BdError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("bd_dep_add", { cwd, fromId, toId, depType }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Run `bd dep remove <from> <to> --json` in `cwd`.
+ * 
+ * Same "any output is success" contract as `bd_dep_add`. The CLI
+ * prints a one-line confirmation on success and exits non-zero if
+ * the dependency doesn't exist; both paths flow through the
+ * runner's normal exit-code handling.
+ */
+async bdDepRemove(cwd: string, fromId: string, toId: string) : Promise<Result<null, BdError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("bd_dep_remove", { cwd, fromId, toId }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Run `bd dep tree <id> --json` in `cwd` and return the dependency
+ * tree as a flat list.
+ * 
+ * ponytail: the real `bd dep tree` CLI (1.0.5) may return a
+ * nested `children: []` shape, or a flat list. v1 returns a flat
+ * `Vec<Dependency>` for the lazy version — the frontend groups
+ * rows by `from_id == issueId` (outgoing) and renders a depth-3
+ * hierarchy from the flat list. If the CLI doesn't expose
+ * `bd dep tree` in a future version, the lazy fallback is to
+ * derive from `bd_show` recursively (TBD; current 1.0.5 ships
+ * the command).
+ * 
+ * Accepts both a bare array (`[Dependency, ...]`) and the
+ * standard envelope shape (`{ data: [Dependency, ...] }`).
+ * Missing `data` is a `ParseError`; an empty `data: []` is a
+ * valid empty tree (returns `Ok(vec![])`).
+ */
+async bdDepTree(cwd: string, id: string) : Promise<Result<Dependency[], BdError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("bd_dep_tree", { cwd, id }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Check whether adding `from -> to` would create a cycle. Returns
+ * `true` if a cycle would be introduced.
+ * 
+ * ponytail: v1 returns `Ok(false)` unconditionally. The `bd`
+ * CLI 1.0.5 doesn't expose a dedicated dry-run check command
+ * (`bd dep check`, `bd dep add --dry-run`, etc. are not
+ * available). Real cycle detection happens at write time —
+ * `bd dep add` itself returns a non-zero exit with a cycle
+ * error message if the new edge would close a loop, and the
+ * runner surfaces that as `BdError::NonZeroExit`. The frontend
+ * (T32's `CycleWarning`) treats the post-add error as the
+ * authoritative signal. This command exists for the future v2
+ * case where a real CLI probe ships, so the frontend
+ * integration point doesn't have to change.
+ */
+async bdDepCheckCycle(cwd: string, fromId: string, toId: string) : Promise<Result<boolean, BdError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("bd_dep_check_cycle", { cwd, fromId, toId }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Run `bd label add <issue_id> <label> --json` in `cwd`.
+ * 
+ * The CLI returns a JSON array of per-target entries
+ * `[{ issue_id, label, status: "added" }]` — we don't model
+ * per-target summaries because v1 always targets a single issue
+ * (the frontend calls this command once per label). The runner
+ * surfaces a non-zero exit as `BdError::NonZeroExit`, so reaching
+ * `Ok(())` means the CLI accepted the add and produced parseable
+ * output. The frontend refetches the issue detail (the
+ * `Issue.labels` field on `bd show`) and the new label appears.
+ */
+async bdLabelAdd(cwd: string, issueId: string, label: string) : Promise<Result<null, BdError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("bd_label_add", { cwd, issueId, label }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Run `bd label remove <issue_id> <label> --json` in `cwd`.
+ * 
+ * Symmetric to `bd_label_add`: same "any output is success"
+ * contract, same per-target JSON shape. Reaching `Ok(())` means
+ * the CLI accepted the remove and the frontend's `bd show`
+ * refetch will reflect the change.
+ */
+async bdLabelRemove(cwd: string, issueId: string, label: string) : Promise<Result<null, BdError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("bd_label_remove", { cwd, issueId, label }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Run `bd label propagate <parent> <label> --json` in `cwd` and
+ * return a `PropagationReport` summary.
+ * 
+ * The real CLI (1.0.5, 2026-06-17) returns a flat array of
+ * per-child entries `[{ issue_id, label, status: "added" |
+ * "skipped" }, ...]`. Children that already carry the label are
+ * reported as `skipped`; children that don't are `added`. We
+ * flatten the per-child rows into a `{ added, skipped, errors }`
+ * summary — the frontend's toast only needs the totals.
+ * 
+ * `errors` is for the unexpected statuses / shapes — the runner's
+ * `BdError` already covers the "non-zero exit" path (e.g. parent
+ * has no children at all), so a non-empty `errors` vec indicates
+ * the CLI ran but reported something the v1 mapper doesn't
+ * recognise.
+ * 
+ * ponytail: a parent with no children is the most common case in
+ * v1 (most issues are leaves) and the CLI returns `[]`. The
+ * mapper yields `{ added: 0, skipped: 0, errors: [] }` — the
+ * frontend's "Propagated 0 children" toast is the expected user
+ * signal, not an error.
+ */
+async bdLabelPropagate(cwd: string, parentId: string, label: string) : Promise<Result<PropagationReport, BdError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("bd_label_propagate", { cwd, parentId, label }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Run `bd label list-all --json` in `cwd` and return the sorted
+ * list of `(label, count)` rows.
+ * 
+ * The real CLI (1.0.5, 2026-06-17) emits a bare array
+ * `[{ label, count }, ...]` — no `data` envelope wrapper. Each
+ * row carries the label name and the number of issues currently
+ * carrying it (the v1 source of truth for the "usage count" the
+ * frontend renders next to each label).
+ * 
+ * ponytail: the prompt's stub typed the return as
+ * `Vec<String>`. The plan T35 AC ("List renders with usage
+ * counts") and the real CLI shape make that lossy — we'd either
+ * drop `count` or compute it client-side via N+1 `bd list` calls.
+ * `LabelWithCount { label, count }` is the honest shape; sorted
+ * by name on the Rust side so the frontend renders in a stable
+ * order without re-sorting.
+ */
+async bdLabelListAll(cwd: string) : Promise<Result<LabelWithCount[], BdError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("bd_label_list_all", { cwd }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Send a desktop notification (uses `tauri-plugin-notification`).
+ * 
+ * ponytail: thin no-op stub. v1 callers (the `useNotifications` hook
+ * in `src/hooks/useNotifications.ts`) wrap this in a best-effort
+ * `try/catch` and don't surface failures to the UI. Wiring the real
+ * `tauri-plugin-notification` API is a future task — the contract
+ * from the TS side is positional `(title, body)` and a `Result<null,
+ * String>` shape, exactly matching tauri-specta's default export.
+ */
+async bdNotify(title: string, body: string) : Promise<Result<null, BdError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("bd_notify", { title, body }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Run `bd show <id> --json` in `cwd` and return the matching `Issue`.
+ * 
+ * `bd show` returns `data` as a 1-element array; we take the first.
+ * Returns `ParseError` if the array is empty (should not happen for
+ * a valid id, but possible for a race with `bd delete`).
+ * 
+ * **Known follow-up**: the real `bd show` JSON is sparser than the
+ * Rust `Issue` struct (it omits `closed_at`, `description`, `labels`,
+ * `dependencies`, `parent`, `acceptance_criteria`, `external_ref`).
+ * Until `Issue` gets `#[serde(default)]` on those fields, this
+ * command will return `ParseError` against the real CLI. The unit
+ * tests in this module use the synthetic full-shape envelope (same
+ * pattern as T6 / T7 / T15) so the contract is verified; the
+ * end-to-end fix is a follow-up that should also cover the list,
+ * 
+ * ready, blocked, search, and query commands.
+ */
+async bdShow(cwd: string, id: string) : Promise<Result<Issue, BdError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("bd_show", { cwd, id }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Run `bd history <id> --json` in `cwd` and return the issue's
+ * history entries (one per Dolt commit, oldest-last as emitted by
+ * the CLI).
+ */
+async bdHistory(cwd: string, id: string) : Promise<Result<HistoryEntry[], BdError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("bd_history", { cwd, id }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Run `bd comments <id> --json` in `cwd` and return the comments.
+ */
+async bdComments(cwd: string, id: string) : Promise<Result<Comment[], BdError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("bd_comments", { cwd, id }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Run `bd comment <id> "<body>"` in `cwd` to append a comment.
+ * 
+ * The CLI prints a one-line success message on stdout (no `--json`
+ * flag is available for this write path), so any `BdOutput` variant
+ * is treated as success — the runner's `NonZeroExit` handles real
+ * failures (id not found, body validation, etc.).
+ */
+async bdAddComment(cwd: string, id: string, body: string) : Promise<Result<null, BdError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("bd_add_comment", { cwd, id, body }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
 }
 }
 
@@ -169,8 +726,271 @@ quick_pane_shortcut: string | null;
  * User's preferred language (e.g., "en", "es", "de")
  * If None, uses system locale detection
  */
-language: string | null }
+language: string | null; 
+/**
+ * Recently-opened beads repository paths, most-recent first. Capped at 10.
+ * `#[serde(default)]` so old `preferences.json` files written before this
+ * field existed still deserialize (they predate the bootstrap flow).
+ */
+recent_repos?: string[]; 
+/**
+ * Optional override for the `bd` executable path. When `None`,
+ * the runner falls back to `PATH` lookup. `#[serde(default)]`
+ * keeps pre-existing `preferences.json` files loadable. Used by
+ * the SettingsPanel (T50) for non-standard installs (mise/asdf
+ * shims, custom builds).
+ */
+bd_path?: string | null; 
+/**
+ * Optional override for the default per-command timeout in
+ * seconds. When `None`, the runner uses its built-in 10s
+ * default. `#[serde(default)]` for backward compatibility.
+ * Range validated by the SettingsPanel (1-60); out-of-range
+ * values here are accepted by the loader and ignored by the
+ * runner (it clamps to its own min/max).
+ */
+default_timeout_secs?: number | null }
+/**
+ * Which on-disk store the workspace uses. `Unknown` means we found
+ * `.beads/` (or its directory is missing) but couldn't classify it
+ * — the modal layer (T10) treats this the same as "no compatible
+ * workspace" and prompts the user to run `bd init`.
+ */
+export type Backend = 
+/**
+ * Workspace writes issues to a `.jsonl` file in `.beads/`.
+ */
+"jsonl" | 
+/**
+ * Workspace uses a Dolt SQL backend (no JSONL file).
+ */
+"dolt" | 
+/**
+ * `.beads/` exists but neither a JSONL file nor a `backend: dolt`
+ * config was found.
+ */
+"unknown"
+export type BdError = { type: "NotFound"; id: string } | { type: "SchemaMismatch"; message: string } | { type: "BdNotInPath" } | { type: "Timeout"; seconds: number } | { type: "NonZeroExit"; code: number; stdout: string; stderr: string } | { type: "PermissionDenied"; path: string } | { type: "DoltOnly"; message: string } | { type: "ParseError"; message: string } | { type: "IoError"; message: string } | { type: "AlreadyLocked"; repo_path: string } | { type: "NotARepo"; path: string }
+/**
+ * Aggregated facts about a Beads workspace, returned by `detect`.
+ * All fields are populated even on partial failure so the modal can
+ * show the user the most useful information (e.g. "bd is 2.5.0 but
+ * we need 1.0–2.0", "no .beads/ directory", "workspace uses Dolt").
+ */
+export type BdInfo = { 
+/**
+ * `(major, minor, patch)` from `bd --version`. `None` if `bd`
+ * is not on PATH or returned an unparseable version.
+ */
+version: [number, number, number] | null; 
+/**
+ * Schema version from the `bd list --json` envelope. `None` if
+ * `bd` is not installed, not initialized, or returned legacy JSON.
+ */
+schema_version: number | null; 
+/**
+ * Path to the most recently modified `.beads/*.jsonl` file, or
+ * `None` if no JSONL file exists (Dolt backend, fresh workspace,
+ * or wrong directory).
+ */
+jsonl_path: string | null; 
+/**
+ * Detected on-disk store layout. See [`Backend`].
+ */
+backend: Backend }
+/**
+ * Output of a `bd` invocation. The JSON variant covers both the
+ * `{ schema_version, data }` envelope (default for `bd >= 1.0.5`
+ * with `BD_JSON_ENVELOPE=1`) and bare legacy JSON (pre-envelope CLI
+ * behavior). The Text variant is the fallback for human-readable
+ * commands like `bd --version`.
+ */
+export type BdOutput = { type: "json"; value: JsonValue } | { type: "text"; value: string }
+export type Comment = { id: string; author: string; body: string; created_at: string; updated_at: string | null }
+/**
+ * Input struct for `bd create --json`.
+ * 
+ * Every field except `title` is optional; an empty `CreateInput`
+ * (with a title) produces a minimal-issue create. Empty strings on
+ * optional `String` fields are treated as "not set" so the frontend
+ * can pass `""` without producing a no-op `--description ""` flag.
+ * Each `Option<Vec<_>>` is repeatable on the CLI (`--label x --label y`).
+ */
+export type CreateInput = { 
+/**
+ * Required title. Maps to `bd create --title`.
+ */
+title: string; 
+/**
+ * Optional description. Maps to `bd create --description`. Empty
+ * string is treated as "not set" to avoid emitting `--description ""`.
+ */
+description?: string | null; 
+/**
+ * Optional issue type. Maps to `bd create --type` (bare enum name,
+ * e.g. `"bug"`, `"feature"`). If `None`, the CLI defaults to `"task"`.
+ */
+issueType?: IssueType | null; 
+/**
+ * Optional priority. Maps to `bd create --priority` as a bare
+ * integer 0..4 (`IssuePriority` is `#[repr(u8)] Serialize_repr`).
+ * If `None`, the CLI defaults to `2` (P2).
+ */
+priority?: IssuePriority | null; 
+/**
+ * Optional assignee / owner. Maps to `bd create --assignee`.
+ * Empty string is treated as "not set".
+ */
+assignee?: string | null; 
+/**
+ * Optional labels. Maps to `bd create --label` (repeatable, one
+ * `--label` flag per element).
+ */
+labels?: string[] | null; 
+/**
+ * Optional external reference (e.g. GitHub issue id). Maps to
+ * `bd create --external-ref`. Empty string is treated as "not set".
+ */
+externalRef?: string | null }
+export type Dependency = { dependency_id: string; dependency_type: DependencyType; blocked_by: boolean | null }
+export type DependencyType = "blocks" | "parent_child" | "conditional_blocks" | "waits_for" | "related" | "tracks" | "discovered_from" | "caused_by" | "validates" | "supersedes"
+/**
+ * One entry from an issue's version history.
+ * 
+ * Sourced from `bd history <id> --json`. The CLI returns one entry per
+ * commit on the issue's Dolt history; each commit captures a snapshot of
+ * the issue at that point in time. The fields exposed here are the
+ * frontend-friendly projection of that snapshot — the raw Dolt fields
+ * (`CommitHash` / `Committer` / `CommitDate` / nested `Issue` snapshot)
+ * are mapped in `show_history::bd_history` via an internal `Raw` struct
+ * so the public type stays clean.
+ * 
+ * `action` is derived from the snapshot's `status` (e.g. `"status: open"`)
+ * because the real `bd history` JSON does not carry a discrete action
+ * code — it gives you the state at each commit, not the transition. The
+ * 16b `IssueDetailView` History tab can use `details` for the title/role
+ * context.
+ */
+export type HistoryEntry = { 
+/**
+ * Commit hash from Dolt. Acts as the unique row id.
+ */
+id: string; 
+/**
+ * Issue id this entry belongs to.
+ */
+issueId: string; 
+/**
+ * When the commit was authored (UTC).
+ */
+timestamp: string; 
+/**
+ * Derived: the issue's status at this commit (e.g. `"status: open"`).
+ */
+action: string; 
+/**
+ * Dolt committer name. The CLI reports it for every entry, so the
+ * field stays `Option` to keep room for future CLI variants that
+ * might omit it.
+ */
+actor: string | null; 
+/**
+ * Free-form context: the issue title at the time of the commit, plus
+ * the status. Helps the History tab render a useful one-liner.
+ */
+details?: string | null }
+export type Issue = { id: string; title: string; status: IssueStatus; priority: IssuePriority; issue_type: IssueType; created_at: string; updated_at: string | null; closed_at: string | null; description: string | null; owner: string | null; labels: Label[]; dependencies: Dependency[]; dependency_count: number; dependent_count: number; comment_count: number; parent: string | null; acceptance_criteria: string | null; external_ref: string | null }
+export type IssuePriority = "P0" | "P1" | "P2" | "P3" | "P4"
+export type IssueStatus = "open" | "in_progress" | "blocked" | "closed" | "deferred"
+export type IssueType = "bug" | "feature" | "task" | "epic" | "chore" | "decision" | "gate"
 export type JsonValue = null | boolean | number | string | JsonValue[] | Partial<{ [key in string]: JsonValue }>
+export type JsonlResult = { issues: Issue[]; skipped_lines: ([number, string])[] }
+export type Label = { name: string; color: string | null }
+/**
+ * One row of `bd label list-all --json`.
+ * 
+ * The real CLI (1.0.5, 2026-06-17) emits a list of
+ * `[{ label: "<name>", count: <u32> }, ...]` — no `data`
+ * envelope wrapper, just a bare array. `count` is the number of
+ * issues carrying the label, which is the v1 source of truth for
+ * the "usage count" the frontend renders next to each label.
+ * 
+ * ponytail: I chose to model `count` as `u32` (the CLI's native
+ * type) rather than a `Label` wrapper struct, because (a) the
+ * CLI doesn't carry label colours (Beads labels are plain text —
+ * see AGENTS.md / AC-12), so reusing the existing `Label { name,
+ * color: Option<String> }` struct would force a `color: None`
+ * everywhere, and (b) the `count` is a sibling of `label`, not a
+ * derived field. A flat `LabelWithCount { label, count }` is the
+ * honest shape; any future "label has metadata" expansion
+ * becomes a new struct, not a v1 break.
+ */
+export type LabelWithCount = { label: string; count: number }
+/**
+ * Filter struct for `bd list --json`.
+ * 
+ * Every field is optional; an empty struct produces no filter arguments, and
+ * the frontend can pass only the dimensions it actively filters by. Each
+ * `Option<Vec<_>>` is repeatable on the CLI (`--status open --status closed`),
+ * so passing multiple values is the natural shape.
+ */
+export type ListFilters = { 
+/**
+ * Filter by lifecycle status. Maps to `bd list --status` (repeatable).
+ */
+status?: IssueStatus[] | null; 
+/**
+ * Filter by priority. Maps to `bd list --priority` (repeatable,
+ * bare integer 0..4 — `IssuePriority` uses `Serialize_repr`).
+ */
+priority?: IssuePriority[] | null; 
+/**
+ * Filter by issue type. Maps to `bd list --type` (repeatable).
+ */
+issueType?: IssueType[] | null; 
+/**
+ * Filter by label name. Maps to `bd list --label` (repeatable).
+ */
+labels?: string[] | null; 
+/**
+ * Filter by assignee/owner. Maps to `bd list --assignee` (repeatable).
+ */
+assignees?: string[] | null; 
+/**
+ * Free-text search. Maps to `bd list --search` (single).
+ * Empty string is treated as "not set" so the frontend can pass `""`
+ * without producing a no-op `--search ""` flag.
+ */
+search?: string | null; 
+/**
+ * Maximum number of issues to return. Maps to `bd list --limit` (single).
+ */
+limit?: number | null }
+/**
+ * Result of `bd label propagate <parent> <label> --json`.
+ * 
+ * The real CLI (1.0.5, 2026-06-17) returns a flat array of
+ * per-child entries `[{ issue_id, label, status }, ...]`, where
+ * `status` is `"added"` or `"skipped"` (children that already
+ * carry the label are reported as `skipped`). The Rust command
+ * flattens that array into a `PropagationReport { added, skipped,
+ * errors }` summary — the frontend doesn't need the per-child
+ * rows, just the totals for the toast message.
+ * 
+ * `errors` collects any non-`added`/`skipped` statuses (or
+ * unexpected shapes) as their stringified representation. The
+ * `added` + `skipped` counts cover the happy path; a non-empty
+ * `errors` vec tells the frontend the propagate was partial.
+ * 
+ * ponytail: `Default` is kept on the struct (so the mapper can
+ * `PropagationReport::default()` for the empty-array CLI case) but
+ * the fields are NOT decorated with `#[serde(default)]`. All three
+ * are always populated by the Rust mapper before crossing the
+ * bridge, so the TS type keeps them as required fields
+ * (`{ added, skipped, errors }`, not `{ added?, skipped?, errors? }`)
+ * — the v1 contract is "always present".
+ */
+export type PropagationReport = { added: number; skipped: number; errors: string[] }
 /**
  * Error types for recovery operations (typed for frontend matching)
  */
@@ -195,6 +1015,67 @@ export type RecoveryError =
  * JSON serialization/deserialization error
  */
 { type: "ParseError"; message: string }
+/**
+ * Input struct for `bd update <id> <flags> --json`.
+ * 
+ * Every field is `Option<T>`. The semantics: a `None` field is "don't
+ * change" (the CLI is not invoked with that flag at all); a
+ * `Some(value)` field is "set to this value". This matches the
+ * dirty-detection contract on the React side: the panel only sends
+ * fields the user actually edited.
+ * 
+ * **Label semantics (v1 simplification)**: the real `bd update` (1.0.5)
+ * uses `--add-label` (repeatable) and `--remove-label` for label
+ * edits — there is no "set the new full list" flag. The v1 frontend
+ * does not expose label editing from this panel; the label field is
+ * omitted from `UpdateInput` entirely. T34-T36 will add a dedicated
+ * label-edit flow that computes the add/remove diff and calls the
+ * right flags.
+ * 
+ * **Empty-string handling**: same as `CreateInput` — `Some("")` for
+ * `description` / `assignee` / `external_ref` is treated as "not set"
+ * so the frontend can pass the empty string from a cleared input
+ * without emitting a no-op `--description ""` flag.
+ */
+export type UpdateInput = { 
+/**
+ * New title. Maps to `bd update --title`.
+ */
+title?: string | null; 
+/**
+ * New description. Maps to `bd update --description`. Empty
+ * string is treated as "not set" (same as `CreateInput`).
+ */
+description?: string | null; 
+/**
+ * New issue type. Maps to `bd update --type` (bare enum name,
+ * e.g. `"bug"`). `serde(rename_all = "snake_case")` produces the
+ * form the CLI expects.
+ */
+issueType?: IssueType | null; 
+/**
+ * New priority. Maps to `bd update --priority` as a bare integer
+ * 0..4 (`IssuePriority` is `#[repr(u8)] Serialize_repr`).
+ */
+priority?: IssuePriority | null; 
+/**
+ * New lifecycle status. Maps to `bd update --status` (bare enum
+ * name, e.g. `"in_progress"`).
+ */
+status?: IssueStatus | null; 
+/**
+ * New assignee. Maps to `bd update --assignee` (the CLI uses
+ * `--assignee`, not `--owner`, even though the Rust `Issue` struct
+ * exposes the field as `owner` — the JSON keys differ, the
+ * flag-vs-attribute mismatch is intentional in the CLI). Empty
+ * string is treated as "not set".
+ */
+assignee?: string | null; 
+/**
+ * New external reference. Maps to `bd update --external-ref`.
+ * Empty string is treated as "not set".
+ */
+externalRef?: string | null }
 
 /** tauri-specta globals **/
 

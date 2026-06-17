@@ -33,6 +33,26 @@ pub struct AppPreferences {
     /// User's preferred language (e.g., "en", "es", "de")
     /// If None, uses system locale detection
     pub language: Option<String>,
+    /// Recently-opened beads repository paths, most-recent first. Capped at 10.
+    /// `#[serde(default)]` so old `preferences.json` files written before this
+    /// field existed still deserialize (they predate the bootstrap flow).
+    #[serde(default)]
+    pub recent_repos: Vec<String>,
+    /// Optional override for the `bd` executable path. When `None`,
+    /// the runner falls back to `PATH` lookup. `#[serde(default)]`
+    /// keeps pre-existing `preferences.json` files loadable. Used by
+    /// the SettingsPanel (T50) for non-standard installs (mise/asdf
+    /// shims, custom builds).
+    #[serde(default)]
+    pub bd_path: Option<String>,
+    /// Optional override for the default per-command timeout in
+    /// seconds. When `None`, the runner uses its built-in 10s
+    /// default. `#[serde(default)]` for backward compatibility.
+    /// Range validated by the SettingsPanel (1-60); out-of-range
+    /// values here are accepted by the loader and ignored by the
+    /// runner (it clamps to its own min/max).
+    #[serde(default)]
+    pub default_timeout_secs: Option<u32>,
 }
 
 impl Default for AppPreferences {
@@ -41,6 +61,9 @@ impl Default for AppPreferences {
             theme: "system".to_string(),
             quick_pane_shortcut: None, // None means use default
             language: None,            // None means use system locale
+            recent_repos: Vec::new(),
+            bd_path: None,
+            default_timeout_secs: None,
         }
     }
 }

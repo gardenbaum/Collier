@@ -106,5 +106,53 @@
   "toast.error.windowMinimizeFailed": "Failed to minimize window: {{message}}",
   "toast.error.windowMaximizeFailed": "Failed to toggle maximize: {{message}}",
   "toast.error.fullscreenEnterFailed": "Failed to enter fullscreen: {{message}}",
-  "toast.error.fullscreenExitFailed": "Failed to exit fullscreen: {{message}}"
+  "toast.error.fullscreenExitFailed": "Failed to exit fullscreen: {{message}}",
+
+  "beads.bootstrap.noBeadsWorkspace": "No beads workspace found",
+  "beads.bootstrap.bdNotInPath": "bd CLI not found in PATH",
+  "beads.bootstrap.installInstructions": "Install with: `brew install beads`",
+  "beads.bootstrap.unsupportedVersion": "Beads {{version}} detected. Collier supports 1.0–2.0.",
+  "beads.bootstrap.unsupportedSchema": "Beads schema version {{version}} detected. Update Collier.",
+  "beads.bootstrap.initButton": "Initialize Beads",
+  "beads.bootstrap.selectRepo": "Select Repository",
+  "beads.bootstrap.recentRepos": "Recent Repositories",
+  "beads.bootstrap.noRecents": "No recent repositories yet",
+
+  "beads.errors.commandFailed": "Beads command failed",
+  "beads.errors.timeout": "Command timed out",
+  "beads.errors.notFound": "Issue not found",
+  "beads.errors.permissionDenied": "Permission denied",
+  "beads.errors.doltOnly": "Dolt-only workspace — limited support",
+
+  "beads.common.create": "Create",
+  "beads.common.update": "Update",
+  "beads.common.close": "Close",
+  "beads.common.reopen": "Reopen",
+  "beads.common.delete": "Delete",
+  "beads.common.cancel": "Cancel",
+  "beads.common.confirm": "Confirm",
+  "beads.common.retry": "Retry",
+  "beads.common.copyDetails": "Copy details",
+
+  "beads.status.open": "Open",
+  "beads.status.inProgress": "In Progress",
+  "beads.status.blocked": "Blocked",
+  "beads.status.closed": "Closed",
+  "beads.status.deferred": "Deferred",
+
+  "beads.priority.p0": "P0",
+  "beads.priority.p1": "P1",
+  "beads.priority.p2": "P2",
+  "beads.priority.p3": "P3",
+  "beads.priority.p4": "P4",
+
+  "beads.type.bug": "Bug",
+  "beads.type.feature": "Feature",
+  "beads.type.task": "Task",
+  "beads.type.epic": "Epic",
+  "beads.type.chore": "Chore",
+  "beads.type.decision": "Decision",
+  "beads.type.gate": "Gate",
+
+  "beads.dataRefreshed": "Data refreshed"
 }

@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { check } from '@tauri-apps/plugin-updater'
 import { relaunch } from '@tauri-apps/plugin-process'
 import { initializeCommandSystem } from './lib/commands'
@@ -11,10 +11,15 @@ import './App.css'
 import { MainWindow } from './components/layout/MainWindow'
 import { ThemeProvider } from './components/ThemeProvider'
 import { ErrorBoundary } from './components/ErrorBoundary'
+import { RepoSelection } from './components/beads/bootstrap'
 import { useSquareCornersEffect } from './hooks/useSquareCornersEffect'
 
 function App() {
   useSquareCornersEffect()
+  // T9: until a repo is selected the bootstrap gate replaces the main
+  // window content. The next wave (T10–T13) will slot more gates
+  // (bd-in-PATH, init, worktree, etc.) in front of this one.
+  const [selectedRepo, setSelectedRepo] = useState<string | null>(null)
 
   // Initialize command system and cleanup on app startup
   useEffect(() => {
@@ -114,7 +119,11 @@ function App() {
   return (
     <ErrorBoundary>
       <ThemeProvider>
-        <MainWindow />
+        {selectedRepo ? (
+          <MainWindow />
+        ) : (
+          <RepoSelection onSelect={setSelectedRepo} />
+        )}
       </ThemeProvider>
     </ErrorBoundary>
   )

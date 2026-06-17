@@ -152,6 +152,12 @@ pub fn run() {
                 Err(e) => log::error!("Failed to start beads watcher: {e}"),
             }
 
+            // Per-repo write lock. The `WriteLock` is itself an
+            // `Arc<Mutex<HashMap<...>>>` internally, so a single
+            // managed instance is safe to share across every command
+            // that takes `tauri::State<'_, WriteLock>`.
+            app.manage(beads::lock::WriteLock::new());
+
             // NOTE: Application menu is built from JavaScript for i18n support
             // See src/lib/menu.ts for the menu implementation
 

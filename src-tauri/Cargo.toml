@@ -37,6 +37,20 @@ tauri-plugin-global-shortcut = "2"
 log = "0.4"
 regex = "1"
 
+# Async runtime for the bd CLI runner (T3): spawn `bd` as a child
+# process, wait with a 10s timeout, and pipe stdin for `bd init`.
+# `process` for tokio::process::Command, `time` for timeout, `io-util`
+# for stdin writing, `rt` + `macros` for #[tokio::test] in unit tests.
+# `sync` for the per-repo write mutex in `beads::lock`.
+tokio = { version = "1", features = ["process", "time", "io-util", "rt", "macros", "sync"] }
+
+# PATH lookup used by the runner to fail fast with `BdError::BdNotInPath`
+# when `bd` is not installed. Picked over a hand-rolled PATH walk — the
+# crate handles platform quirks (PATHEXT on Windows, etc.) and is the
+# de-facto Rust answer.
+which = "7"
+glob = "0.3"
+
 # Filesystem watcher for the Beads `.beads/` directory. Justification: no
 # reliable cross-platform fs-watch exists in JS, and the watcher must
 # survive a JS panic (it lives on the Rust side as a tauri-managed state).

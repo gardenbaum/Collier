@@ -1,0 +1,276 @@
+/**
+ * IssueListView — virtualized list of issues backed by `bd list --json`.
+ *
+ * ponytail: pulls the active filter selection from `useIssueFilterStore`
+ * (T17), turns it into a `ListFilters` payload, and hands both to a
+ * `useQuery` whose key is `['beads', 'list', cwd, filters]`. Toggling
+ * any filter checkbox in the sidebar re-keys the query and re-fetches
+ * — no extra wiring. The list itself is windowed manually: 20 lines of
+ * `useState` + `Math.max/min` keep the DOM under ~20 rows even at
+ * 10,000 issues, and we add no new dep (`@tanstack/react-virtual` would
+ * be a one-line win but the project's "no new foreign deps" rule
+ * makes the manual approach the right call for v1).
+ *
+ * Hard-edged Bauhaus: mono scale only, hard edges (radius 0), inline
+ * `style` with design tokens. No animations, no transitions. The brand
+ * colour is reserved for destructive + P0 per AC-14; this component
+ * never reaches for it.
+ */
+import { useMemo, useRef, useState, type CSSProperties } from 'react'
+import { useQuery } from '@tanstack/react-query'
+import { commands } from '@/lib/tauri-bindings'
+import type { Issue, ListFilters } from '@/lib/bindings'
+import { useIssueFilterStore } from '@/store/issue-filter-store'
+import { colors, radius, space, type } from '@/lib/design-tokens'
+import { PriorityDot } from './badges/PriorityDot'
+import { StatusPill } from './badges/StatusPill'
+import { TypeIcon } from './badges/TypeIcon'
+import { LabelChip } from './badges/LabelChip'
+
+const ROW_HEIGHT = 40
+const OVERSCAN = 5
+
+export interface IssueListViewProps {
+  /** Repository root passed to `bd list`. */
+  cwd: string
+  /** Called when the user clicks (or Enter/Spaces on) a row. */
+  onOpenIssue: (id: string) => void
+  /** Optional override for the default windowing container height. */
+  containerHeight?: number
+}
+
+export function IssueListView({
+  cwd,
+  onOpenIssue,
+  containerHeight = 600,
+}: IssueListViewProps) {
+  // ponytail: 5 separate selectors — never destructure the whole store
+  // (per AGENTS.md, that would re-render on every unrelated change).
+  const status = useIssueFilterStore(s => s.status)
+  const priority = useIssueFilterStore(s => s.priority)
+  const storeType = useIssueFilterStore(s => s.type)
+  const labels = useIssueFilterStore(s => s.labels)
+  const assignees = useIssueFilterStore(s => s.assignees)
+
+  // Build the ListFilters payload. `useMemo` keeps the queryKey stable
+  // when the user toggles a checkbox on and off (the resulting array
+  // is a new reference each call, but only the dimensions the user
+  // actually changes do).
+  const filters: ListFilters = useMemo(
+    () => ({
+      status: status.length > 0 ? status : undefined,
+      priority: priority.length > 0 ? priority : undefined,
+      // ponytail: the store uses `type` (TS-natural) but the Rust
+      // struct's `#[serde(rename_all = "camelCase")]` exposes it as
+      // `issueType` on the bridge. One-line rename here, no Rust
+      // alias needed.
+      issueType: storeType.length > 0 ? storeType : undefined,
+      labels: labels.length > 0 ? labels : undefined,
+      assignees: assignees.length > 0 ? assignees : undefined,
+    }),
+    [status, priority, storeType, labels, assignees]
+  )
+
+  const query = useQuery({
+    queryKey: ['beads', 'list', cwd, filters],
+    queryFn: async () => {
+      const result = await commands.bdList(cwd, filters)
+      if (result.status === 'ok') return result.data
+      throw result.error
+    },
+  })
+
+  // ponytail: manual windowing — `useState<number>` for the current
+  // scroll position, a few Math calls to compute the visible slice,
+  // spacer divs above and below to make the scrollbar reflect the
+  // full list height. ~15 lines, zero new dep.
+  const scrollRef = useRef<HTMLDivElement>(null)
+  const [scrollTop, setScrollTop] = useState(0)
+
+  const issues = query.data ?? []
+  const total = issues.length
+  const visibleCount = Math.ceil(containerHeight / ROW_HEIGHT)
+  const startIdx = Math.max(0, Math.floor(scrollTop / ROW_HEIGHT) - OVERSCAN)
+  const endIdx = Math.min(total, startIdx + visibleCount + OVERSCAN * 2)
+  const visible = issues.slice(startIdx, endIdx)
+  const topPad = startIdx * ROW_HEIGHT
+  const bottomPad = Math.max(0, (total - endIdx) * ROW_HEIGHT)
+
+  // Active filter chips — one entry per non-empty dimension. Pure
+  // projection over the store arrays; nothing persisted or mutated.
+  const chips: { label: string; count: number }[] = []
+  if (status.length > 0) chips.push({ label: 'Status', count: status.length })
+  if (priority.length > 0)
+    chips.push({ label: 'Priority', count: priority.length })
+  if (storeType.length > 0)
+    chips.push({ label: 'Type', count: storeType.length })
+  if (labels.length > 0) chips.push({ label: 'Labels', count: labels.length })
+  if (assignees.length > 0)
+    chips.push({ label: 'Assignees', count: assignees.length })
+
+  return (
+    <section data-testid="issue-list-view" style={containerStyle}>
+      {chips.length > 0 && (
+        <div data-testid="filter-chips" style={chipsRowStyle}>
+          {chips.map(chip => (
+            <span
+              key={chip.label}
+              data-testid={`filter-chip-${chip.label.toLowerCase()}`}
+              style={chipStyle}
+            >
+              {chip.label} ({chip.count})
+            </span>
+          ))}
+        </div>
+      )}
+
+      <div
+        ref={scrollRef}
+        onScroll={e => setScrollTop((e.target as HTMLDivElement).scrollTop)}
+        style={{ ...scrollContainerStyle, height: containerHeight }}
+        data-testid="issue-list-scroll"
+      >
+        {query.isLoading ? (
+          <div data-testid="list-loading" style={statusStyle}>
+            Loading…
+          </div>
+        ) : null}
+        {query.isError ? (
+          <div data-testid="list-error" style={statusStyle}>
+            Failed to load: {String(query.error)}
+          </div>
+        ) : null}
+        {!query.isLoading && !query.isError && total === 0 ? (
+          <div data-testid="list-empty" style={statusStyle}>
+            No issues match.
+          </div>
+        ) : null}
+        {total > 0 ? <div style={{ height: topPad }} /> : null}
+        {visible.map(issue => (
+          <IssueRow
+            key={issue.id}
+            issue={issue}
+            onClick={() => onOpenIssue(issue.id)}
+          />
+        ))}
+        {total > 0 ? <div style={{ height: bottomPad }} /> : null}
+      </div>
+
+      <footer data-testid="list-footer" style={footerStyle}>
+        {total} {total === 1 ? 'issue' : 'issues'}
+      </footer>
+    </section>
+  )
+}
+
+function IssueRow({ issue, onClick }: { issue: Issue; onClick: () => void }) {
+  // ponytail: the row is a `role="button"` for keyboard a11y (Enter /
+  // Space both trigger the click). `cursor: pointer` is the only
+  // visual affordance — no hover state per the MUST NOT list.
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={onClick}
+      onKeyDown={e => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault()
+          onClick()
+        }
+      }}
+      data-testid="issue-row"
+      data-issue-id={issue.id}
+      style={rowStyle}
+    >
+      <PriorityDot priority={issue.priority} />
+      <TypeIcon type={issue.issue_type} />
+      <StatusPill status={issue.status} />
+      <span style={titleStyle}>{issue.title}</span>
+      <span style={idStyle}>{issue.id}</span>
+      <div style={labelsStyle}>
+        {issue.labels.map(l => (
+          <LabelChip key={l.name} label={l.name} />
+        ))}
+      </div>
+    </div>
+  )
+}
+
+// ponytail: hard-coded inline styles, mono only, no brand colour.
+// radius is always 0 — the design-token `radius.sm` is already 0,
+// but the explicit `0` here makes the intent obvious to the next
+// maintainer who reaches for the inspector.
+const containerStyle: CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  gap: space[2],
+  padding: space[3],
+}
+
+const chipsRowStyle: CSSProperties = {
+  display: 'flex',
+  gap: space[1],
+  flexWrap: 'wrap',
+}
+
+const chipStyle: CSSProperties = {
+  fontFamily: type.fontFamily.sans,
+  fontSize: type.fontSize.xs,
+  color: colors.mono2,
+  backgroundColor: colors.mono8,
+  paddingInline: space[2],
+  paddingBlock: space[1],
+  borderRadius: radius.sm,
+}
+
+const scrollContainerStyle: CSSProperties = {
+  overflowY: 'auto',
+  border: `1px solid ${colors.mono7}`,
+  borderRadius: radius.sm,
+}
+
+const statusStyle: CSSProperties = {
+  padding: space[4],
+  color: colors.mono3,
+  fontFamily: type.fontFamily.sans,
+  fontSize: type.fontSize.sm,
+}
+
+const footerStyle: CSSProperties = {
+  fontFamily: type.fontFamily.sans,
+  fontSize: type.fontSize.xs,
+  color: colors.mono5,
+}
+
+const rowStyle: CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: space[2],
+  height: ROW_HEIGHT,
+  paddingInline: space[2],
+  borderBottom: `1px solid ${colors.mono8}`,
+  cursor: 'pointer',
+}
+
+const titleStyle: CSSProperties = {
+  flex: 1,
+  fontFamily: type.fontFamily.sans,
+  fontSize: type.fontSize.sm,
+  color: colors.mono0,
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+  whiteSpace: 'nowrap',
+}
+
+const idStyle: CSSProperties = {
+  fontFamily: 'ui-monospace, SFMono-Regular, monospace',
+  fontSize: type.fontSize.xs,
+  color: colors.mono5,
+}
+
+const labelsStyle: CSSProperties = {
+  display: 'flex',
+  gap: space[1],
+}
+
+export default IssueListView
