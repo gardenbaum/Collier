@@ -1,0 +1,7 @@
+{
+  "database": "dolt",
+  "backend": "dolt",
+  "dolt_mode": "embedded",
+  "dolt_database": "Collier",
+  "project_id": "fd14fc9e-8dbf-47a6-828b-8e4b56914011"
+}
