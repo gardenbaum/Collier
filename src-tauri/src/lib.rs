@@ -96,13 +96,29 @@ pub fn run() {
         app_builder = app_builder.plugin(tauri_nspanel::init());
     }
 
-    app_builder
+    let app_builder = app_builder
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_persisted_scope::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_opener::init())
-        .plugin(tauri_plugin_os::init())
+        .plugin(tauri_plugin_os::init());
+
+    // Dev-only: WebSocket on 127.0.0.1:9223 for the MCP driver to
+    // drive the app for live UI verification. Released builds skip
+    // the bridge entirely (the dep is in regular [dependencies] so
+    // it's still compiled, but the plugin is never registered).
+    let app_builder = if cfg!(debug_assertions) {
+        app_builder.plugin(
+            tauri_plugin_mcp_bridge::Builder::new()
+                .bind_address("127.0.0.1")
+                .build(),
+        )
+    } else {
+        app_builder
+    };
+
+    app_builder
         .setup(|app| {
             log::info!("Application starting up");
             log::debug!(

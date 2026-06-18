@@ -34,6 +34,11 @@ tauri-plugin-persisted-scope = "2"
 tauri-plugin-process = "2"
 tauri-plugin-os = "2"
 tauri-plugin-global-shortcut = "2"
+# Dev-only: MCP bridge so the @hypothesi/tauri-mcp-server can drive
+# the running app for live verification. Plugin registration is
+# gated by #[cfg(debug_assertions)] in lib.rs so release builds
+# don't expose the WebSocket server.
+tauri-plugin-mcp-bridge = "0.11"
 log = "0.4"
 regex = "1"
 
