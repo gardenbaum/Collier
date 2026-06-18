@@ -3,7 +3,7 @@ import { renderHook, act } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { listen } from '@tauri-apps/api/event'
 import { toast } from 'sonner'
-
+import { useWorkspaceStore } from '@/store/workspace-store'
 // Mock sonner toast
 vi.mock('sonner', () => ({
   toast: {
@@ -96,6 +96,8 @@ describe('useBeadsInvalidation', () => {
   it('invalidates the beads query when the event fires', async () => {
     const qc = makeQueryClient()
     const invalidateSpy = vi.spyOn(qc, 'invalidateQueries')
+    useWorkspaceStore.setState({ repoPath: '/tmp/repo' })
+
 
     renderWithClient(qc)
 
@@ -114,6 +116,7 @@ describe('useBeadsInvalidation', () => {
 
   it('shows a "data refreshed" toast on invalidation', async () => {
     const qc = makeQueryClient()
+    useWorkspaceStore.setState({ repoPath: '/tmp/repo' })
 
     renderWithClient(qc)
 
@@ -130,6 +133,7 @@ describe('useBeadsInvalidation', () => {
 
   it('debounces the toast to at most one per second', async () => {
     const qc = makeQueryClient()
+    useWorkspaceStore.setState({ repoPath: '/tmp/repo' })
 
     renderWithClient(qc)
 
