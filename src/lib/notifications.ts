@@ -52,7 +52,7 @@ export async function notify(
         message ?? null
       )
       if (result.status === 'error') {
-        throw new Error(result.error)
+        throw new Error(String(result.error))
       }
     } else {
       // Send in-app toast notification

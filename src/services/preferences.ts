@@ -48,8 +48,13 @@ export function useSavePreferences() {
           error: result.error,
           preferences,
         })
-        toast.error('Failed to save preferences', { description: result.error })
-        throw new Error(result.error)
+        // BdError is a discriminated union; the toast wants a string
+        const description =
+          'message' in result.error
+            ? result.error.message
+            : JSON.stringify(result.error)
+        toast.error('Failed to save preferences', { description })
+        throw new Error(description)
       }
 
       logger.info('Preferences saved successfully')
