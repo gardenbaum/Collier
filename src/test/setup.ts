@@ -27,10 +27,12 @@ vi.mock('@tauri-apps/plugin-updater', () => ({
   check: vi.fn().mockResolvedValue(null),
 }))
 
-// Mock typed Tauri bindings (tauri-specta generated)
+// Mock typed Tauri bindings (tauri-specta generated). The bootstrap
+// flow's test (`src/App.test.tsx`) overrides this with a fuller
+// mock; this fallback only fires for tests that don't override
+// the binding themselves.
 vi.mock('@/lib/tauri-bindings', () => ({
   commands: {
-    greet: vi.fn().mockResolvedValue('Hello, test!'),
     loadPreferences: vi
       .fn()
       .mockResolvedValue({ status: 'ok', data: { theme: 'system' } }),
@@ -43,6 +45,11 @@ vi.mock('@/lib/tauri-bindings', () => ({
     cleanupOldRecoveryFiles: vi
       .fn()
       .mockResolvedValue({ status: 'ok', data: 0 }),
+    isDiagnosticLoggingEnabled: vi
+      .fn()
+      .mockResolvedValue({ status: 'ok', data: false }),
+    setDiagnosticLogging: vi.fn().mockResolvedValue({ status: 'ok', data: null }),
+    writeLogLine: vi.fn().mockResolvedValue({ status: 'ok', data: null }),
   },
   unwrapResult: vi.fn((result: { status: string; data?: unknown }) => {
     if (result.status === 'ok') return result.data
