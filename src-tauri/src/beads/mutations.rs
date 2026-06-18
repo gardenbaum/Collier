@@ -402,13 +402,34 @@ pub async fn bd_label_list_all(cwd: String) -> BdResult<Vec<LabelWithCount>> {
             });
         }
     };
-    let mut rows: Vec<LabelWithCount> = serde_json::from_value(value).map_err(|e| {
-        BdError::ParseError {
-            message: format!("bd label list-all failed to parse rows: {e}"),
-        }
-    })?;
+    let mut rows = parse_label_list_all(value)?;
     rows.sort_by(|a, b| a.label.cmp(&b.label));
     Ok(rows)
+}
+
+/// Parse a `bd label list-all --json` response into rows.
+///
+/// `bd` returns three shapes for this command:
+/// 1. Success: a bare array of `{ label, count }` rows
+///    (`[{"label":"bug","count":3}, ...]`) — the happy path.
+/// 2. Empty: a bare array `[]` (no labels in the database).
+/// 3. Error: an envelope `{ error, schema_version }` — `bd` still
+///    serialises the error as JSON when `--json` is set, even for
+///    failures like a missing database or `--global` without
+///    shared-server mode. Before this helper existed, the parser
+///    did `from_value::<Vec<...>>(value)` on the envelope and
+///    surfaced the unhelpful "invalid type: map, expected a
+///    sequence" `ParseError`. Now we detect the envelope shape
+///    and carry the underlying bd message through to the user.
+fn parse_label_list_all(value: serde_json::Value) -> BdResult<Vec<LabelWithCount>> {
+    if let Some(err) = value.get("error").and_then(|v| v.as_str()) {
+        return Err(BdError::ParseError {
+            message: format!("bd label list-all: {err}"),
+        });
+    }
+    serde_json::from_value(value).map_err(|e| BdError::ParseError {
+        message: format!("bd label list-all failed to parse rows: {e}"),
+    })
 }
 
 /// Run `bd label propagate <parent> <label> --json` in `cwd` and
@@ -455,9 +476,7 @@ pub async fn bd_label_propagate(
             });
         }
     };
-    let rows: Vec<Value> = serde_json::from_value(value).map_err(|e| BdError::ParseError {
-        message: format!("bd label propagate failed to parse rows: {e}"),
-    })?;
+    let rows = parse_label_propagate_rows(value)?;
 
     let mut report = PropagationReport::default();
     for row in rows {
@@ -469,6 +488,30 @@ pub async fn bd_label_propagate(
         }
     }
     Ok(report)
+}
+
+/// Parse a `bd label propagate <parent> <label> --json` response
+/// into a `Vec<serde_json::Value>` for the per-child status loop.
+///
+/// Same envelope shapes as `parse_label_list_all`:
+/// 1. Success: a bare array of `{ issue_id, label, status }` rows.
+/// 2. Error: `{ error, schema_version }` envelope — bd still emits
+///    JSON when `--json` is set even for mid-command failures
+///    (e.g. parent has no children with `--ignore-missing` off).
+///    The bare `from_value::<Vec<Value>>(value)` failed with
+///    "invalid type: map, expected a sequence" before this helper
+///    existed.
+fn parse_label_propagate_rows(
+    value: serde_json::Value,
+) -> BdResult<Vec<serde_json::Value>> {
+    if let Some(err) = value.get("error").and_then(|v| v.as_str()) {
+        return Err(BdError::ParseError {
+            message: format!("bd label propagate: {err}"),
+        });
+    }
+    serde_json::from_value(value).map_err(|e| BdError::ParseError {
+        message: format!("bd label propagate failed to parse rows: {e}"),
+    })
 }
 
 // ============================================================================
@@ -1497,6 +1540,36 @@ mod tests {
         assert!(rows.is_empty());
     }
 
+    /// When the underlying `bd` command errors out (e.g. failed to
+    /// open the database, `--global` requires shared-server mode,
+    /// or any other failure mid-command), `bd` still serializes
+    /// the error as JSON because `--json` was set. The shape is an
+    /// envelope: `{ "error": "<message>", "schema_version": 1 }`.
+    /// The parser must detect this and surface the error message
+    /// rather than failing with the generic "invalid type: map,
+    /// expected a sequence" `ParseError` that users were seeing
+    /// in the LabelListView.
+    #[test]
+    fn test_label_list_all_error_envelope() {
+        let value = serde_json::json!({
+            "error": "--global requires shared-server mode",
+            "schema_version": 1
+        });
+        let err = parse_label_list_all(value).expect_err("envelope is not a list");
+        let msg = match err {
+            BdError::ParseError { message } => message,
+            other => panic!("expected ParseError, got {other:?}"),
+        };
+        assert!(
+            msg.contains("bd label list-all"),
+            "error should identify the command, got: {msg}"
+        );
+        assert!(
+            msg.contains("--global requires shared-server mode"),
+            "error should carry the underlying bd message, got: {msg}"
+        );
+    }
+
     /// The rows are sorted by label name on the Rust side so the
     /// frontend renders in a stable order without re-sorting. This
     /// test confirms the sort is stable + case-sensitive (lexicographic
@@ -1546,6 +1619,30 @@ mod tests {
                 "priority-high",
                 "--json"
             ]
+        );
+    }
+    /// Same envelope handling as `test_label_list_all_error_envelope`:
+    /// when `bd label propagate` returns an error envelope, the
+    /// parser must surface the underlying bd message instead of
+    /// "invalid type: map, expected a sequence".
+    #[test]
+    fn test_label_propagate_error_envelope() {
+        let value = serde_json::json!({
+            "error": "no children to propagate to",
+            "schema_version": 1
+        });
+        let err = parse_label_propagate_rows(value).expect_err("envelope is not a list");
+        let msg = match err {
+            BdError::ParseError { message } => message,
+            other => panic!("expected ParseError, got {other:?}"),
+        };
+        assert!(
+            msg.contains("bd label propagate"),
+            "error should identify the command, got: {msg}"
+        );
+        assert!(
+            msg.contains("no children to propagate to"),
+            "error should carry the underlying bd message, got: {msg}"
         );
     }
 
