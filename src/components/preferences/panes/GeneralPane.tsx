@@ -65,7 +65,22 @@ export function GeneralPane() {
 
   const handleResetToDefaults = async () => {
     if (!preferences) return
+    const oldShortcut = preferences.quick_pane_shortcut
     try {
+      // Unregister the OS-level shortcut first so prefs and OS state
+      // stay in sync — otherwise the user's custom shortcut would keep
+      // firing until the next app restart when the null pref is read
+      // back in.
+      const unregisterResult = await commands.updateQuickPaneShortcut(null)
+      if (unregisterResult.status === 'error') {
+        logger.error('Failed to unregister shortcut on reset', {
+          error: unregisterResult.error,
+        })
+        toast.error(t('toast.error.shortcutFailed'), {
+          description: unregisterResult.error,
+        })
+        return
+      }
       await savePreferences.mutateAsync({
         ...preferences,
         theme: 'system',
@@ -76,12 +91,12 @@ export function GeneralPane() {
         default_timeout_secs: null,
       })
       toast.success(
-        t(
-          'preferences.common.resetToDefaultsSuccess',
-          'Reset to defaults'
-        )
+        t('preferences.common.resetToDefaultsSuccess', 'Reset to defaults')
       )
     } catch (error) {
+      // Best-effort rollback: re-register the old OS shortcut so the
+      // user's "back to my custom shortcut" mental model holds.
+      await commands.updateQuickPaneShortcut(oldShortcut)
       logger.error('Failed to reset preferences', { error })
       toast.error(
         t(
