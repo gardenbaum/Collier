@@ -9,21 +9,10 @@
 
 export const commands = {
 /**
- * Simple greeting command for demonstration purposes.
- */
-async greet(name: string) : Promise<Result<string, string>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("greet", { name }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-/**
  * Loads user preferences from disk.
  * Returns default preferences if the file doesn't exist.
  */
-async loadPreferences() : Promise<Result<AppPreferences, string>> {
+async loadPreferences() : Promise<Result<AppPreferences, BdError>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("load_preferences") };
 } catch (e) {
@@ -35,7 +24,7 @@ async loadPreferences() : Promise<Result<AppPreferences, string>> {
  * Saves user preferences to disk.
  * Uses atomic write (temp file + rename) to prevent corruption.
  */
-async savePreferences(preferences: AppPreferences) : Promise<Result<null, string>> {
+async savePreferences(preferences: AppPreferences) : Promise<Result<null, BdError>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("save_preferences", { preferences }) };
 } catch (e) {
@@ -47,7 +36,7 @@ async savePreferences(preferences: AppPreferences) : Promise<Result<null, string
  * Sends a native system notification.
  * On mobile platforms, returns an error as notifications are not yet supported.
  */
-async sendNativeNotification(title: string, body: string | null) : Promise<Result<null, string>> {
+async sendNativeNotification(title: string, body: string | null) : Promise<Result<null, BdError>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("send_native_notification", { title, body }) };
 } catch (e) {
@@ -59,7 +48,7 @@ async sendNativeNotification(title: string, body: string | null) : Promise<Resul
  * Saves emergency data to a JSON file for later recovery.
  * Validates filename and enforces a 10MB size limit.
  */
-async saveEmergencyData(filename: string, data: JsonValue) : Promise<Result<null, RecoveryError>> {
+async saveEmergencyData(filename: string, data: JsonValue) : Promise<Result<null, BdError>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("save_emergency_data", { filename, data }) };
 } catch (e) {
@@ -69,9 +58,9 @@ async saveEmergencyData(filename: string, data: JsonValue) : Promise<Result<null
 },
 /**
  * Loads emergency data from a previously saved JSON file.
- * Returns FileNotFound if the file doesn't exist.
+ * Returns `BdError::NotFound` if the file doesn't exist.
  */
-async loadEmergencyData(filename: string) : Promise<Result<JsonValue, RecoveryError>> {
+async loadEmergencyData(filename: string) : Promise<Result<JsonValue, BdError>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("load_emergency_data", { filename }) };
 } catch (e) {
@@ -83,7 +72,7 @@ async loadEmergencyData(filename: string) : Promise<Result<JsonValue, RecoveryEr
  * Removes recovery files older than 7 days.
  * Returns the count of removed files.
  */
-async cleanupOldRecoveryFiles() : Promise<Result<number, RecoveryError>> {
+async cleanupOldRecoveryFiles() : Promise<Result<number, BdError>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("cleanup_old_recovery_files") };
 } catch (e) {
@@ -184,26 +173,6 @@ async checkSchemaVersionCmd(cwd: string) : Promise<Result<number, BdError>> {
 async readIssuesJsonl(cwd: string) : Promise<Result<JsonlResult, BdError>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("read_issues_jsonl", { cwd }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-/**
- * Tauri command: try to acquire the per-repo write lock for `cwd`.
- * 
- * Returns `Ok(())` once the lock is held; the actual `bd` invocation
- * must follow in a separate command that holds the lock for the
- * duration of the I/O. (We intentionally do not hold the lock across
- * the IPC roundtrip — the guard would be released the moment this
- * `Result` is serialized back to the React side.)
- * 
- * Used by AC-5: two TS calls to write to the same path → one
- * gets `BdError::AlreadyLocked`.
- */
-async tryWriteLockCmd(cwd: string) : Promise<Result<null, BdError>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("try_write_lock_cmd", { cwd }) };
 } catch (e) {
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };
@@ -699,6 +668,21 @@ async bdAddComment(cwd: string, id: string, body: string) : Promise<Result<null,
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };
 }
+},
+/**
+ * Tauri command: replace the live beads watcher with one rooted at
+ * `repo_path`. Called from the React side whenever the active repo
+ * changes so `beads-data-changed` events carry the right `repo_path`
+ * payload (the frontend filters on
+ * `event.payload.repo_path === activeRepoPath`).
+ */
+async attachWatchRepo(repoPath: string) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("attach_watch_repo", { repoPath }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
 }
 }
 
@@ -991,30 +975,6 @@ limit?: number | null }
  * — the v1 contract is "always present".
  */
 export type PropagationReport = { added: number; skipped: number; errors: string[] }
-/**
- * Error types for recovery operations (typed for frontend matching)
- */
-export type RecoveryError = 
-/**
- * File does not exist (expected case, not a failure)
- */
-{ type: "FileNotFound" } | 
-/**
- * Filename validation failed
- */
-{ type: "ValidationError"; message: string } | 
-/**
- * Data exceeds size limit
- */
-{ type: "DataTooLarge"; max_bytes: number } | 
-/**
- * File system read/write error
- */
-{ type: "IoError"; message: string } | 
-/**
- * JSON serialization/deserialization error
- */
-{ type: "ParseError"; message: string }
 /**
  * Input struct for `bd update <id> <flags> --json`.
  * 

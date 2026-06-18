@@ -1,54 +1,44 @@
 import { logger } from '@/lib/logger'
-import {
-  commands,
-  type JsonValue,
-  type RecoveryError,
-} from '@/lib/tauri-bindings'
+import { commands, type BdError, type JsonValue } from '@/lib/tauri-bindings'
 
-/** Convert RecoveryError to a human-readable message */
-function formatRecoveryError(error: RecoveryError): string {
+/**
+ * Format a `BdError` from the recovery backend as a human-readable
+ * message. Kept as a single switch so the exhaustive nature of the
+ * type is preserved — adding a new `BdError` variant causes a TS error
+ * here, which is the canary we want.
+ */
+function formatBdError(error: BdError): string {
   switch (error.type) {
-    case 'FileNotFound':
-      return 'File not found'
-    case 'ValidationError':
-      return `Validation error: ${error.message}`
-    case 'DataTooLarge':
-      return `Data too large (max ${error.max_bytes} bytes)`
+    case 'NotFound':
+      return `File not found: ${error.id}`
     case 'IoError':
       return `IO error: ${error.message}`
     case 'ParseError':
       return `Parse error: ${error.message}`
+    case 'PermissionDenied':
+      return `Permission denied: ${error.path}`
+    case 'NotARepo':
+      return `Not a Beads repo: ${error.path}`
+    case 'Timeout':
+      return `Operation timed out after ${error.seconds}s`
+    case 'AlreadyLocked':
+      return `Repo is locked: ${error.repo_path}`
+    case 'BdNotInPath':
+      return 'bd CLI not found in PATH'
+    case 'SchemaMismatch':
+      return `Schema mismatch: ${error.message}`
+    case 'DoltOnly':
+      return `Dolt-only operation unsupported: ${error.message}`
+    case 'NonZeroExit':
+      return `bd exited with code ${error.code}: ${error.stderr.trim() || error.stdout.trim()}`
   }
 }
-
-/**
- * Simple data recovery pattern for saving important data to disk
- *
- * Uses the same approach as preferences - JSON files in the app data directory
- * Files are saved to ~/Library/Application Support/[app]/recovery/
- */
 
 export interface RecoveryOptions {
   /** Suppress error notifications (useful for background saves) */
   silent?: boolean
 }
 
-/**
- * Save any JSON-serializable data to a recovery file
- *
- * @param filename Base filename (without extension)
- * @param data Any JSON-serializable data
- * @param options Recovery options
- *
- * @example
- * ```typescript
- * // Save user draft
- * await saveEmergencyData('user-draft', { content: 'Hello world', timestamp: Date.now() })
- *
- * // Save app state before risky operation
- * await saveEmergencyData('app-state', { currentView: 'dashboard', unsavedChanges: true })
- * ```
- */
 export async function saveEmergencyData(
   filename: string,
   data: JsonValue,
@@ -59,12 +49,14 @@ export async function saveEmergencyData(
   const result = await commands.saveEmergencyData(filename, data)
 
   if (result.status === 'error') {
-    const message = formatRecoveryError(result.error)
     logger.error('Failed to save emergency data', {
       filename,
       error: result.error,
     })
-    throw new Error(message)
+    if (!options.silent) {
+      throw new Error(formatBdError(result.error))
+    }
+    return
   }
 
   if (!options.silent) {
@@ -72,21 +64,6 @@ export async function saveEmergencyData(
   }
 }
 
-/**
- * Load data from a recovery file
- *
- * @param filename Base filename (without extension)
- * @returns The recovered data or null if file doesn't exist
- *
- * @example
- * ```typescript
- * // Load user draft
- * const draft = await loadEmergencyData('user-draft')
- * if (draft) {
- *   console.log('Found saved draft:', draft.content)
- * }
- * ```
- */
 export async function loadEmergencyData<T = unknown>(
   filename: string
 ): Promise<T | null> {
@@ -95,47 +72,34 @@ export async function loadEmergencyData<T = unknown>(
   const result = await commands.loadEmergencyData(filename)
 
   if (result.status === 'error') {
-    // FileNotFound is an expected case - return null instead of throwing
-    if (result.error.type === 'FileNotFound') {
+    // `NotFound` is an expected case (first launch, cleared cache)
+    // — return null instead of throwing. The other `BdError`
+    // variants are real failures we surface to the caller.
+    if (result.error.type === 'NotFound') {
       logger.debug('Recovery file not found', { filename })
       return null
     }
-
-    const message = formatRecoveryError(result.error)
     logger.error('Failed to load emergency data', {
       filename,
       error: result.error,
     })
-    throw new Error(message)
+    throw new Error(formatBdError(result.error))
   }
 
   logger.info('Emergency data loaded successfully', { filename })
   return result.data as T
 }
 
-/**
- * Clean up old recovery files (older than 7 days)
- * Called automatically on app startup
- *
- * @returns Number of files removed
- *
- * @example
- * ```typescript
- * const removedCount = await cleanupOldFiles()
- * console.log(`Cleaned up ${removedCount} old recovery files`)
- * ```
- */
 export async function cleanupOldFiles(): Promise<number> {
   logger.debug('Starting recovery file cleanup')
 
   const result = await commands.cleanupOldRecoveryFiles()
 
   if (result.status === 'error') {
-    const message = formatRecoveryError(result.error)
     logger.error('Failed to cleanup old recovery files', {
       error: result.error,
     })
-    throw new Error(message)
+    throw new Error(formatBdError(result.error))
   }
 
   const removedCount = result.data
@@ -148,34 +112,22 @@ export async function cleanupOldFiles(): Promise<number> {
   return removedCount
 }
 
-/**
- * Save app state with timestamp for crash recovery
- * This is typically called by the error boundary
- *
- * @param state Current app state to save
- * @param crashInfo Optional crash information
- *
- * @example
- * ```typescript
- * // Save crash state in error boundary
- * await saveCrashState({
- *   currentPage: '/dashboard',
- *   userInput: formData,
- *   sessionId: 'abc123'
- * }, { error: error.message, stack: error.stack })
- * ```
- */
 export async function saveCrashState(
   state: JsonValue,
   crashInfo?: { error?: string; stack?: string; componentStack?: string }
 ): Promise<void> {
+  // Append a UUID suffix to the filename so two `ErrorBoundary`
+  // fires in the same millisecond don't silently overwrite each
+  // other. (T48 history: ms-resolution was the original spec,
+  // but the integration test fired two boundaries in <1ms.)
   const timestamp = Date.now()
-  const filename = `crash-${timestamp}`
+  const random = crypto.randomUUID().slice(0, 8)
+  const filename = `crash-${timestamp}-${random}`
 
-  const crashData = {
+  const crashData: JsonValue = {
     timestamp,
     state,
-    crashInfo,
+    crashInfo: crashInfo ?? null,
     userAgent: navigator.userAgent,
     url: window.location.href,
   }
