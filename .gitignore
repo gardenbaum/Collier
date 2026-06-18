@@ -14,9 +14,9 @@ dist-ssr
 *.local.*
 jscpd-report
 
-# OMO session state (plan, notepad, evidence, boulder)
+# OMO session state + Claude AI artifacts (agents, hooks, skills, rules)
 .omo/
-
+.claude/
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
