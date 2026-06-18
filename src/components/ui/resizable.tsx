@@ -6,6 +6,30 @@ import * as ResizablePrimitive from 'react-resizable-panels'
 
 import { cn } from '@/lib/utils'
 
+// Module-load guard: react-resizable-panels v3 named-exports the trio
+// below; v2 exposed PanelGroup as a default export. A missing export
+// would compile to `React.createElement(undefined, ...)` and surface as
+// a cryptic mid-render "Element type is invalid" — fail fast instead.
+{
+  const missingExports: string[] = []
+  if (typeof ResizablePrimitive.PanelGroup === 'undefined') {
+    missingExports.push('PanelGroup')
+  }
+  if (typeof ResizablePrimitive.Panel === 'undefined') {
+    missingExports.push('Panel')
+  }
+  if (typeof ResizablePrimitive.PanelResizeHandle === 'undefined') {
+    missingExports.push('PanelResizeHandle')
+  }
+  if (missingExports.length > 0) {
+    throw new Error(
+      `react-resizable-panels is missing required exports: ${missingExports.join(', ')}. ` +
+        `This wrapper targets react-resizable-panels@^3.0.0. ` +
+        `Check your installed version with \`bun pm ls react-resizable-panels\`.`
+    )
+  }
+}
+
 function ResizablePanelGroup({
   className,
   ...props
