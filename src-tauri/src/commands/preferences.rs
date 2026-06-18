@@ -5,7 +5,8 @@
 use std::path::{Path, PathBuf};
 use tauri::{AppHandle, Manager};
 
-use crate::types::{validate_string_input, validate_theme, AppPreferences};
+use crate::beads::types::{BdError, BdResult};
+use crate::types::{validate_theme, AppPreferences};
 
 /// Gets the path to the preferences file.
 pub fn get_preferences_path(app: &AppHandle) -> Result<PathBuf, String> {
@@ -88,28 +89,15 @@ pub fn load_quick_pane_shortcut(app: &AppHandle) -> Option<String> {
     prefs.quick_pane_shortcut
 }
 
-/// Simple greeting command for demonstration purposes.
-#[tauri::command]
-#[specta::specta]
-pub fn greet(name: &str) -> Result<String, String> {
-    // Input validation
-    validate_string_input(name, 100, "Name").map_err(|e| {
-        log::warn!("Invalid greet input: {e}");
-        e
-    })?;
-
-    log::info!("Greeting user: {name}");
-    Ok(format!("Hello, {name}! You've been greeted from Rust!"))
-}
 
 /// Loads user preferences from disk.
 /// Returns default preferences if the file doesn't exist.
 #[tauri::command]
 #[specta::specta]
-pub async fn load_preferences(app: AppHandle) -> Result<AppPreferences, String> {
+pub async fn load_preferences(app: AppHandle) -> BdResult<AppPreferences> {
     log::debug!("Loading preferences from disk");
-    let prefs_path = get_preferences_path(&app)?;
-    let preferences = load_preferences_inner(&prefs_path)?;
+    let prefs_path = get_preferences_path(&app).map_err(|e| BdError::IoError { message: e })?;
+    let preferences = load_preferences_inner(&prefs_path).map_err(|e| BdError::IoError { message: e })?;
     log::info!("Successfully loaded preferences");
     Ok(preferences)
 }
@@ -118,14 +106,11 @@ pub async fn load_preferences(app: AppHandle) -> Result<AppPreferences, String> 
 /// Uses atomic write (temp file + rename) to prevent corruption.
 #[tauri::command]
 #[specta::specta]
-pub async fn save_preferences(app: AppHandle, preferences: AppPreferences) -> Result<(), String> {
-    // Validate theme value
-    validate_theme(&preferences.theme)?;
-
+pub async fn save_preferences(app: AppHandle, preferences: AppPreferences) -> BdResult<()> {
+    validate_theme(&preferences.theme).map_err(|e| BdError::ParseError { message: e })?;
     log::debug!("Saving preferences to disk: {preferences:?}");
-    let prefs_path = get_preferences_path(&app)?;
-    save_preferences_inner(&prefs_path, &preferences)?;
-
+    let prefs_path = get_preferences_path(&app).map_err(|e| BdError::IoError { message: e })?;
+    save_preferences_inner(&prefs_path, &preferences).map_err(|e| BdError::IoError { message: e })?;
     log::info!("Successfully saved preferences to {prefs_path:?}");
     Ok(())
 }
