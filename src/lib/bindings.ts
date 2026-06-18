@@ -9,6 +9,48 @@
 
 export const commands = {
 /**
+ * Write one log line. Called from the renderer via the Tauri command
+ * bridge. Always best-effort: a write failure must never crash the
+ * app, because this is the path the renderer takes when the app is
+ * already crashing.
+ */
+async writeLogLine(line: LogLine) : Promise<Result<null, BdError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("write_log_line", { line }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Flip the in-process diagnostic-logging flag. The Advanced
+ * preferences "Enable diagnostic logging" switch is the only
+ * legitimate caller. Per-session: not persisted, resets to `false`
+ * on every app start.
+ */
+async setDiagnosticLogging(enabled: boolean) : Promise<Result<null, BdError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("set_diagnostic_logging", { enabled }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Read the current value of the in-process diagnostic-logging
+ * flag. The frontend uses this to reflect the toggle's actual
+ * state on mount (e.g. after a window reload that would otherwise
+ * lose the local React state).
+ */
+async isDiagnosticLoggingEnabled() : Promise<Result<boolean, BdError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("is_diagnostic_logging_enabled") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
  * Loads user preferences from disk.
  * Returns default preferences if the file doesn't exist.
  */
@@ -950,6 +992,32 @@ search?: string | null;
  * Maximum number of issues to return. Maps to `bd list --limit` (single).
  */
 limit?: number | null }
+/**
+ * One log line written by the frontend.
+ */
+export type LogLine = { 
+/**
+ * Free-form level label. We trust the frontend to send
+ * `info | warn | error | debug` and don't enforce a closed set
+ * so the renderer can add a new level without an app rebuild.
+ */
+level: string; 
+/**
+ * Single-line message. Newlines are stripped at the writer so
+ * the file stays grep-able.
+ */
+message: string; 
+/**
+ * Optional context blob. Serialized to JSON; absent values are
+ * omitted (so the on-disk format stays compact).
+ */
+context?: JsonValue | null; 
+/**
+ * Optional source label, e.g. `"ErrorBoundary"` or
+ * `"useBeadsInvalidation"`. Helps when several call sites hit
+ * the same path.
+ */
+source?: string | null }
 /**
  * Result of `bd label propagate <parent> <label> --json`.
  * 

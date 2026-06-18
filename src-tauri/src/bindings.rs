@@ -6,9 +6,14 @@ pub fn generate_bindings() -> Builder<tauri::Wry> {
     use crate::beads::{
         detect, jsonl, list, mutations, ready_blocked, runner, search_query, show_history, watcher,
     };
-    use crate::commands::{notifications, preferences, quick_pane, recent_repos, recovery};
+    use crate::commands::{
+        diagnostic_log, notifications, preferences, quick_pane, recent_repos, recovery,
+    };
 
     Builder::<tauri::Wry>::new().commands(collect_commands![
+        diagnostic_log::write_log_line,
+        diagnostic_log::set_diagnostic_logging,
+        diagnostic_log::is_diagnostic_logging_enabled,
         preferences::load_preferences,
         preferences::save_preferences,
         notifications::send_native_notification,
@@ -79,7 +84,7 @@ mod tests {
 
     /// Generate TypeScript bindings file.
     /// This test is ignored by default so it doesn't run in CI.
-    /// Run manually with: cargo test export_bindings -- --ignored
+    /// Run manually with: `cargo test export_bindings -- --ignored`
     #[test]
     #[ignore]
     fn export_bindings() {

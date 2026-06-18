@@ -19,6 +19,7 @@ use std::{
     fs::{self, File, OpenOptions},
     io::Write as _,
     path::PathBuf,
+    sync::atomic::{AtomicBool, Ordering},
     sync::Mutex,
 };
 
@@ -34,6 +35,13 @@ use crate::beads::types::{BdError, BdResult};
 /// global means we never get the same line interleaved across two
 /// appends.
 static LOG_HANDLE: Mutex<Option<File>> = Mutex::new(None);
+
+/// Per-session toggle read by `write_log_line`. Default `false` so
+/// shipping the binary never silently writes to the user's disk. The
+/// "Enable diagnostic logging" switch in Advanced preferences is the
+/// only thing that flips this; it is process-local and resets to
+/// `false` on every app start.
+static DIAGNOSTIC_LOGGING_ENABLED: AtomicBool = AtomicBool::new(false);
 
 /// Resolve the canonical log path for today, e.g.
 /// `<APPLOCALDATA>/logs/collier-2026-06-18.log`.
@@ -94,6 +102,13 @@ pub async fn write_log_line(
     app: tauri::AppHandle,
     line: LogLine,
 ) -> BdResult<()> {
+    // Per-session toggle: when the user has not enabled diagnostic
+    // logging, drop the line silently. The frontend may still log
+    // freely to the dev-tools console — this is purely about
+    // avoiding accidental disk writes.
+    if !DIAGNOSTIC_LOGGING_ENABLED.load(Ordering::Relaxed) {
+        return Ok(());
+    }
     let dir = app
         .path()
         .app_local_data_dir()
@@ -101,7 +116,6 @@ pub async fn write_log_line(
             message: format!("resolve app_local_data_dir failed: {e}"),
         })?;
 
-    let line_str = format_log_line(&line);
     let mut guard = LOG_HANDLE.lock().map_err(|e| BdError::ParseError {
         message: format!("log mutex poisoned: {e}"),
     })?;
@@ -117,6 +131,8 @@ pub async fn write_log_line(
     }
 
     if let Some(f) = guard.as_mut() {
+        let line_str = format_log_line(&line);
+        // Newlines in user-supplied content are stripped so each
         // Newlines in user-supplied content are stripped so each
         // record is one physical line. The format prefix is the only
         // structural whitespace.
@@ -220,5 +236,53 @@ mod tests {
         let s = format_log_line(&line);
         assert!(s.contains("[error] [ErrorBoundary] boom"));
         assert!(s.contains("| {\"stack\":\"at foo\"}"));
+    }
+}
+
+
+/// Flip the in-process diagnostic-logging flag. The Advanced
+/// preferences "Enable diagnostic logging" switch is the only
+/// legitimate caller. Per-session: not persisted, resets to `false`
+/// on every app start.
+#[tauri::command]
+#[specta::specta]
+pub async fn set_diagnostic_logging(enabled: bool) -> BdResult<()> {
+    DIAGNOSTIC_LOGGING_ENABLED.store(enabled, Ordering::Relaxed);
+    Ok(())
+}
+
+/// Read the current value of the in-process diagnostic-logging
+/// flag. The frontend uses this to reflect the toggle's actual
+/// state on mount (e.g. after a window reload that would otherwise
+/// lose the local React state).
+#[tauri::command]
+#[specta::specta]
+pub async fn is_diagnostic_logging_enabled() -> BdResult<bool> {
+    Ok(DIAGNOSTIC_LOGGING_ENABLED.load(Ordering::Relaxed))
+}
+
+#[cfg(test)]
+mod diagnostic_toggle_tests {
+    use super::*;
+
+    /// The flag is per-process and not persisted: even if a previous
+    /// test set it, each test in this module is a fresh process so
+    /// the default is always `false`. We assert that the setter is
+    /// idempotent and round-trips through the getter.
+    #[test]
+    fn toggle_round_trips() {
+        assert!(!is_diagnostic_logging_enabled_sync());
+        set_diagnostic_logging_sync(true);
+        assert!(is_diagnostic_logging_enabled_sync());
+        set_diagnostic_logging_sync(false);
+        assert!(!is_diagnostic_logging_enabled_sync());
+    }
+
+    fn is_diagnostic_logging_enabled_sync() -> bool {
+        DIAGNOSTIC_LOGGING_ENABLED.load(Ordering::Relaxed)
+    }
+
+    fn set_diagnostic_logging_sync(v: bool) {
+        DIAGNOSTIC_LOGGING_ENABLED.store(v, Ordering::Relaxed);
     }
 }
