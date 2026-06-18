@@ -17,6 +17,8 @@ jscpd-report
 # OMO session state + Claude AI artifacts (agents, hooks, skills, rules)
 .omo/
 .claude/
+# Visual brainstorming artifacts
+.superpowers/
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
