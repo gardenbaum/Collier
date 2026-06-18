@@ -1,26 +1,23 @@
-import { useState } from 'react'
+/**
+ * GeneralPane — Collier's "General" preferences page.
+ *
+ * v1.0 ships with one persistent setting: the Quick Pane keyboard
+ * shortcut. The old `exampleText` / `exampleToggle` demo placeholders
+ * are gone — they were never persisted to disk and only served to
+ * show off the SettingsSection wrapper.
+ */
 import { useTranslation } from 'react-i18next'
 import { useQuery } from '@tanstack/react-query'
 import { toast } from 'sonner'
-import { Switch } from '@/components/ui/switch'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
 import { ShortcutPicker } from '../ShortcutPicker'
 import { SettingsField, SettingsSection } from '../shared/SettingsComponents'
 import { usePreferences, useSavePreferences } from '@/services/preferences'
 import { commands } from '@/lib/tauri-bindings'
 import { logger } from '@/lib/logger'
+import { Button } from '@/components/ui/button'
 
 export function GeneralPane() {
   const { t } = useTranslation()
-  // Example local state - these are NOT persisted to disk
-  // To add persistent preferences:
-  // 1. Add the field to AppPreferences in both Rust and TypeScript
-  // 2. Use usePreferencesManager() and updatePreferences()
-  const [exampleText, setExampleText] = useState('Example value')
-  const [exampleToggle, setExampleToggle] = useState(true)
-
-  // Load preferences for keyboard shortcuts
   const { data: preferences } = usePreferences()
   const savePreferences = useSavePreferences()
 
@@ -43,7 +40,6 @@ export function GeneralPane() {
 
     // First, try to register the new shortcut
     const result = await commands.updateQuickPaneShortcut(newShortcut)
-
     if (result.status === 'error') {
       logger.error('Failed to register shortcut', { error: result.error })
       toast.error(t('toast.error.shortcutFailed'), {
@@ -58,30 +54,41 @@ export function GeneralPane() {
         ...preferences,
         quick_pane_shortcut: newShortcut,
       })
-    } catch {
-      // Save failed - roll back the backend registration
-      logger.warn('Save failed, rolling back shortcut registration', {
-        oldShortcut,
-        newShortcut,
+      toast.success(t('toast.success.shortcutUpdated'))
+    } catch (error) {
+      // Roll back the registration if save failed
+      logger.error('Save failed after registration, rolling back', { error })
+      await commands.updateQuickPaneShortcut(oldShortcut)
+      toast.error(t('toast.error.shortcutSaveFailed'))
+    }
+  }
+
+  const handleResetToDefaults = async () => {
+    if (!preferences) return
+    try {
+      await savePreferences.mutateAsync({
+        ...preferences,
+        theme: 'system',
+        language: null,
+        quick_pane_shortcut: null,
+        recent_repos: [],
+        bd_path: null,
+        default_timeout_secs: null,
       })
-
-      const rollbackResult = await commands.updateQuickPaneShortcut(oldShortcut)
-
-      if (rollbackResult.status === 'error') {
-        logger.error(
-          'Rollback failed - backend and preferences are out of sync',
-          {
-            error: rollbackResult.error,
-            attemptedShortcut: newShortcut,
-            originalShortcut: oldShortcut,
-          }
+      toast.success(
+        t(
+          'preferences.common.resetToDefaultsSuccess',
+          'Reset to defaults'
         )
-        toast.error(t('toast.error.shortcutRestoreFailed'), {
-          description: t('toast.error.shortcutRestoreDescription'),
-        })
-      } else {
-        logger.info('Successfully rolled back shortcut registration')
-      }
+      )
+    } catch (error) {
+      logger.error('Failed to reset preferences', { error })
+      toast.error(
+        t(
+          'preferences.common.resetToDefaultsError',
+          'Failed to reset preferences'
+        )
+      )
     }
   }
 
@@ -102,32 +109,28 @@ export function GeneralPane() {
         </SettingsField>
       </SettingsSection>
 
-      <SettingsSection title={t('preferences.general.exampleSettings')}>
+      <SettingsSection
+        title={t('preferences.common.dangerZone', 'Danger zone')}
+      >
         <SettingsField
-          label={t('preferences.general.exampleText')}
-          description={t('preferences.general.exampleTextDescription')}
+          label={t(
+            'preferences.common.resetToDefaults',
+            'Reset to defaults'
+          )}
+          description={t(
+            'preferences.common.resetToDefaultsDescription',
+            'Reset theme, language, shortcuts, and bd path to defaults.'
+          )}
         >
-          <Input
-            value={exampleText}
-            onChange={e => setExampleText(e.target.value)}
-            placeholder={t('preferences.general.exampleTextPlaceholder')}
-          />
-        </SettingsField>
-
-        <SettingsField
-          label={t('preferences.general.exampleToggle')}
-          description={t('preferences.general.exampleToggleDescription')}
-        >
-          <div className="flex items-center space-x-2">
-            <Switch
-              id="example-toggle"
-              checked={exampleToggle}
-              onCheckedChange={setExampleToggle}
-            />
-            <Label htmlFor="example-toggle" className="text-sm">
-              {exampleToggle ? t('common.enabled') : t('common.disabled')}
-            </Label>
-          </div>
+          <Button
+            type="button"
+            variant="destructive"
+            onClick={handleResetToDefaults}
+            disabled={!preferences || savePreferences.isPending}
+            data-testid="reset-to-defaults"
+          >
+            {t('preferences.common.resetToDefaults', 'Reset to defaults')}
+          </Button>
         </SettingsField>
       </SettingsSection>
     </div>
