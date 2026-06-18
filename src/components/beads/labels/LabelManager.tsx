@@ -247,7 +247,7 @@ export function LabelManager({ cwd, issue }: LabelManagerProps) {
               style={propagatePanelStyle}
             >
               <p style={propagatePromptStyle}>
-                Push a label down to all direct children that don't already
+                Push a label down to all direct children that don&apos;t already
                 carry it.
               </p>
               <input

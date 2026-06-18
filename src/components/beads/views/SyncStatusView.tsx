@@ -1,178 +1,82 @@
 /**
- * SyncStatusView — read-only sync / vc / dolt status (T41).
+ * SyncStatusView — read-only sync status (Dolt vs version control).
  *
- * ponytail: the plan called for three sections (git status, dolt status,
- * last sync timestamp) plus a "Sync now" button. v1 runs the two
- * existing read-only commands (`bd vc status --json` and
- * `bd dolt status --json`) in parallel and renders each as a JSON
- * dump in a monospace `<pre>`. The "Sync now" button is intentionally
- * omitted from v1 — `bd sync` is a write and the plan gates writes
- * behind the typed-identifier confirmation pattern; adding it now
- * would require a separate decision tree. v2 will add the button +
- * a unified sync timestamp.
- *
- * State onion (per AGENTS.md): two TanStack Query instances under the
- * `['beads', 'sync', 'vc' | 'dolt']` keyspace. The two requests are
- * independent — one failure does not block the other.
- *
- * Hard-edged Bauhaus: mono only, hard edges, inline `style` with design
- * tokens. Mono palette only (AC-14). No animations, no transitions, no shadow,
- * no radius.
+ * v1 ships as a `Coming in v1.1` empty state with copyable CLI
+ * commands (`bd vc status --json`, `bd dolt status --json`). v2 will
+ * issue both in parallel and render each as a JSON card.
  */
-import type { CSSProperties } from 'react'
-import { useQuery } from '@tanstack/react-query'
-import { commands } from '@/lib/tauri-bindings'
-import { colors, space, type } from '@/lib/design-tokens'
+import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
+import { Button } from '@/components/ui/button'
 
 export interface SyncStatusViewProps {
-  /** Repository root. */
+  /** Repository root (unused for v1). */
   cwd: string
 }
 
-const containerStyle: CSSProperties = {
-  display: 'flex',
-  flexDirection: 'column',
-  gap: space[3],
-  padding: space[4],
-  color: colors.mono0,
-  fontFamily: type.fontFamily.sans,
-}
+const CLI_COMMANDS = ['bd vc status --json', 'bd dolt status --json'] as const
 
-const headingStyle: CSSProperties = {
-  fontSize: type.fontSize.lg,
-  fontWeight: type.fontWeight.bold,
-  lineHeight: type.lineHeight.tight,
-  margin: 0,
-}
+export function SyncStatusView({ cwd: _cwd }: SyncStatusViewProps) {
+  const { t } = useTranslation()
+  const [copied, setCopied] = useState<number | null>(null)
 
-const subheadingStyle: CSSProperties = {
-  fontSize: type.fontSize.base,
-  fontWeight: type.fontWeight.medium,
-  lineHeight: type.lineHeight.tight,
-  margin: 0,
-  color: colors.mono2,
-}
-
-const preStyle: CSSProperties = {
-  fontFamily: 'ui-monospace, SFMono-Regular, monospace',
-  fontSize: type.fontSize.sm,
-  lineHeight: type.lineHeight.normal,
-  color: colors.mono0,
-  backgroundColor: colors.mono9,
-  borderTop: `1px solid ${colors.mono7}`,
-  padding: space[3],
-  margin: 0,
-  whiteSpace: 'pre-wrap',
-  wordBreak: 'break-word',
-}
-
-const messageStyle: CSSProperties = {
-  fontSize: type.fontSize.sm,
-  color: colors.mono3,
-  padding: space[4],
-}
-
-const errorStyle: CSSProperties = {
-  fontSize: type.fontSize.sm,
-  color: colors.mono0,
-  padding: space[4],
-  backgroundColor: colors.mono9,
-  borderTop: `1px solid ${colors.mono7}`,
-}
-
-const sectionStyle: CSSProperties = {
-  display: 'flex',
-  flexDirection: 'column',
-  gap: space[2],
-}
-
-function unwrap(output: { type: string; value: unknown } | undefined): string {
-  if (!output) return ''
-  if (output.type === 'text' && typeof output.value === 'string') {
-    return output.value
+  const onCopy = async (idx: number) => {
+    try {
+      await navigator.clipboard.writeText(CLI_COMMANDS[idx] ?? '')
+      setCopied(idx)
+      window.setTimeout(() => setCopied(null), 1500)
+    } catch {
+      // Best-effort.
+    }
   }
-  return JSON.stringify(output.value, null, 2)
-}
-
-export function SyncStatusView({ cwd }: SyncStatusViewProps) {
-  const vcQuery = useQuery({
-    queryKey: ['beads', 'sync', 'vc', cwd],
-    queryFn: async () => {
-      const result = await commands.runBdCommand(
-        ['vc', 'status', '--json'],
-        cwd
-      )
-      if (result.status === 'ok') return result.data
-      throw result.error
-    },
-  })
-
-  const doltQuery = useQuery({
-    queryKey: ['beads', 'sync', 'dolt', cwd],
-    queryFn: async () => {
-      const result = await commands.runBdCommand(
-        ['dolt', 'status', '--json'],
-        cwd
-      )
-      if (result.status === 'ok') return result.data
-      throw result.error
-    },
-  })
 
   return (
-    <section data-testid="sync-status-view" style={containerStyle}>
-      <h2 style={headingStyle}>Sync Status</h2>
-
-      <div data-testid="sync-vc-section" style={sectionStyle}>
-        <h3 style={subheadingStyle}>Version control</h3>
-        {vcQuery.isLoading ? (
-          <div data-testid="sync-vc-loading" style={messageStyle}>
-            Loading…
-          </div>
-        ) : null}
-        {vcQuery.error ? (
-          <div data-testid="sync-vc-error" style={errorStyle} role="alert">
-            {formatError(vcQuery.error)}
-          </div>
-        ) : null}
-        {!vcQuery.isLoading && !vcQuery.error && vcQuery.data ? (
-          <pre data-testid="sync-vc-pre" style={preStyle}>
-            {unwrap(vcQuery.data)}
-          </pre>
-        ) : null}
-      </div>
-
-      <div data-testid="sync-dolt-section" style={sectionStyle}>
-        <h3 style={subheadingStyle}>Dolt</h3>
-        {doltQuery.isLoading ? (
-          <div data-testid="sync-dolt-loading" style={messageStyle}>
-            Loading…
-          </div>
-        ) : null}
-        {doltQuery.error ? (
-          <div data-testid="sync-dolt-error" style={errorStyle} role="alert">
-            {formatError(doltQuery.error)}
-          </div>
-        ) : null}
-        {!doltQuery.isLoading && !doltQuery.error && doltQuery.data ? (
-          <pre data-testid="sync-dolt-pre" style={preStyle}>
-            {unwrap(doltQuery.data)}
-          </pre>
-        ) : null}
+    <section
+      data-testid="sync-view"
+      className="flex h-full flex-col gap-3 p-4 text-mono-1"
+    >
+      <header>
+        <h2 className="m-0 text-lg font-bold">
+          {t('beads.views.sync.title', 'Sync status')}
+        </h2>
+      </header>
+      <div
+        data-testid="sync-empty"
+        className="flex flex-1 flex-col items-center justify-center gap-3 text-center"
+      >
+        <p className="m-0 max-w-md text-sm text-mono-2">
+          {t(
+            'beads.views.sync.comingSoon',
+            'Coming in v1.1 — use the CLI for now'
+          )}
+        </p>
+        <div className="flex flex-col gap-2">
+          {CLI_COMMANDS.map((cmd, idx) => (
+            <div
+              key={cmd}
+              className="flex items-center gap-2"
+              data-testid={`sync-cli-row-${idx}`}
+            >
+              <code className="border border-mono-3 bg-mono-9 px-3 py-1 font-mono text-xs text-mono-0">
+                {cmd}
+              </code>
+              <Button
+                type="button"
+                data-testid={`sync-copy-command-${idx}`}
+                onClick={() => onCopy(idx)}
+                variant="outline"
+                size="sm"
+              >
+                {copied === idx
+                  ? t('beads.views.sync.copied', 'Copied!')
+                  : t('beads.views.sync.copyCommand', 'Copy CLI command')}
+              </Button>
+            </div>
+          ))}
+        </div>
       </div>
     </section>
   )
-}
-
-function formatError(err: unknown): string {
-  if (err && typeof err === 'object' && 'type' in err) {
-    const e = err as { type: string; message?: string; stderr?: string }
-    if (e.type === 'NonZeroExit' && e.stderr) return `bd failed: ${e.stderr}`
-    if ('message' in e && e.message) return e.message
-    return e.type
-  }
-  if (err instanceof Error) return err.message
-  return 'Failed to load sync status.'
 }
 
 export default SyncStatusView

@@ -10,6 +10,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { screen, waitFor } from '@testing-library/react'
 import { render } from '@/test/test-utils'
+import { hasQueryOperator } from './search-syntax'
 
 // ponytail: hoisted so the vi.mock factory can reference the mock fns.
 const { mockBdSearch, mockBdQuery } = vi.hoisted(() => ({
@@ -92,7 +93,6 @@ describe('hasQueryOperator', () => {
     ['owner:alice', true],
     ['plain text with no operators', false],
   ])('returns %s for %s', async (input, expected) => {
-    const { hasQueryOperator } = await importSut()
     expect(hasQueryOperator(input)).toBe(expected)
   })
 })

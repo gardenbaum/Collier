@@ -62,11 +62,10 @@ describe('QuickPane', () => {
     const { QuickPane } = await importSut()
     render(<QuickPane onSelect={onSelect} />)
 
-    const firstSuggestion = screen.getAllByTestId(
-      'quick-pane-suggestion-item'
-    )[0]
-    const pickedCmd = firstSuggestion?.getAttribute('data-cmd') ?? ''
-    fireEvent.click(firstSuggestion!)
+    const firstSuggestion = screen.getAllByTestId('quick-pane-suggestion-item')[0]
+    if (!firstSuggestion) throw new Error('expected a suggestion item')
+    const pickedCmd = firstSuggestion.getAttribute('data-cmd') ?? ''
+    fireEvent.click(firstSuggestion)
 
     expect(onSelect).toHaveBeenCalledWith(pickedCmd)
     const recentItems = screen.getAllByTestId('quick-pane-recent-item')

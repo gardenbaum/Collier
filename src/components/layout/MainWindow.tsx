@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import {
   ResizablePanelGroup,
   ResizablePanel,
@@ -12,7 +13,10 @@ import { PreferencesDialog } from '@/components/preferences/PreferencesDialog'
 import { Toaster } from 'sonner'
 import { useTheme } from '@/hooks/use-theme'
 import { useUIStore } from '@/store/ui-store'
+import { useWorkspaceStore } from '@/store/workspace-store'
 import { useMainWindowEventListeners } from '@/hooks/useMainWindowEventListeners'
+import { commands } from '@/lib/tauri-bindings'
+import { logger } from '@/lib/logger'
 import { cn } from '@/lib/utils'
 
 /**
@@ -34,10 +38,21 @@ export function MainWindow() {
   const { theme } = useTheme()
   const leftSidebarVisible = useUIStore(state => state.leftSidebarVisible)
   const rightSidebarVisible = useUIStore(state => state.rightSidebarVisible)
+  const repoPath = useWorkspaceStore(state => state.repoPath)
 
   // Set up global event listeners (keyboard shortcuts, etc.)
   useMainWindowEventListeners()
 
+  // Tell the Rust watcher to (re)attach to the active repo. The
+  // FE side's `useBeadsInvalidation` filter requires the event
+  // payload to carry the right `repo_path`; this IPC is the only
+  // path that re-roots the watcher mid-session.
+  useEffect(() => {
+    if (repoPath === null) return
+    commands.attachWatchRepo(repoPath).catch(err => {
+      logger.warn('Failed to attach watcher', { err })
+    })
+  }, [repoPath])
   return (
     <div className="flex h-screen w-full flex-col overflow-hidden rounded-[var(--app-corner-radius)] bg-background">
       <TitleBar />

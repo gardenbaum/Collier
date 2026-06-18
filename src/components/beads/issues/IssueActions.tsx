@@ -13,13 +13,13 @@
  *   - The 4 IPC calls → TanStack Query `useMutation`
  *   - No Zustand needed; the parent owns the displayed issue.
  *
- * Hard-edged Bauhaus: mono only, hard edges, inline `style` with design
- * tokens. The brand colour is reserved for destructive + P0 per AC-14;
- * this component never reaches for it. The Delete button is
- * distinguished from the other three by the high-contrast
- * `mono0`/`mono9` inversion (same pattern as `IssueUpdatePanel`'s Save
- * button) — destructive without colour. No animations, no
- * transitions, no shadow, no radius.
+ * Hard-edged Bauhaus: mono only, hard edges, Tailwind classes that
+ * map directly to design tokens. The brand colour is reserved for
+ * destructive + P0 per AC-14; this component never reaches for it.
+ * The Delete button is distinguished from the other three by the
+ * high-contrast `mono0`/`mono9` inversion (same pattern as
+ * `IssueUpdatePanel`'s Save button) — destructive without colour.
+ * No animations, no transitions, no shadow, no radius.
  *
  * AC-4: destructive operations require typed-identifier confirmation.
  * The Delete button is the only destructive op in this component, so
@@ -35,11 +35,11 @@
  * Bulk actions, keyboard shortcuts, modal confirmations, and
  * optimistic updates are explicitly OUT OF SCOPE per the plan.
  */
-import { useState, type CSSProperties, type FormEvent } from 'react'
+import { useState, type FormEvent } from 'react'
 import { useMutation } from '@tanstack/react-query'
+import { useTranslation } from 'react-i18next'
 import { commands } from '@/lib/tauri-bindings'
 import type { Issue } from '@/lib/bindings'
-import { colors, space, type } from '@/lib/design-tokens'
 
 export interface IssueActionsProps {
   /** Repository root. Passed to every command. */
@@ -55,6 +55,22 @@ export interface IssueActionsProps {
   onCommentAdded: () => void
 }
 
+const actionButtonClass =
+  'font-sans text-sm font-medium text-mono-0 bg-mono-8 border border-mono-3 px-3 py-1 cursor-pointer'
+const actionButtonDisabledClass =
+  'font-sans text-sm font-medium text-mono-5 bg-mono-8 border border-mono-7 px-3 py-1 cursor-not-allowed'
+const submitButtonClass = actionButtonClass
+const submitButtonDisabledClass = actionButtonDisabledClass
+// ponytail: destructive treatment via mono inversion (same look as
+// `IssueUpdatePanel`'s Save button). The brand colour is reserved
+// for P0 + destructive per AC-14; this component keeps the file
+// brand-colour-free and uses `mono0` text on `mono0` border /
+// `mono9` background as the visual destructive signal.
+const destructiveButtonClass =
+  'font-sans text-sm font-bold text-mono-9 bg-mono-0 border border-mono-0 px-3 py-1 cursor-pointer'
+const destructiveButtonDisabledClass =
+  'font-sans text-sm font-bold text-mono-5 bg-mono-5 border border-mono-5 px-3 py-1 cursor-not-allowed'
+
 export function IssueActions({
   cwd,
   issue,
@@ -62,6 +78,7 @@ export function IssueActions({
   onDeleted,
   onCommentAdded,
 }: IssueActionsProps) {
+  const { t } = useTranslation()
   const isClosed = issue.status === 'closed'
 
   // ponytail: each panel has its own open/close state. They are
@@ -169,21 +186,23 @@ export function IssueActions({
     deleteMutation.error
 
   return (
-    <div data-testid="issue-actions" style={containerStyle}>
-      <div style={rowStyle}>
+    <div data-testid="issue-actions" className="flex flex-col gap-2 py-2">
+      <div className="flex flex-wrap items-center gap-2">
         {isClosed ? null : (
           <button
             type="button"
             data-testid="action-close"
             onClick={handleClose}
             disabled={closeMutation.isPending}
-            style={
+            className={
               closeMutation.isPending
-                ? actionButtonDisabledStyle
-                : actionButtonStyle
+                ? actionButtonDisabledClass
+                : actionButtonClass
             }
           >
-            {closeMutation.isPending ? 'Closing…' : 'Close'}
+            {closeMutation.isPending
+              ? t('beads.issueActions.closing', 'Closing…')
+              : t('beads.issueActions.close', 'Close')}
           </button>
         )}
 
@@ -193,13 +212,15 @@ export function IssueActions({
             data-testid="action-reopen"
             onClick={handleReopen}
             disabled={reopenMutation.isPending}
-            style={
+            className={
               reopenMutation.isPending
-                ? actionButtonDisabledStyle
-                : actionButtonStyle
+                ? actionButtonDisabledClass
+                : actionButtonClass
             }
           >
-            {reopenMutation.isPending ? 'Reopening…' : 'Reopen'}
+            {reopenMutation.isPending
+              ? t('beads.issueActions.reopening', 'Reopening…')
+              : t('beads.issueActions.reopen', 'Reopen')}
           </button>
         ) : null}
 
@@ -208,9 +229,11 @@ export function IssueActions({
           data-testid="action-add-comment"
           onClick={() => setCommentOpen(open => !open)}
           aria-expanded={commentOpen}
-          style={actionButtonStyle}
+          className={actionButtonClass}
         >
-          {commentOpen ? 'Cancel comment' : 'Add comment'}
+          {commentOpen
+            ? t('beads.issueActions.cancelComment', 'Cancel comment')
+            : t('beads.issueActions.addComment', 'Add comment')}
         </button>
 
         <button
@@ -218,9 +241,11 @@ export function IssueActions({
           data-testid="action-delete"
           onClick={() => setDeleteOpen(open => !open)}
           aria-expanded={deleteOpen}
-          style={actionButtonStyle}
+          className={actionButtonClass}
         >
-          {deleteOpen ? 'Cancel delete' : 'Delete'}
+          {deleteOpen
+            ? t('beads.issueActions.cancelDelete', 'Cancel delete')
+            : t('beads.issueActions.delete', 'Delete')}
         </button>
       </div>
 
@@ -228,7 +253,7 @@ export function IssueActions({
         <form
           data-testid="add-comment-form"
           onSubmit={handleCommentSubmit}
-          style={formStyle}
+          className="flex flex-col gap-2"
         >
           <textarea
             data-testid="add-comment-textarea"
@@ -237,33 +262,44 @@ export function IssueActions({
             rows={3}
             placeholder="Write a comment…"
             disabled={commentMutation.isPending}
-            style={textareaStyle}
-            aria-label="New comment"
+            className="resize-y border border-mono-3 bg-mono-9 px-2 py-2 font-sans text-sm text-mono-0 outline-none"
+            aria-label={t('beads.issueActions.newComment', 'New comment')}
           />
-          <div style={formActionsStyle}>
+          <div className="flex items-center gap-2">
             <button
               type="submit"
               data-testid="add-comment-submit"
               disabled={
                 commentMutation.isPending || commentDraft.trim().length === 0
               }
-              style={
+              className={
                 commentMutation.isPending || commentDraft.trim().length === 0
-                  ? submitButtonDisabledStyle
-                  : submitButtonStyle
+                  ? submitButtonDisabledClass
+                  : submitButtonClass
               }
             >
-              {commentMutation.isPending ? 'Posting…' : 'Post comment'}
+              {commentMutation.isPending
+                ? t('beads.issueActions.posting', 'Posting…')
+                : t('beads.issueActions.postComment', 'Post comment')}
             </button>
           </div>
         </form>
       ) : null}
 
       {deleteOpen ? (
-        <div data-testid="delete-confirm" style={confirmPanelStyle}>
-          <p data-testid="delete-confirm-text" style={confirmTextStyle}>
+        <div
+          data-testid="delete-confirm"
+          className="flex flex-col gap-2 border border-mono-3 bg-mono-8 p-3"
+        >
+          <p
+            data-testid="delete-confirm-text"
+            className="m-0 font-sans text-sm text-mono-0"
+          >
             {`Type the issue ID `}
-            <code data-testid="delete-confirm-target" style={confirmIdStyle}>
+            <code
+              data-testid="delete-confirm-target"
+              className="border border-mono-3 bg-mono-9 px-1 font-mono text-sm font-bold text-mono-0"
+            >
               {issue.id}
             </code>
             {` to confirm:`}
@@ -274,18 +310,18 @@ export function IssueActions({
             value={confirmText}
             onChange={e => setConfirmText(e.target.value)}
             disabled={deleteMutation.isPending}
-            style={inputStyle}
+            className="border border-mono-3 bg-mono-9 px-2 py-2 font-mono text-sm text-mono-0 outline-none"
             autoComplete="off"
             spellCheck={false}
             aria-label="Type the issue id to confirm deletion"
           />
-          <div style={formActionsStyle}>
+          <div className="flex items-center gap-2">
             <button
               type="button"
               data-testid="delete-confirm-cancel"
               onClick={handleCancelDelete}
               disabled={deleteMutation.isPending}
-              style={actionButtonStyle}
+              className={actionButtonClass}
             >
               Cancel
             </button>
@@ -294,10 +330,10 @@ export function IssueActions({
               data-testid="delete-confirm-button"
               onClick={handleDeleteConfirm}
               disabled={!confirmEnabled}
-              style={
+              className={
                 confirmEnabled
-                  ? destructiveButtonStyle
-                  : destructiveButtonDisabledStyle
+                  ? destructiveButtonClass
+                  : destructiveButtonDisabledClass
               }
             >
               {deleteMutation.isPending ? 'Deleting…' : 'Confirm delete'}
@@ -307,7 +343,11 @@ export function IssueActions({
       ) : null}
 
       {anyError ? (
-        <div data-testid="actions-error" role="alert" style={errorBoxStyle}>
+        <div
+          data-testid="actions-error"
+          role="alert"
+          className="border border-mono-3 bg-mono-8 px-3 py-2 font-sans text-xs text-mono-0"
+        >
           {formatMutationError(anyError)}
         </div>
       ) : null}
@@ -326,170 +366,4 @@ function formatMutationError(err: unknown): string {
   }
   if (err instanceof Error) return err.message
   return 'Action failed.'
-}
-
-const containerStyle: CSSProperties = {
-  display: 'flex',
-  flexDirection: 'column',
-  gap: space[2],
-  paddingBlock: space[2],
-}
-
-const rowStyle: CSSProperties = {
-  display: 'flex',
-  alignItems: 'center',
-  gap: space[2],
-  flexWrap: 'wrap',
-}
-
-const actionButtonStyle: CSSProperties = {
-  fontFamily: type.fontFamily.sans,
-  fontSize: type.fontSize.sm,
-  fontWeight: type.fontWeight.medium,
-  color: colors.mono0,
-  backgroundColor: colors.mono8,
-  borderWidth: 1,
-  borderStyle: 'solid',
-  borderColor: colors.mono3,
-  paddingInline: space[3],
-  paddingBlock: space[1],
-  cursor: 'pointer',
-}
-
-const actionButtonDisabledStyle: CSSProperties = {
-  ...actionButtonStyle,
-  color: colors.mono5,
-  backgroundColor: colors.mono8,
-  borderColor: colors.mono7,
-  cursor: 'not-allowed',
-}
-
-const formStyle: CSSProperties = {
-  display: 'flex',
-  flexDirection: 'column',
-  gap: space[2],
-}
-
-const formActionsStyle: CSSProperties = {
-  display: 'flex',
-  alignItems: 'center',
-  gap: space[2],
-}
-
-const textareaStyle: CSSProperties = {
-  fontFamily: type.fontFamily.sans,
-  fontSize: type.fontSize.sm,
-  color: colors.mono0,
-  backgroundColor: colors.mono9,
-  borderWidth: 1,
-  borderStyle: 'solid',
-  borderColor: colors.mono3,
-  paddingInline: space[2],
-  paddingBlock: space[2],
-  outline: 'none',
-  resize: 'vertical',
-}
-
-const inputStyle: CSSProperties = {
-  fontFamily: 'ui-monospace, SFMono-Regular, monospace',
-  fontSize: type.fontSize.sm,
-  color: colors.mono0,
-  backgroundColor: colors.mono9,
-  borderWidth: 1,
-  borderStyle: 'solid',
-  borderColor: colors.mono3,
-  paddingInline: space[2],
-  paddingBlock: space[2],
-  outline: 'none',
-}
-
-const submitButtonStyle: CSSProperties = {
-  fontFamily: type.fontFamily.sans,
-  fontSize: type.fontSize.sm,
-  fontWeight: type.fontWeight.medium,
-  color: colors.mono0,
-  backgroundColor: colors.mono8,
-  borderWidth: 1,
-  borderStyle: 'solid',
-  borderColor: colors.mono3,
-  paddingInline: space[3],
-  paddingBlock: space[1],
-  cursor: 'pointer',
-}
-
-const submitButtonDisabledStyle: CSSProperties = {
-  ...submitButtonStyle,
-  color: colors.mono5,
-  backgroundColor: colors.mono8,
-  borderColor: colors.mono7,
-  cursor: 'not-allowed',
-}
-
-const confirmPanelStyle: CSSProperties = {
-  display: 'flex',
-  flexDirection: 'column',
-  gap: space[2],
-  padding: space[3],
-  backgroundColor: colors.mono8,
-  borderWidth: 1,
-  borderStyle: 'solid',
-  borderColor: colors.mono3,
-}
-
-const confirmTextStyle: CSSProperties = {
-  fontFamily: type.fontFamily.sans,
-  fontSize: type.fontSize.sm,
-  color: colors.mono0,
-  margin: 0,
-}
-
-const confirmIdStyle: CSSProperties = {
-  fontFamily: 'ui-monospace, SFMono-Regular, monospace',
-  fontSize: type.fontSize.sm,
-  fontWeight: type.fontWeight.bold,
-  color: colors.mono0,
-  backgroundColor: colors.mono9,
-  paddingInline: space[1],
-  borderWidth: 1,
-  borderStyle: 'solid',
-  borderColor: colors.mono3,
-}
-
-// ponytail: destructive treatment via mono inversion (same look as
-// `IssueUpdatePanel`'s Save button). The brand colour is reserved
-// for P0 + destructive per AC-14; this component keeps the file
-// brand-colour-free and uses `mono0` text on `mono0` border /
-// `mono9` background as the visual destructive signal.
-const destructiveButtonStyle: CSSProperties = {
-  fontFamily: type.fontFamily.sans,
-  fontSize: type.fontSize.sm,
-  fontWeight: type.fontWeight.bold,
-  color: colors.mono9,
-  backgroundColor: colors.mono0,
-  borderWidth: 1,
-  borderStyle: 'solid',
-  borderColor: colors.mono0,
-  paddingInline: space[3],
-  paddingBlock: space[1],
-  cursor: 'pointer',
-}
-
-const destructiveButtonDisabledStyle: CSSProperties = {
-  ...destructiveButtonStyle,
-  color: colors.mono5,
-  backgroundColor: colors.mono5,
-  borderColor: colors.mono5,
-  cursor: 'not-allowed',
-}
-
-const errorBoxStyle: CSSProperties = {
-  fontFamily: type.fontFamily.sans,
-  fontSize: type.fontSize.xs,
-  color: colors.mono0,
-  backgroundColor: colors.mono8,
-  borderWidth: 1,
-  borderStyle: 'solid',
-  borderColor: colors.mono3,
-  paddingInline: space[3],
-  paddingBlock: space[2],
 }

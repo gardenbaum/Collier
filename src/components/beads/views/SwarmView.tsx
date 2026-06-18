@@ -1,126 +1,78 @@
 /**
- * SwarmView — read-only list of swarm molecules (T39).
+ * SwarmView — read-only list of swarm molecules.
  *
- * ponytail: the plan was two sections (active swarms with current step
- * and all swarms with metadata). v1 is a JSON dump of
- * `bd swarm list --json` in a monospace `<pre>`. v2 will split into the
- * two sections and add the current-step indicator.
- *
- * State onion (per AGENTS.md): server state in TanStack Query
- * (`['beads', 'swarm-list']` keyspace).
- *
- * Hard-edged Bauhaus: mono only, hard edges, inline `style` with design
- * tokens. Mono palette only (AC-14). No animations, no transitions, no shadow,
- * no radius.
+ * v1 ships as a `Coming in v1.1` empty state with a copyable
+ * `bd swarm list --json` command. v2 will split into the two planned
+ * sections (active swarms with current step + all swarms with metadata)
+ * once the bd JSON shape stabilizes.
  */
-import type { CSSProperties } from 'react'
-import { useQuery } from '@tanstack/react-query'
-import { commands } from '@/lib/tauri-bindings'
-import { colors, space, type } from '@/lib/design-tokens'
+import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
+import { Button } from '@/components/ui/button'
 
 export interface SwarmViewProps {
-  /** Repository root. */
+  /** Repository root (unused for v1). */
   cwd: string
 }
 
-const containerStyle: CSSProperties = {
-  display: 'flex',
-  flexDirection: 'column',
-  gap: space[3],
-  padding: space[4],
-  color: colors.mono0,
-  fontFamily: type.fontFamily.sans,
-}
+const CLI_COMMAND = 'bd swarm list --json'
 
-const headingStyle: CSSProperties = {
-  fontSize: type.fontSize.lg,
-  fontWeight: type.fontWeight.bold,
-  lineHeight: type.lineHeight.tight,
-  margin: 0,
-}
+export function SwarmView({ cwd: _cwd }: SwarmViewProps) {
+  const { t } = useTranslation()
+  const [copied, setCopied] = useState(false)
 
-const preStyle: CSSProperties = {
-  fontFamily: 'ui-monospace, SFMono-Regular, monospace',
-  fontSize: type.fontSize.sm,
-  lineHeight: type.lineHeight.normal,
-  color: colors.mono0,
-  backgroundColor: colors.mono9,
-  borderTop: `1px solid ${colors.mono7}`,
-  padding: space[3],
-  margin: 0,
-  whiteSpace: 'pre-wrap',
-  wordBreak: 'break-word',
-}
-
-const messageStyle: CSSProperties = {
-  fontSize: type.fontSize.sm,
-  color: colors.mono3,
-  padding: space[4],
-}
-
-const errorStyle: CSSProperties = {
-  fontSize: type.fontSize.sm,
-  color: colors.mono0,
-  padding: space[4],
-  backgroundColor: colors.mono9,
-  borderTop: `1px solid ${colors.mono7}`,
-}
-
-function unwrap(output: { type: string; value: unknown } | undefined): string {
-  if (!output) return ''
-  if (output.type === 'text' && typeof output.value === 'string') {
-    return output.value
+  const onCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(CLI_COMMAND)
+      setCopied(true)
+      window.setTimeout(() => setCopied(false), 1500)
+    } catch {
+      // Best-effort UI feedback.
+    }
   }
-  return JSON.stringify(output.value, null, 2)
-}
-
-export function SwarmView({ cwd }: SwarmViewProps) {
-  const { data, isLoading, error } = useQuery({
-    queryKey: ['beads', 'swarm-list', cwd],
-    queryFn: async () => {
-      const result = await commands.runBdCommand(
-        ['swarm', 'list', '--json'],
-        cwd
-      )
-      if (result.status === 'ok') return result.data
-      throw result.error
-    },
-  })
 
   return (
-    <section data-testid="swarm-view" style={containerStyle}>
-      <h2 style={headingStyle}>Swarms</h2>
-
-      {isLoading ? (
-        <div data-testid="swarm-loading" style={messageStyle}>
-          Loading…
+    <section
+      data-testid="swarm-view"
+      className="flex h-full flex-col gap-3 p-4 text-mono-1"
+    >
+      <header className="flex items-center justify-between">
+        <h2 className="m-0 text-lg font-bold">
+          {t('beads.views.swarm.title', 'Swarms')}
+        </h2>
+      </header>
+      <div
+        data-testid="swarm-empty"
+        className="flex flex-1 flex-col items-center justify-center gap-3 text-center"
+      >
+        <p className="m-0 max-w-md text-sm text-mono-2">
+          {t(
+            'beads.views.swarm.comingSoon',
+            'Coming in v1.1 — use the CLI for now'
+          )}
+        </p>
+        <div className="flex items-center gap-2">
+          <code
+            data-testid="swarm-cli-command"
+            className="border border-mono-3 bg-mono-9 px-3 py-1 font-mono text-xs text-mono-0"
+          >
+            {CLI_COMMAND}
+          </code>
+          <Button
+            type="button"
+            data-testid="swarm-copy-command"
+            onClick={onCopy}
+            variant="outline"
+            size="sm"
+          >
+            {copied
+              ? t('beads.views.swarm.copied', 'Copied!')
+              : t('beads.views.swarm.copyCommand', 'Copy CLI command')}
+          </Button>
         </div>
-      ) : null}
-
-      {error ? (
-        <div data-testid="swarm-error" style={errorStyle} role="alert">
-          {formatError(error)}
-        </div>
-      ) : null}
-
-      {!isLoading && !error && data ? (
-        <pre data-testid="swarm-pre" style={preStyle}>
-          {unwrap(data)}
-        </pre>
-      ) : null}
+      </div>
     </section>
   )
-}
-
-function formatError(err: unknown): string {
-  if (err && typeof err === 'object' && 'type' in err) {
-    const e = err as { type: string; message?: string; stderr?: string }
-    if (e.type === 'NonZeroExit' && e.stderr) return `bd failed: ${e.stderr}`
-    if ('message' in e && e.message) return e.message
-    return e.type
-  }
-  if (err instanceof Error) return err.message
-  return 'Failed to load swarms.'
 }
 
 export default SwarmView

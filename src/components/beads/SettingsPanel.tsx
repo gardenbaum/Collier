@@ -81,7 +81,12 @@ export function SettingsPanel({ open, onClose, onSaved }: SettingsPanelProps) {
   const [form, setForm] = useState<FormState>(DEFAULT_FORM_STATE)
   const [error, setError] = useState<string | null>(null)
   const [isSaving, setIsSaving] = useState(false)
-  const [isLoading, setIsLoading] = useState(false)
+  // `isLoading` is derived: the panel is loading when it's open
+  // but we haven't yet populated `prefs`. After mount-while-open
+  // this is always `false`; the small async window where it's
+  // `true` is when `prefs === null` AND `open === true`. Avoids a
+  // `setState` call synchronously inside the effect body.
+  const isLoading = open && prefs === null
 
   // Load + reseed the form whenever the panel is opened. We
   // intentionally do NOT re-load on every render — the cost of an
@@ -89,8 +94,6 @@ export function SettingsPanel({ open, onClose, onSaved }: SettingsPanelProps) {
   useEffect(() => {
     if (!open) return
     let cancelled = false
-    setIsLoading(true)
-    setError(null)
     commands
       .loadPreferences()
       .then(result => {
@@ -98,18 +101,15 @@ export function SettingsPanel({ open, onClose, onSaved }: SettingsPanelProps) {
         if (result.status === 'ok') {
           setPrefs(result.data)
           setForm(prefsToForm(result.data))
+          setError(null)
         } else {
-          setError(`Failed to load preferences: ${result.error}`)
+          setError(`Failed to load preferences: ${String(result.error)}`)
         }
       })
       .catch(err => {
         if (cancelled) return
         logger.error('loadPreferences threw', { err })
         setError('Failed to load preferences.')
-      })
-      .finally(() => {
-        if (cancelled) return
-        setIsLoading(false)
       })
     return () => {
       cancelled = true

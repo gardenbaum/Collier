@@ -20,12 +20,13 @@ import { render } from '@/test/test-utils'
 // `bdShow` is the only command that fires on mount; `bdComments` and
 // `bdHistory` are gated by the active tab, and `bdAddComment` is only
 // invoked by the form's submit handler.
-const { mockBdShow, mockBdComments, mockBdHistory, mockBdAddComment } =
+const { mockBdShow, mockBdComments, mockBdHistory, mockBdAddComment, mockBdDepList } =
   vi.hoisted(() => ({
     mockBdShow: vi.fn(),
     mockBdComments: vi.fn(),
     mockBdHistory: vi.fn(),
     mockBdAddComment: vi.fn(),
+    mockBdDepList: vi.fn(),
   }))
 
 vi.mock('@/lib/tauri-bindings', () => ({
@@ -34,6 +35,7 @@ vi.mock('@/lib/tauri-bindings', () => ({
     bdComments: mockBdComments,
     bdHistory: mockBdHistory,
     bdAddComment: mockBdAddComment,
+    bdDepList: mockBdDepList,
   },
 }))
 
@@ -116,7 +118,7 @@ beforeEach(() => {
   mockBdShow.mockResolvedValue({ status: 'ok', data: issueFixture })
   mockBdComments.mockResolvedValue({ status: 'ok', data: commentsFixture })
   mockBdHistory.mockResolvedValue({ status: 'ok', data: historyFixture })
-  mockBdAddComment.mockResolvedValue({ status: 'ok', data: null })
+  mockBdDepList.mockResolvedValue({ status: 'ok', data: [] })
 })
 
 describe('IssueDetailView', () => {
@@ -161,19 +163,21 @@ describe('IssueDetailView', () => {
     )
   })
 
-  it('clicking the Deps tab shows the placeholder (T27-T33 deferred)', async () => {
+  it('clicking the Deps tab mounts the DependencyListView', async () => {
     const { IssueDetailView } = await importSut()
     render(<IssueDetailView cwd="/repo" issueId="beads-42" onClose={noop} />)
 
     fireEvent.click(screen.getByTestId('tab-deps'))
 
+    // The Deps tab now mounts the real DependencyListView (the
+    // v1.0 "Wave 4" placeholder was replaced in T45-T46). The
+    // component fires `bd_dep_list` immediately on mount; we assert
+    // on the rendered loading state since the test mocks never
+    // resolve.
     await waitFor(() => {
-      expect(screen.getByTestId('deps-placeholder')).toBeInTheDocument()
+      expect(screen.getByTestId('deps-tab')).toBeInTheDocument()
     })
-    expect(screen.getByTestId('deps-placeholder').textContent).toContain(
-      'Wave 4'
-    )
-    // No bd command is invoked for the Deps tab — it's a static placeholder.
+    // Comments + history are NOT fetched for the Deps tab.
     expect(mockBdComments).not.toHaveBeenCalled()
     expect(mockBdHistory).not.toHaveBeenCalled()
   })

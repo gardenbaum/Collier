@@ -10,21 +10,21 @@
  *   - Form fields → `useState` (component-local, no Zustand needed)
  *   - Submit call → TanStack Query `useMutation`
  *
- * Hard-edged Bauhaus: mono only, hard edges, inline `style` with
- * design tokens. The brand colour is reserved for destructive + P0
- * per AC-14; this component never reaches for it. No animations, no
- * transitions, no shadow, no radius.
+ * Hard-edged Bauhaus: mono only, hard edges, Tailwind classes that
+ * map directly to design tokens. The brand colour is reserved for
+ * destructive + P0 per AC-14; this component never reaches for it.
+ * No animations, no transitions, no shadow, no radius.
  *
  * WriteLock: the Rust runner already serializes `bd` writes through
  * the runner's internal lock, so the frontend does not need to
  * coordinate locking here. The plan's T21 spec mentioned WriteLock;
  * it's automatic via the runner, not exposed in the UI.
  */
-import { useState, type CSSProperties, type FormEvent } from 'react'
+import { useState, type FormEvent } from 'react'
 import { useMutation } from '@tanstack/react-query'
+import { useTranslation } from 'react-i18next'
 import { commands } from '@/lib/tauri-bindings'
 import type { CreateInput, IssuePriority, IssueType } from '@/lib/bindings'
-import { colors, space, type } from '@/lib/design-tokens'
 
 export interface IssueCreateFormProps {
   /** Repository root. Passed to `commands.bdCreate`. */
@@ -52,11 +52,27 @@ const PRIORITIES: IssuePriority[] = ['P0', 'P1', 'P2', 'P3', 'P4']
 
 const DEFAULT_PRIORITY: IssuePriority = 'P2'
 
+const inputClass =
+  'border border-mono-3 bg-mono-9 px-2 py-2 font-sans text-sm text-mono-0 outline-none'
+const selectClass = `${inputClass} cursor-pointer`
+const textareaClass = `${inputClass} resize-y`
+const priorityButtonClass =
+  'border border-mono-3 bg-mono-8 px-3 py-1 font-sans text-xs font-medium text-mono-3 cursor-pointer'
+const priorityButtonSelectedClass =
+  'border border-mono-0 bg-mono-0 px-3 py-1 font-sans text-xs font-bold text-mono-9 cursor-pointer'
+const cancelButtonClass =
+  'border border-mono-3 bg-mono-9 px-4 py-2 font-sans text-sm font-normal text-mono-0 cursor-pointer'
+const submitButtonClass =
+  'border border-mono-0 bg-mono-0 px-6 py-2 font-sans text-sm font-bold text-mono-9 cursor-pointer'
+const submitButtonDisabledClass =
+  'border border-mono-5 bg-mono-5 px-6 py-2 font-sans text-sm font-bold text-mono-9 cursor-not-allowed'
+
 export function IssueCreateForm({
   cwd,
   onClose,
   onCreated,
 }: IssueCreateFormProps) {
+  const { t } = useTranslation()
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
   const [issueType, setIssueType] = useState<IssueType>('task')
@@ -104,7 +120,7 @@ export function IssueCreateForm({
     e.preventDefault()
     const trimmedTitle = title.trim()
     if (trimmedTitle.length === 0) {
-      setTitleError('Title is required')
+      setTitleError(t('beads.issueCreateForm.titleRequired', 'Title is required'))
       return
     }
     setTitleError(null)
@@ -121,28 +137,41 @@ export function IssueCreateForm({
   }
 
   return (
-    <div data-testid="create-form-overlay" style={overlayStyle}>
+    <div
+      data-testid="create-form-overlay"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
+    >
       <div
         data-testid="create-form"
         role="dialog"
-        aria-label="New issue"
-        style={cardStyle}
+        aria-label={t('beads.issueCreateForm.newIssue', 'New issue')}
+        className="flex max-h-[90vh] w-[560px] max-w-[90vw] flex-col overflow-y-auto border border-mono-3 bg-mono-9 font-sans text-sm leading-normal text-mono-0"
       >
-        <header style={headerStyle}>
-          <h1 style={titleHeadingStyle}>New Issue</h1>
+        <header className="flex items-center justify-between border-b border-mono-7 px-4 py-3">
+          <h1 className="m-0 text-lg font-bold leading-tight text-mono-0">
+            {t('beads.issueCreateForm.newIssue', 'New Issue')}
+          </h1>
           <button
             type="button"
             data-testid="create-close"
             onClick={onClose}
             aria-label="Close"
-            style={closeButtonStyle}
+            className="m-0 inline-flex h-6 w-6 cursor-pointer items-center justify-center border border-mono-3 bg-mono-8 p-0 font-sans text-base leading-none text-mono-0"
           >
             ×
           </button>
         </header>
 
-        <form onSubmit={handleSubmit} style={formStyle} noValidate>
-          <Field label="Title" required error={titleError}>
+        <form
+          onSubmit={handleSubmit}
+          className="flex flex-col gap-3 px-4 py-4"
+          noValidate
+        >
+          <Field
+            label={t('beads.issueCreateForm.title', 'Title')}
+            required
+            error={titleError}
+          >
             <input
               type="text"
               data-testid="create-title"
@@ -153,26 +182,26 @@ export function IssueCreateForm({
               }}
               required
               autoFocus
-              style={inputStyle}
+              className={inputClass}
             />
           </Field>
 
-          <Field label="Description">
+          <Field label={t('beads.issueCreateForm.description', 'Description')}>
             <textarea
               data-testid="create-description"
               value={description}
               onChange={e => setDescription(e.target.value)}
               rows={4}
-              style={textareaStyle}
+              className={textareaClass}
             />
           </Field>
 
-          <Field label="Type">
+          <Field label={t('beads.issueCreateForm.type', 'Type')}>
             <select
               data-testid="create-type"
               value={issueType}
               onChange={e => setIssueType(e.target.value as IssueType)}
-              style={selectStyle}
+              className={selectClass}
             >
               {ISSUE_TYPES.map(t => (
                 <option key={t} value={t}>
@@ -182,11 +211,11 @@ export function IssueCreateForm({
             </select>
           </Field>
 
-          <Field label="Priority">
+          <Field label={t('beads.issueCreateForm.priority', 'Priority')}>
             <div
-              style={priorityRowStyle}
+              className="flex gap-1"
               role="radiogroup"
-              aria-label="Priority"
+              aria-label={t('beads.issueCreateForm.priority', 'Priority')}
             >
               {PRIORITIES.map(p => {
                 const selected = p === priority
@@ -198,10 +227,10 @@ export function IssueCreateForm({
                     aria-checked={selected}
                     data-testid={`create-priority-${p}`}
                     onClick={() => setPriority(p)}
-                    style={
+                    className={
                       selected
-                        ? priorityButtonSelectedStyle
-                        : priorityButtonStyle
+                        ? priorityButtonSelectedClass
+                        : priorityButtonClass
                     }
                   >
                     {p}
@@ -211,17 +240,17 @@ export function IssueCreateForm({
             </div>
           </Field>
 
-          <Field label="Assignee">
+          <Field label={t('beads.issueCreateForm.assignee', 'Assignee')}>
             <input
               type="text"
               data-testid="create-assignee"
               value={assignee}
               onChange={e => setAssignee(e.target.value)}
-              style={inputStyle}
+              className={inputClass}
             />
           </Field>
 
-          <Field label="Labels">
+          <Field label={t('beads.issueCreateForm.labels', 'Labels')}>
             <input
               type="text"
               data-testid="create-labels-input"
@@ -229,15 +258,18 @@ export function IssueCreateForm({
               onChange={e => setLabelInput(e.target.value)}
               onKeyDown={handleLabelKeyDown}
               placeholder="Type a label and press Enter"
-              style={inputStyle}
+              className={inputClass}
             />
             {labels.length > 0 ? (
-              <div data-testid="create-labels-chips" style={chipsRowStyle}>
+              <div
+                data-testid="create-labels-chips"
+                className="mt-1 flex flex-wrap gap-1"
+              >
                 {labels.map(l => (
                   <span
                     key={l}
                     data-testid={`create-label-chip-${l}`}
-                    style={chipStyle}
+                    className="inline-flex items-center gap-1 border border-mono-7 bg-mono-8 px-2 py-1 font-sans text-xs text-mono-0"
                   >
                     {l}
                     <button
@@ -245,7 +277,7 @@ export function IssueCreateForm({
                       data-testid={`create-label-chip-remove-${l}`}
                       onClick={() => handleRemoveLabel(l)}
                       aria-label={`Remove ${l}`}
-                      style={chipRemoveButtonStyle}
+                      className="m-0 inline-flex h-4 w-4 cursor-pointer items-center justify-center border-0 bg-transparent p-0 font-sans text-sm leading-none text-mono-3"
                     >
                       ×
                     </button>
@@ -255,18 +287,22 @@ export function IssueCreateForm({
             ) : null}
           </Field>
 
-          <Field label="External ref">
+          <Field label={t('beads.issueCreateForm.externalRef', 'External ref')}>
             <input
               type="text"
               data-testid="create-external-ref"
               value={externalRef}
               onChange={e => setExternalRef(e.target.value)}
-              style={inputStyle}
+              className={inputClass}
             />
           </Field>
 
           {createMutation.isError ? (
-            <div data-testid="create-error" role="alert" style={errorBoxStyle}>
+            <div
+              data-testid="create-error"
+              role="alert"
+              className="flex items-center justify-between gap-2 border border-mono-3 bg-mono-8 px-3 py-2 font-sans text-xs text-mono-0"
+            >
               <span>{formatMutationError(createMutation.error)}</span>
               <button
                 type="button"
@@ -284,19 +320,19 @@ export function IssueCreateForm({
                     })
                   )
                 }
-                style={retryButtonStyle}
+                className="border border-mono-3 bg-mono-9 px-3 py-1 font-sans text-xs font-medium text-mono-0 cursor-pointer"
               >
                 Retry
               </button>
             </div>
           ) : null}
 
-          <footer style={actionsStyle}>
+          <footer className="mt-2 flex items-center justify-between gap-2 border-t border-mono-7 px-0 pt-2">
             <button
               type="button"
               data-testid="create-cancel"
               onClick={onClose}
-              style={cancelButtonStyle}
+              className={cancelButtonClass}
             >
               Cancel
             </button>
@@ -304,13 +340,15 @@ export function IssueCreateForm({
               type="submit"
               data-testid="create-submit"
               disabled={createMutation.isPending}
-              style={
+              className={
                 createMutation.isPending
-                  ? submitButtonDisabledStyle
-                  : submitButtonStyle
+                  ? submitButtonDisabledClass
+                  : submitButtonClass
               }
             >
-              {createMutation.isPending ? 'Creating…' : 'Create'}
+              {createMutation.isPending
+                ? t('beads.issueCreateForm.creating', 'Creating…')
+                : t('beads.issueCreateForm.create', 'Create')}
             </button>
           </footer>
         </form>
@@ -331,14 +369,17 @@ function Field({
   children: React.ReactNode
 }) {
   return (
-    <label style={fieldStyle}>
-      <span style={fieldLabelStyle}>
+    <label className="flex flex-col gap-1">
+      <span className="text-xs font-medium uppercase tracking-[0.4px] text-mono-3">
         {label}
-        {required ? <span style={requiredStyle}> *</span> : null}
+        {required ? <span className="font-bold text-mono-0"> *</span> : null}
       </span>
       {children}
       {error ? (
-        <span data-testid="create-title-error" style={fieldErrorStyle}>
+        <span
+          data-testid="create-title-error"
+          className="font-medium text-xs text-mono-0"
+        >
           {error}
         </span>
       ) : null}
@@ -375,266 +416,4 @@ function formatMutationError(err: unknown): string {
   }
   if (err instanceof Error) return err.message
   return 'Failed to create issue.'
-}
-
-const overlayStyle: CSSProperties = {
-  position: 'fixed',
-  inset: 0,
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  zIndex: 50,
-  backgroundColor: 'rgba(0, 0, 0, 0.4)',
-}
-
-const cardStyle: CSSProperties = {
-  width: 560,
-  maxWidth: '90vw',
-  maxHeight: '90vh',
-  overflowY: 'auto',
-  backgroundColor: colors.mono9,
-  borderWidth: 1,
-  borderStyle: 'solid',
-  borderColor: colors.mono3,
-  display: 'flex',
-  flexDirection: 'column',
-  color: colors.mono0,
-  fontFamily: type.fontFamily.sans,
-  fontSize: type.fontSize.sm,
-  lineHeight: type.lineHeight.normal,
-}
-
-const headerStyle: CSSProperties = {
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'space-between',
-  paddingInline: space[4],
-  paddingBlock: space[3],
-  borderBottom: `1px solid ${colors.mono7}`,
-}
-
-const titleHeadingStyle: CSSProperties = {
-  fontSize: type.fontSize.lg,
-  fontWeight: type.fontWeight.bold,
-  lineHeight: type.lineHeight.tight,
-  margin: 0,
-  color: colors.mono0,
-}
-
-const closeButtonStyle: CSSProperties = {
-  display: 'inline-flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  width: 24,
-  height: 24,
-  padding: 0,
-  margin: 0,
-  backgroundColor: colors.mono8,
-  borderWidth: 1,
-  borderStyle: 'solid',
-  borderColor: colors.mono3,
-  color: colors.mono0,
-  fontFamily: type.fontFamily.sans,
-  fontSize: type.fontSize.base,
-  lineHeight: 1,
-  cursor: 'pointer',
-}
-
-const formStyle: CSSProperties = {
-  display: 'flex',
-  flexDirection: 'column',
-  gap: space[3],
-  paddingInline: space[4],
-  paddingBlock: space[4],
-}
-
-const fieldStyle: CSSProperties = {
-  display: 'flex',
-  flexDirection: 'column',
-  gap: space[1],
-}
-
-const fieldLabelStyle: CSSProperties = {
-  fontSize: type.fontSize.xs,
-  fontWeight: type.fontWeight.medium,
-  color: colors.mono3,
-  textTransform: 'uppercase',
-  letterSpacing: 0.4,
-}
-
-const requiredStyle: CSSProperties = {
-  color: colors.mono0,
-  fontWeight: type.fontWeight.bold,
-}
-
-const fieldErrorStyle: CSSProperties = {
-  fontSize: type.fontSize.xs,
-  color: colors.mono0,
-  fontWeight: type.fontWeight.medium,
-}
-
-const inputStyle: CSSProperties = {
-  fontFamily: type.fontFamily.sans,
-  fontSize: type.fontSize.sm,
-  color: colors.mono0,
-  backgroundColor: colors.mono9,
-  borderWidth: 1,
-  borderStyle: 'solid',
-  borderColor: colors.mono3,
-  paddingInline: space[2],
-  paddingBlock: space[2],
-  outline: 'none',
-}
-
-const textareaStyle: CSSProperties = {
-  ...inputStyle,
-  resize: 'vertical',
-  fontFamily: type.fontFamily.sans,
-}
-
-const selectStyle: CSSProperties = {
-  ...inputStyle,
-  cursor: 'pointer',
-}
-
-const priorityRowStyle: CSSProperties = {
-  display: 'flex',
-  gap: space[1],
-}
-
-const priorityButtonStyle: CSSProperties = {
-  fontFamily: type.fontFamily.sans,
-  fontSize: type.fontSize.xs,
-  fontWeight: type.fontWeight.medium,
-  color: colors.mono3,
-  backgroundColor: colors.mono8,
-  borderWidth: 1,
-  borderStyle: 'solid',
-  borderColor: colors.mono3,
-  paddingInline: space[3],
-  paddingBlock: space[1],
-  cursor: 'pointer',
-}
-
-const priorityButtonSelectedStyle: CSSProperties = {
-  ...priorityButtonStyle,
-  color: colors.mono9,
-  backgroundColor: colors.mono0,
-  borderColor: colors.mono0,
-  fontWeight: type.fontWeight.bold,
-}
-
-const chipsRowStyle: CSSProperties = {
-  display: 'flex',
-  flexWrap: 'wrap',
-  gap: space[1],
-  marginTop: space[1],
-}
-
-const chipStyle: CSSProperties = {
-  display: 'inline-flex',
-  alignItems: 'center',
-  gap: space[1],
-  fontFamily: type.fontFamily.sans,
-  fontSize: type.fontSize.xs,
-  color: colors.mono0,
-  backgroundColor: colors.mono8,
-  borderWidth: 1,
-  borderStyle: 'solid',
-  borderColor: colors.mono7,
-  paddingInline: space[2],
-  paddingBlock: space[1],
-}
-
-const chipRemoveButtonStyle: CSSProperties = {
-  display: 'inline-flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  width: 16,
-  height: 16,
-  padding: 0,
-  margin: 0,
-  backgroundColor: 'transparent',
-  borderWidth: 0,
-  color: colors.mono3,
-  fontFamily: type.fontFamily.sans,
-  fontSize: type.fontSize.sm,
-  lineHeight: 1,
-  cursor: 'pointer',
-}
-
-const errorBoxStyle: CSSProperties = {
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'space-between',
-  gap: space[2],
-  fontFamily: type.fontFamily.sans,
-  fontSize: type.fontSize.xs,
-  color: colors.mono0,
-  backgroundColor: colors.mono8,
-  borderWidth: 1,
-  borderStyle: 'solid',
-  borderColor: colors.mono3,
-  paddingInline: space[3],
-  paddingBlock: space[2],
-}
-
-const retryButtonStyle: CSSProperties = {
-  fontFamily: type.fontFamily.sans,
-  fontSize: type.fontSize.xs,
-  fontWeight: type.fontWeight.medium,
-  color: colors.mono0,
-  backgroundColor: colors.mono9,
-  borderWidth: 1,
-  borderStyle: 'solid',
-  borderColor: colors.mono3,
-  paddingInline: space[3],
-  paddingBlock: space[1],
-  cursor: 'pointer',
-}
-
-const actionsStyle: CSSProperties = {
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'space-between',
-  gap: space[2],
-  paddingTop: space[2],
-  borderTop: `1px solid ${colors.mono7}`,
-  marginTop: space[2],
-  paddingInline: 0,
-}
-
-const cancelButtonStyle: CSSProperties = {
-  fontFamily: type.fontFamily.sans,
-  fontSize: type.fontSize.sm,
-  fontWeight: type.fontWeight.regular,
-  color: colors.mono0,
-  backgroundColor: colors.mono9,
-  borderWidth: 1,
-  borderStyle: 'solid',
-  borderColor: colors.mono3,
-  paddingInline: space[4],
-  paddingBlock: space[2],
-  cursor: 'pointer',
-}
-
-const submitButtonStyle: CSSProperties = {
-  fontFamily: type.fontFamily.sans,
-  fontSize: type.fontSize.sm,
-  fontWeight: type.fontWeight.bold,
-  color: colors.mono9,
-  backgroundColor: colors.mono0,
-  borderWidth: 1,
-  borderStyle: 'solid',
-  borderColor: colors.mono0,
-  paddingInline: space[6],
-  paddingBlock: space[2],
-  cursor: 'pointer',
-}
-
-const submitButtonDisabledStyle: CSSProperties = {
-  ...submitButtonStyle,
-  backgroundColor: colors.mono5,
-  borderColor: colors.mono5,
-  cursor: 'not-allowed',
 }

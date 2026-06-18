@@ -16,7 +16,7 @@
  * wrap a future `IssueListView` (T15) when it lands; the current row
  * pattern mirrors `ReadyView` for visual consistency.
  */
-import { useEffect, useState, type CSSProperties } from 'react'
+import { useState, type CSSProperties } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { commands } from '@/lib/tauri-bindings'
 import type { Issue } from '@/lib/bindings'
@@ -24,19 +24,10 @@ import { colors, space, type } from '@/lib/design-tokens'
 import { StatusPill } from './badges/StatusPill'
 import { PriorityDot } from './badges/PriorityDot'
 import { TypeIcon } from './badges/TypeIcon'
+import { hasQueryOperator } from './search-syntax'
 
 const RECENT_KEY = 'collier-recent-searches'
 const RECENT_MAX = 5
-
-/**
- * Detect query-language operators in the user input. The regex is
- * permissive on purpose — `bd query` is the authoritative parser, and
- * a false positive just sends plain text to the query engine (which
- * returns an empty list, no harm). The pattern matches the four
- * comparison operators plus the documented field names.
- */
-export const hasQueryOperator = (q: string): boolean =>
-  /[:=><]|\bstate:|\bpriority:|\btype:|\blabel:|\bassignee:|\bowner:/.test(q)
 
 /**
  * Push `q` onto the recent-searches list, deduplicating and capping at
@@ -217,13 +208,14 @@ export interface SearchViewProps {
 export function SearchView({ cwd, onOpenIssue }: SearchViewProps) {
   const [input, setInput] = useState('')
   const [submittedQuery, setSubmittedQuery] = useState('')
-  const [recent, setRecent] = useState<string[]>([])
+  // Lazy initializer hydrates from localStorage on first render
+  // (the previous `useEffect(() => setRecent(readRecent()))` shape
+  // triggered the cascading-renders lint and was a no-op for any
+  // render after the first). Reading localStorage at construction
+  // is safe because the value is already on the page by the time
+  // the component mounts.
+  const [recent, setRecent] = useState<string[]>(() => readRecent())
   const [showRecent, setShowRecent] = useState(false)
-
-  // Hydrate recent searches from localStorage on mount.
-  useEffect(() => {
-    setRecent(readRecent())
-  }, [])
 
   // Route to bd search OR bd query based on operator detection.
   const { data, isLoading, error } = useQuery({
@@ -293,16 +285,14 @@ export function SearchView({ cwd, onOpenIssue }: SearchViewProps) {
 
       {recent.length > 0 ? (
         <button
-          type="button"
           data-testid="recent-toggle"
-          onClick={() => setShowRecent(s => !s)}
           style={recentToggleStyle}
+          onClick={() => setShowRecent((s: boolean) => !s)}
         >
           {showRecent ? 'Hide recent' : `Recent (${recent.length})`}
         </button>
       ) : null}
-
-      {showRecent && recent.length > 0 ? (
+      {showRecent && recent.length > 0 && (
         <div data-testid="recent-searches" style={recentPanelStyle}>
           {recent.map(q => (
             <button
@@ -317,7 +307,7 @@ export function SearchView({ cwd, onOpenIssue }: SearchViewProps) {
             </button>
           ))}
         </div>
-      ) : null}
+      )}
 
       <div data-testid="search-results">
         {submittedQuery.length === 0 ? null : isLoading ? (

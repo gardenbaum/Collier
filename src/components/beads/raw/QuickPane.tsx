@@ -33,7 +33,7 @@ import { colors, space, type } from '@/lib/design-tokens'
 // "list, ready, blocked, search, query, show, create, update, close,
 //  reopen, delete, dep, label, comment, status, sync, worktree"
 // (per the task brief; trimmed to 12 that are guaranteed in 1.0.5).
-const COMMON_COMMANDS: ReadonlyArray<string> = [
+const COMMON_COMMANDS: readonly string[] = [
   'list',
   'ready',
   'blocked',
@@ -53,7 +53,7 @@ export interface QuickPaneProps {
   maxRecent?: number
   /** Optional pre-populated recent commands (e.g. restored from
    *  localStorage). v1 does not persist; this is for test wiring. */
-  initialRecent?: ReadonlyArray<string>
+  initialRecent?: readonly string[]
   /** Fires when the user picks a command (suggestion or recent). */
   onSelect?: (command: string) => void
 }

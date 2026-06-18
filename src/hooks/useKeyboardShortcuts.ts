@@ -19,14 +19,7 @@ import { useEffect } from 'react'
 
 export type ShortcutHandler = (e: KeyboardEvent) => void
 
-export interface ShortcutMap {
-  /**
-   * Map of shortcut combo → handler. Single keys (e.g. `"j"`, `"o"`)
-   * and leader-key combos (e.g. `"g+i"`, `"g+r"`) share the same key
-   * space; the hook detects the leader state by timing.
-   */
-  [combo: string]: ShortcutHandler
-}
+export type ShortcutMap = Record<string, ShortcutHandler>;
 
 const LEADER_TIMEOUT_MS = 1000
 
@@ -43,7 +36,7 @@ const LEADER_TIMEOUT_MS = 1000
  */
 export function useKeyboardShortcuts(
   shortcuts: ShortcutMap,
-  enabled: boolean = true
+  enabled = true
 ): void {
   useEffect(() => {
     if (!enabled) return

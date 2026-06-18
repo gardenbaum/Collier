@@ -14,7 +14,7 @@
  * mono scale. `design-tokens` is the single source of truth for
  * colors / spacing / type — no hard-coded literals.
  */
-import { type CSSProperties } from 'react'
+import type { CSSProperties } from 'react'
 import { colors, space, type } from '@/lib/design-tokens'
 
 const containerStyle: CSSProperties = {

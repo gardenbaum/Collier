@@ -116,7 +116,7 @@ export function SchemaCheck({ cwd, onPass }: SchemaCheckProps) {
           <a
             href={RELEASES_URL}
             target="_blank"
-            rel="noopener"
+            rel="noopener noreferrer"
             data-testid="collier-releases-link"
             className={cn(
               'inline-flex items-center gap-2 border-2 px-4 py-2 text-sm font-medium',

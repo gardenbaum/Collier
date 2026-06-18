@@ -143,7 +143,9 @@ describe('LabelManager', () => {
     const removeButtons = screen.getAllByRole('button', {
       name: /Remove label bug/,
     })
-    await userEvent.click(removeButtons[0]!)
+    const [firstRemove] = removeButtons
+    if (!firstRemove) throw new Error('expected a remove button')
+    await userEvent.click(firstRemove)
 
     await waitFor(() => {
       expect(mockBdLabelRemove).toHaveBeenCalledWith('/repo', 'beads-1', 'bug')

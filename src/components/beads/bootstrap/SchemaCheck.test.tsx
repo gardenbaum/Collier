@@ -80,7 +80,7 @@ describe('SchemaCheck modal', () => {
       'https://github.com/gardenbaum/Collier/releases'
     )
     expect(link).toHaveAttribute('target', '_blank')
-    expect(link).toHaveAttribute('rel', 'noopener')
+    expect(link).toHaveAttribute('rel', 'noopener noreferrer')
 
     // Quit button present
     expect(screen.getByRole('button', { name: /quit/i })).toBeInTheDocument()
