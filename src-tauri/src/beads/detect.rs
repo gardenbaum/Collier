@@ -54,28 +54,22 @@ pub struct BdInfo {
     pub backend: Backend,
 }
 
-// ============================================================================
-// Policy predicates
-// ============================================================================
-
-/// True when `version` is in the supported range. Hard-coded to
-/// `1.0..<2.0` per plan (T5 AC: rejects 2.0+). `0.x` is rejected
-/// (pre-1.0 schema is not stable).
-pub fn is_supported_version(version: &(u32, u32, u32)) -> bool {
-    version.0 == 1
-}
-
-/// True when `v` matches the only schema version this app understands.
-/// Per plan (T5 AC: rejects != 1). Bumping to a new schema is a
-/// breaking change requiring a new release.
-pub fn is_supported_schema(v: u32) -> bool {
-    v == 1
-}
+// The version + schema predicates are exposed as public functions
+// so test cases and future v2 callers can share the exact rule.
 
 // ============================================================================
 // detect()
 // ============================================================================
 
+#[allow(dead_code)] // exposed for tests + future callers; inlined in detect()
+pub fn is_supported_version(version: &(u32, u32, u32)) -> bool {
+    version.0 == 1
+}
+
+#[allow(dead_code)] // exposed for tests + future callers; inlined in detect()
+pub fn is_supported_schema(v: u32) -> bool {
+    v == 1
+}
 /// Run all probes against the workspace rooted at `cwd`. The function
 /// is best-effort: every field is independent, so a failure in one
 /// probe (e.g. `bd` not installed) does not prevent the others from

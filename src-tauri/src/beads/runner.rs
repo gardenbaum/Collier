@@ -137,10 +137,12 @@ pub async fn run_bd(args: &[&str], cwd: &Path) -> BdResult<BdOutput> {
     spawn_and_collect(&mut cmd, BD_TIMEOUT_SECS, None).await
 }
 
-/// Spawn `bd <args>` in `cwd` and write `input` to its stdin. Used by
-/// `bd init`, which reads confirmation input from the controlling
-/// terminal. We supply the bytes ourselves so the UI can drive
-/// non-interactive initialization without a TTY.
+// run_bd_with_input was reserved for `bd init` (which T43 never
+// actually needed; we go through the argv-only path). v1 doesn't
+// surface this — when v1.1 needs stdin-driven commands, re-add
+// with a real test. The function stays `pub` so a future caller
+// can wire it without touching the lib's public surface.
+#[allow(dead_code)]
 pub async fn run_bd_with_input(args: &[&str], cwd: &Path, input: &str) -> BdResult<BdOutput> {
     which::which("bd").map_err(|_| BdError::BdNotInPath)?;
     let mut cmd = build_bd_command(args, cwd, true);
@@ -207,9 +209,35 @@ pub async fn check_schema_version(cwd: &Path) -> BdResult<u32> {
 }
 
 // ============================================================================
-// Tauri command wrappers
+// Locked runner
 // ============================================================================
 
+/// Run `bd <args>` in `cwd` while holding the per-repo write lock.
+///
+/// Acquires `write_lock`'s per-repo mutex (default 2s timeout) before
+/// invoking `bd`; the guard is held for the duration of the call and
+/// released on Drop. Two concurrent `bd` writes to the same repo
+/// therefore serialize, while writes to *different* repos never block
+/// each other.
+///
+/// All `bd_*` mutation commands route through this helper. The
+/// previous `try_write_lock_cmd` IPC acquired the lock and immediately
+/// released it on IPC return, so it provided no actual concurrency
+/// control — see `beads::lock` for the move-lock-into-command fix.
+pub async fn run_bd_locked(
+    write_lock: &crate::beads::lock::WriteLock,
+    args: &[&str],
+    cwd: &Path,
+) -> BdResult<BdOutput> {
+    let _guard = write_lock
+        .try_acquire_write(cwd, crate::beads::lock::DEFAULT_WRITE_LOCK_TIMEOUT)
+        .await?;
+    run_bd(args, cwd).await
+}
+
+// ============================================================================
+// Tauri command wrappers
+// ============================================================================
 /// `#[tauri::command]` wrapper for `run_bd`. Takes the args and cwd
 /// over the bridge as owned `String`s because the tauri-specta IPC
 /// layer requires owned types; we borrow back to `&str` for the

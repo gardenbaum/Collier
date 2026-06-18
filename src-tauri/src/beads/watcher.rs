@@ -5,6 +5,7 @@
 //! the TanStack Query cache and re-fetch the issue list.
 
 use std::path::PathBuf;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use notify::{RecommendedWatcher, RecursiveMode};
@@ -30,39 +31,99 @@ pub struct WatcherHandle {
     repo_path: PathBuf,
 }
 
+impl WatcherHandle {
+    #[allow(dead_code)] // exposed for future WatcherState::current_repo_path callers
+    pub fn repo_path(&self) -> &PathBuf {
+        &self.repo_path
+    }
+
+    /// Explicitly stop the watcher. The inner debouncer is dropped via
+    /// `self`-consumption, which joins its background thread — same
+    /// effect as letting the value go out of scope, but spelled out
+    /// for the replacement code path in `WatcherState::attach`.
+    pub fn stop(self) {
+        drop(self);
+    }
+}
+
 impl Drop for WatcherHandle {
     fn drop(&mut self) {
         log::info!("Stopping beads watcher for {}", self.repo_path.display());
     }
 }
 
+/// Holds the live `WatcherHandle` so `attach_watch_repo` can swap it
+/// when the active repo changes. Stored in Tauri's managed state;
+/// managed by `attach()` only.
+#[derive(Clone)]
+pub struct WatcherState {
+    inner: Arc<Mutex<Option<WatcherHandle>>>,
+}
+
+impl WatcherState {
+    pub fn new() -> Self {
+        Self {
+            inner: Arc::new(Mutex::new(None)),
+        }
+    }
+
+    /// Attach a watcher for `repo_path`, replacing any existing one
+    /// (the old handle is dropped, stopping its background thread).
+    /// If `<repo>/.beads/` does not exist yet, schedules a 2-second
+    /// poll that re-attaches once the directory appears (covers the
+    /// `bd init` flow after the watcher was started).
+    pub fn attach(&self, app: AppHandle, repo_path: PathBuf) -> Result<(), String> {
+        let new_handle = spawn_watcher(app, repo_path, self.clone())?;
+        let mut guard = self.inner.lock().expect("watcher mutex poisoned");
+        if let Some(old) = guard.take() {
+            old.stop();
+        }
+        *guard = Some(new_handle);
+        Ok(())
+    }
+
+    #[allow(dead_code)] // exposed for future use by the React attach flow
+    pub fn current_repo_path(&self) -> Option<PathBuf> {
+        self.inner
+            .lock()
+            .ok()
+            .and_then(|g| g.as_ref().map(|h| h.repo_path.clone()))
+    }
+}
+
+impl Default for WatcherState {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 /// Build a watcher on `<repo>/.beads/` and emit `beads-data-changed` on
 /// every change to a `*.jsonl` file (debounced 250ms).
 ///
-/// The returned `WatcherHandle` should be stored in Tauri's managed
-/// state (`app.manage(...)`) so it lives for the app's lifetime and is
-/// dropped on shutdown.
+/// The returned `WatcherHandle` should be stored via `WatcherState::attach`
+/// (Tauri's managed state) so it can be replaced when the active repo
+/// changes.
 ///
-/// `repo_path` is currently a placeholder (`"."`) — Wave 1 will wire it
-/// to the active repo from preferences or user selection.
-pub fn spawn_watcher(app: AppHandle, repo_path: PathBuf) -> Result<WatcherHandle, String> {
+/// If `.beads/` does not exist, returns a no-op handle and schedules a
+/// background task that re-runs `attach` once the directory appears.
+pub fn spawn_watcher(
+    app: AppHandle,
+    repo_path: PathBuf,
+    state: WatcherState,
+) -> Result<WatcherHandle, String> {
     let watch_dir = repo_path.join(".beads");
     if !watch_dir.exists() {
-        // No beads workspace yet — log and return a no-op handle so the
-        // app can start. The user can re-trigger setup once `bd init`
-        // has been run.
         log::warn!(
             "Beads directory does not exist, watcher not started: {}",
             watch_dir.display()
         );
-        let debouncer = build_noop_debouncer();
+        schedule_retry(app, repo_path.clone(), state);
         return Ok(WatcherHandle {
-            _debouncer: debouncer,
+            _debouncer: build_noop_debouncer(),
             repo_path,
         });
     }
 
-    let app_handle = app;
     let repo_path_str = repo_path.to_string_lossy().to_string();
 
     let mut debouncer = new_debouncer(
@@ -76,7 +137,7 @@ pub fn spawn_watcher(app: AppHandle, repo_path: PathBuf) -> Result<WatcherHandle
                     repo_path: repo_path_str.clone(),
                     timestamp: now_millis(),
                 };
-                if let Err(e) = app_handle.emit("beads-data-changed", payload) {
+                if let Err(e) = app.emit("beads-data-changed", payload) {
                     log::warn!("Failed to emit beads-data-changed: {e}");
                 }
             }
@@ -95,6 +156,62 @@ pub fn spawn_watcher(app: AppHandle, repo_path: PathBuf) -> Result<WatcherHandle
         _debouncer: debouncer,
         repo_path,
     })
+}
+
+/// Spawn a tokio task that polls `<repo>/.beads/` every 2s and, on the
+/// first success, replaces the noop watcher with a real one. Exits
+/// early if `state` no longer holds a noop handle for `repo_path`
+/// (e.g. the user selected a different repo in the meantime).
+fn schedule_retry(app: AppHandle, repo_path: PathBuf, state: WatcherState) {
+    // `tokio::spawn` panics with "there is no reactor running" when
+    // called from a thread that wasn't started by the global tokio
+    // official Tauri 2 helper is `tauri::async_runtime::spawn` —
+    // it dispatches onto Tauri's runtime regardless of caller
+    // context. Inside the spawned task, `tokio::time::interval`
+    // works because Tauri's runtime IS a tokio runtime.
+    tauri::async_runtime::spawn(async move {
+        let mut interval = tokio::time::interval(std::time::Duration::from_secs(2));
+        // First tick fires immediately; skip it so we don't busy-loop
+        // on a path that's been missing for a microsecond.
+        loop {
+            interval.tick().await;
+            if !repo_path.join(".beads").exists() {
+                continue;
+            }
+            let still_ours = state
+                .inner
+                .lock()
+                .ok()
+                .and_then(|g| g.as_ref().map(|h| h.repo_path == repo_path))
+                .unwrap_or(false);
+            if !still_ours {
+                return;
+            }
+            log::info!(
+                ".beads appeared, re-attaching watcher for {}",
+                repo_path.display()
+            );
+            if let Err(e) = state.attach(app.clone(), repo_path.clone()) {
+                log::error!("Failed to re-attach watcher for {}: {e}", repo_path.display());
+            }
+            return;
+        }
+    });
+}
+
+/// Tauri command: replace the live beads watcher with one rooted at
+/// `repo_path`. Called from the React side whenever the active repo
+/// changes so `beads-data-changed` events carry the right `repo_path`
+/// payload (the frontend filters on
+/// `event.payload.repo_path === activeRepoPath`).
+#[tauri::command]
+#[specta::specta]
+pub async fn attach_watch_repo(
+    app: AppHandle,
+    state: tauri::State<'_, WatcherState>,
+    repo_path: String,
+) -> Result<(), String> {
+    state.attach(app, PathBuf::from(repo_path))
 }
 
 /// Returns true if any event in `events` targets a `*.jsonl` file.

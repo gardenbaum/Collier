@@ -68,39 +68,14 @@ impl Default for AppPreferences {
     }
 }
 
-// ============================================================================
-// Recovery Errors
-// ============================================================================
-
-/// Error types for recovery operations (typed for frontend matching)
-#[derive(Debug, Clone, Serialize, Deserialize, Type)]
-#[serde(tag = "type")]
-pub enum RecoveryError {
-    /// File does not exist (expected case, not a failure)
-    FileNotFound,
-    /// Filename validation failed
-    ValidationError { message: String },
-    /// Data exceeds size limit
-    DataTooLarge { max_bytes: u32 },
-    /// File system read/write error
-    IoError { message: String },
-    /// JSON serialization/deserialization error
-    ParseError { message: String },
-}
-
-impl std::fmt::Display for RecoveryError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            RecoveryError::FileNotFound => write!(f, "File not found"),
-            RecoveryError::ValidationError { message } => write!(f, "Validation error: {message}"),
-            RecoveryError::DataTooLarge { max_bytes } => {
-                write!(f, "Data too large (max {max_bytes} bytes)")
-            }
-            RecoveryError::IoError { message } => write!(f, "IO error: {message}"),
-            RecoveryError::ParseError { message } => write!(f, "Parse error: {message}"),
-        }
-    }
-}
+// `RecoveryError` was a bespoke error enum for the recovery
+// commands. v1.0 unified all system commands on the bridge-wide
+// `BdError` discriminated union — see `src/beads/types.rs`. The
+// recovery.rs file maps its three error cases to:
+//   * filename validation → BdError::ParseError
+//   * I/O errors          → BdError::IoError
+//   * file not found      → BdError::NotFound
+//   * data too large      → BdError::ParseError
 
 // ============================================================================
 // Validation Functions
@@ -127,15 +102,8 @@ pub fn validate_filename(filename: &str) -> Result<(), String> {
     Ok(())
 }
 
-/// Validates string input length (by character count, not bytes).
-pub fn validate_string_input(input: &str, max_len: usize, field_name: &str) -> Result<(), String> {
-    let char_count = input.chars().count();
-    if char_count > max_len {
-        return Err(format!("{field_name} too long (max {max_len} characters)"));
-    }
-    Ok(())
-}
-
+// Removed in v1.0 — kept unimplemented until v1.1 surfaces a
+// string-input form that needs it (issue create description, etc.).
 /// Validates theme value.
 pub fn validate_theme(theme: &str) -> Result<(), String> {
     match theme {

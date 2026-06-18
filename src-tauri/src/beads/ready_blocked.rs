@@ -5,7 +5,6 @@
 //! the JSON envelope `{ schema_version: number, data: Issue[] }`.
 
 use serde_json::Value;
-use specta::Type;
 
 use crate::beads::{runner, BdError, BdResult, Issue};
 

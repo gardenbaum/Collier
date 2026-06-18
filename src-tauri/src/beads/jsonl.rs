@@ -2,7 +2,7 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
-use crate::beads::{BdError, Issue, IssuePriority, IssueStatus, IssueType};
+use crate::beads::{BdError, Issue};
 
 use super::*;
 
@@ -127,7 +127,6 @@ pub async fn read_issues_jsonl(cwd: String) -> Result<JsonlResult, BdError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::beads::{Dependency, Label};
     use chrono::{DateTime, Utc};
     use tempfile::TempDir;
 

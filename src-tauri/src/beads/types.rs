@@ -178,39 +178,9 @@ pub struct HistoryEntry {
     pub details: Option<String>,
 }
 
-// ============================================================================
-// Molecule & Worktree
-// ============================================================================
-
-#[derive(Debug, Clone, Serialize, Deserialize, Type)]
-pub struct Molecule {
-    pub id: String,
-    pub title: String,
-    pub issue_ids: Vec<String>,
-    pub status: IssueStatus,
-    pub created_at: DateTime<Utc>,
-    pub updated_at: Option<DateTime<Utc>>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, Type)]
-pub struct Worktree {
-    pub name: String,
-    pub path: String,
-    pub branch: Option<String>,
-    pub is_main: bool,
-}
-
-// ============================================================================
-// Sync Status
-// ============================================================================
-
-#[derive(Debug, Clone, Serialize, Deserialize, Type)]
-pub struct SyncStatus {
-    pub ahead: u32,
-    pub behind: u32,
-    pub dirty: bool,
-    pub last_sync: Option<DateTime<Utc>>,
-}
+// Molecule, Worktree, SyncStatus were forward-declared for a v2
+// roadmap that was deprioritized. Deleting now — re-add when a
+// command actually returns one of these.
 
 // ============================================================================
 // Issue (main entity)
