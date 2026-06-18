@@ -8,8 +8,8 @@
     {
       "identifier": "fs:scope",
       "allow": [
-        { "path": "$APPDATA/**" },
-        { "path": "$APPLOCALDATA/**" },
+        { "path": "$APPLOCALDATA/logs/**" },
+        { "path": "$APPLOCALDATA/recovery/**" },
         { "path": ".beads/*.jsonl" }
       ]
     },
