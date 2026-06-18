@@ -409,25 +409,28 @@ pub async fn bd_label_list_all(cwd: String) -> BdResult<Vec<LabelWithCount>> {
 
 /// Parse a `bd label list-all --json` response into rows.
 ///
-/// `bd` returns three shapes for this command:
-/// 1. Success: a bare array of `{ label, count }` rows
-///    (`[{"label":"bug","count":3}, ...]`) — the happy path.
-/// 2. Empty: a bare array `[]` (no labels in the database).
-/// 3. Error: an envelope `{ error, schema_version }` — `bd` still
-///    serialises the error as JSON when `--json` is set, even for
-///    failures like a missing database or `--global` without
-///    shared-server mode. Before this helper existed, the parser
-///    did `from_value::<Vec<...>>(value)` on the envelope and
-///    surfaced the unhelpful "invalid type: map, expected a
-///    sequence" `ParseError`. Now we detect the envelope shape
-///    and carry the underlying bd message through to the user.
+/// `runner::build_bd_command` sets `BD_JSON_ENVELOPE=1`, so `bd`
+/// wraps every JSON response in `{ schema_version, data }`. `data`
+/// is an array of `{ label, count }` rows on success and an
+/// object `{ error }` on failure (e.g. missing database,
+/// `--global` without shared-server mode).
+///
+/// Before this helper extracted `data`, the parser did
+/// `from_value::<Vec<...>>(value)` on the envelope map and surfaced
+/// the unhelpful "invalid type: map, expected a sequence"
+/// `ParseError` users were seeing in the LabelListView. Now we
+/// unwrap the envelope and carry the underlying bd error message
+/// through on the failure path.
 fn parse_label_list_all(value: serde_json::Value) -> BdResult<Vec<LabelWithCount>> {
-    if let Some(err) = value.get("error").and_then(|v| v.as_str()) {
+    let data = value.get("data").ok_or_else(|| BdError::ParseError {
+        message: "bd label list-all: missing 'data' field in JSON envelope".to_string(),
+    })?;
+    if let Some(err) = data.get("error").and_then(|v| v.as_str()) {
         return Err(BdError::ParseError {
             message: format!("bd label list-all: {err}"),
         });
     }
-    serde_json::from_value(value).map_err(|e| BdError::ParseError {
+    serde_json::from_value(data.clone()).map_err(|e| BdError::ParseError {
         message: format!("bd label list-all failed to parse rows: {e}"),
     })
 }
@@ -493,23 +496,23 @@ pub async fn bd_label_propagate(
 /// Parse a `bd label propagate <parent> <label> --json` response
 /// into a `Vec<serde_json::Value>` for the per-child status loop.
 ///
-/// Same envelope shapes as `parse_label_list_all`:
-/// 1. Success: a bare array of `{ issue_id, label, status }` rows.
-/// 2. Error: `{ error, schema_version }` envelope — bd still emits
-///    JSON when `--json` is set even for mid-command failures
-///    (e.g. parent has no children with `--ignore-missing` off).
-///    The bare `from_value::<Vec<Value>>(value)` failed with
-///    "invalid type: map, expected a sequence" before this helper
-///    existed.
+/// Same envelope contract as `parse_label_list_all`: the runner
+/// sets `BD_JSON_ENVELOPE=1`, so `data` is an array of
+/// `{ issue_id, label, status }` rows on success and
+/// `{ error }` on mid-command failure (e.g. parent has no
+/// children with `--ignore-missing` off).
 fn parse_label_propagate_rows(
     value: serde_json::Value,
 ) -> BdResult<Vec<serde_json::Value>> {
-    if let Some(err) = value.get("error").and_then(|v| v.as_str()) {
+    let data = value.get("data").ok_or_else(|| BdError::ParseError {
+        message: "bd label propagate: missing 'data' field in JSON envelope".to_string(),
+    })?;
+    if let Some(err) = data.get("error").and_then(|v| v.as_str()) {
         return Err(BdError::ParseError {
             message: format!("bd label propagate: {err}"),
         });
     }
-    serde_json::from_value(value).map_err(|e| BdError::ParseError {
+    serde_json::from_value(data.clone()).map_err(|e| BdError::ParseError {
         message: format!("bd label propagate failed to parse rows: {e}"),
     })
 }
@@ -1507,19 +1510,21 @@ mod tests {
         assert_eq!(argv, vec!["label", "list-all", "--json"]);
     }
 
-    /// The real `bd label list-all --json` (1.0.5, 2026-06-17)
-    /// returns a bare array of `{ label, count }` rows — no
-    /// envelope wrapper. Confirms the parser pulls the array out
-    /// and decodes each row into a `LabelWithCount`.
+    /// `runner::build_bd_command` sets `BD_JSON_ENVELOPE=1`, so
+    /// `bd label list-all --json` returns the rows wrapped in a
+    /// `{ data, schema_version }` envelope. Confirms the parser
+    /// pulls the array out of `data` and decodes each row into a
+    /// `LabelWithCount`.
     #[test]
-    fn test_label_list_all_parses_bare_array() {
-        let value = serde_json::json!([
-            {"label": "bug", "count": 3},
-            {"label": "priority-high", "count": 1},
-        ]);
-        let arr: Vec<serde_json::Value> = value.as_array().cloned().unwrap();
-        let mut rows: Vec<LabelWithCount> =
-            serde_json::from_value(serde_json::Value::Array(arr)).expect("parses");
+    fn test_label_list_all_parses_envelope_success() {
+        let value = serde_json::json!({
+            "data": [
+                {"label": "bug", "count": 3},
+                {"label": "priority-high", "count": 1},
+            ],
+            "schema_version": 1
+        });
+        let mut rows = parse_label_list_all(value).expect("envelope parses");
         rows.sort_by(|a, b| a.label.cmp(&b.label));
         assert_eq!(rows.len(), 2);
         assert_eq!(rows[0].label, "bug");
@@ -1528,15 +1533,19 @@ mod tests {
         assert_eq!(rows[1].count, 1);
     }
 
-    /// Empty database: `bd label list-all --json` returns `[]`. The
-    /// command parses cleanly to an empty `Vec<LabelWithCount>` — NOT
-    /// a `ParseError` (the CLI's "no labels" state is a valid empty
+    /// Empty database: `bd label list-all --json` returns
+    /// `{ data: [], schema_version: 1 }`. The command parses
+    /// cleanly to an empty `Vec<LabelWithCount>` — NOT a
+    /// `ParseError` (the CLI's "no labels" state is a valid empty
     /// list, not a contract break). The frontend renders the empty
     /// state on `Vec::is_empty()`.
     #[test]
-    fn test_label_list_all_empty_array() {
-        let value = serde_json::json!([]);
-        let rows: Vec<LabelWithCount> = serde_json::from_value(value).expect("parses");
+    fn test_label_list_all_empty_envelope() {
+        let value = serde_json::json!({
+            "data": [],
+            "schema_version": 1
+        });
+        let rows = parse_label_list_all(value).expect("empty envelope parses");
         assert!(rows.is_empty());
     }
 
@@ -1544,18 +1553,19 @@ mod tests {
     /// open the database, `--global` requires shared-server mode,
     /// or any other failure mid-command), `bd` still serializes
     /// the error as JSON because `--json` was set. The shape is an
-    /// envelope: `{ "error": "<message>", "schema_version": 1 }`.
-    /// The parser must detect this and surface the error message
-    /// rather than failing with the generic "invalid type: map,
-    /// expected a sequence" `ParseError` that users were seeing
-    /// in the LabelListView.
+    /// envelope: `{ "data": { "error": "<message>" }, "schema_version": 1 }`
+    /// — the error string lives *inside* `data`, not at the top
+    /// level. The parser must detect this and surface the error
+    /// message rather than failing with the generic "invalid
+    /// type: map, expected a sequence" `ParseError` that users
+    /// were seeing in the LabelListView.
     #[test]
     fn test_label_list_all_error_envelope() {
         let value = serde_json::json!({
-            "error": "--global requires shared-server mode",
+            "data": { "error": "--global requires shared-server mode" },
             "schema_version": 1
         });
-        let err = parse_label_list_all(value).expect_err("envelope is not a list");
+        let err = parse_label_list_all(value).expect_err("error envelope is not a list");
         let msg = match err {
             BdError::ParseError { message } => message,
             other => panic!("expected ParseError, got {other:?}"),
@@ -1622,16 +1632,17 @@ mod tests {
         );
     }
     /// Same envelope handling as `test_label_list_all_error_envelope`:
-    /// when `bd label propagate` returns an error envelope, the
+    /// `BD_JSON_ENVELOPE=1` wraps the error in
+    /// `{ "data": { "error": "<msg>" }, "schema_version": 1 }`. The
     /// parser must surface the underlying bd message instead of
     /// "invalid type: map, expected a sequence".
     #[test]
     fn test_label_propagate_error_envelope() {
         let value = serde_json::json!({
-            "error": "no children to propagate to",
+            "data": { "error": "no children to propagate to" },
             "schema_version": 1
         });
-        let err = parse_label_propagate_rows(value).expect_err("envelope is not a list");
+        let err = parse_label_propagate_rows(value).expect_err("error envelope is not a list");
         let msg = match err {
             BdError::ParseError { message } => message,
             other => panic!("expected ParseError, got {other:?}"),
