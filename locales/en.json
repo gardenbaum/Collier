@@ -203,12 +203,24 @@
   "preferences.general.quickPaneShortcut": "Quick Pane Shortcut",
   "preferences.general.quickPaneShortcutDescription": "Global keyboard shortcut to toggle the quick pane from any application",
   "preferences.title": "Preferences",
-  "titlebar.default": "Tauri App",
-  "titlebar.hideLeftSidebar": "Hide Left Sidebar",
-  "titlebar.hideRightSidebar": "Hide Right Sidebar",
-  "titlebar.settings": "Settings",
-  "titlebar.showLeftSidebar": "Show Left Sidebar",
-  "titlebar.showRightSidebar": "Show Right Sidebar",
+  "sidebar": {
+    "sections": {
+      "views": "Views",
+      "filters": "Filters",
+      "labels": "Labels"
+    },
+    "newIssue": "New issue",
+    "sort": "Sort",
+    "group": "Group"
+  },
+  "titlebar": {
+    "default": "Collier",
+    "workspace": "Workspace",
+    "openCommandPalette": "Open command palette",
+    "settings": "Settings",
+    "hideLeftSidebar": "Hide sidebar",
+    "showLeftSidebar": "Show sidebar"
+  },
   "toast.error.fullscreenEnterFailed": "Failed to enter fullscreen: {{message}}",
   "toast.error.fullscreenExitFailed": "Failed to exit fullscreen: {{message}}",
   "toast.error.generic": "Something went wrong",

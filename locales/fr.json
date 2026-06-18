@@ -203,12 +203,24 @@
   "preferences.general.quickPaneShortcut": "Raccourci du panneau rapide",
   "preferences.general.quickPaneShortcutDescription": "Raccourci clavier global pour afficher le panneau rapide depuis n'importe quelle application",
   "preferences.title": "Préférences",
-  "titlebar.default": "Application Tauri",
-  "titlebar.hideLeftSidebar": "Masquer la barre latérale gauche",
-  "titlebar.hideRightSidebar": "Masquer la barre latérale droite",
-  "titlebar.settings": "Paramètres",
-  "titlebar.showLeftSidebar": "Afficher la barre latérale gauche",
-  "titlebar.showRightSidebar": "Afficher la barre latérale droite",
+  "sidebar": {
+    "sections": {
+      "views": "Vues",
+      "filters": "Filtres",
+      "labels": "Étiquettes"
+    },
+    "newIssue": "Nouveau ticket",
+    "sort": "Trier",
+    "group": "Regrouper"
+  },
+  "titlebar": {
+    "default": "Collier",
+    "workspace": "Espace de travail",
+    "openCommandPalette": "Ouvrir la palette de commandes",
+    "settings": "Paramètres",
+    "hideLeftSidebar": "Masquer le panneau",
+    "showLeftSidebar": "Afficher le panneau"
+  },
   "toast.error.fullscreenEnterFailed": "Échec du passage en plein écran : {{message}}",
   "toast.error.fullscreenExitFailed": "Échec de la sortie du plein écran : {{message}}",
   "toast.error.generic": "Une erreur s'est produite",

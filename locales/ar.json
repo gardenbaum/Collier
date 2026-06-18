@@ -203,12 +203,24 @@
   "preferences.general.quickPaneShortcut": "اختصار اللوحة السريعة",
   "preferences.general.quickPaneShortcutDescription": "اختصار لوحة المفاتيح العام لتبديل اللوحة السريعة من أي تطبيق",
   "preferences.title": "التفضيلات",
-  "titlebar.default": "تطبيق تاوري",
-  "titlebar.hideLeftSidebar": "إخفاء الشريط الجانبي الأيسر",
-  "titlebar.hideRightSidebar": "إخفاء الشريط الجانبي الأيمن",
-  "titlebar.settings": "الإعدادات",
-  "titlebar.showLeftSidebar": "إظهار الشريط الجانبي الأيسر",
-  "titlebar.showRightSidebar": "إظهار الشريط الجانبي الأيمن",
+  "sidebar": {
+    "sections": {
+      "views": "العروض",
+      "filters": "الفلاتر",
+      "labels": "التسميات"
+    },
+    "newIssue": "تذكرة جديدة",
+    "sort": "ترتيب",
+    "group": "تجميع"
+  },
+  "titlebar": {
+    "default": "Collier",
+    "workspace": "مساحة العمل",
+    "openCommandPalette": "افتح لوحة الأوامر",
+    "settings": "الإعدادات",
+    "hideLeftSidebar": "إخفاء الشريط الجانبي",
+    "showLeftSidebar": "إظهار الشريط الجانبي"
+  },
   "toast.error.fullscreenEnterFailed": "فشل الدخول إلى ملء الشاشة: {{message}}",
   "toast.error.fullscreenExitFailed": "فشل الخروج من ملء الشاشة: {{message}}",
   "toast.error.generic": "حدث خطأ ما",

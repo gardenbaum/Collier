@@ -203,12 +203,24 @@
   "preferences.general.quickPaneShortcut": "Schnellfenster-Tastenkombination",
   "preferences.general.quickPaneShortcutDescription": "Globale Tastenkombination zum Ein-/Ausblenden des Schnellfensters von jeder Anwendung aus",
   "preferences.title": "Einstellungen",
-  "titlebar.default": "Tauri-App",
-  "titlebar.hideLeftSidebar": "Linke Seitenleiste ausblenden",
-  "titlebar.hideRightSidebar": "Rechte Seitenleiste ausblenden",
-  "titlebar.settings": "Einstellungen",
-  "titlebar.showLeftSidebar": "Linke Seitenleiste anzeigen",
-  "titlebar.showRightSidebar": "Rechte Seitenleiste anzeigen",
+  "sidebar": {
+    "sections": {
+      "views": "Ansichten",
+      "filters": "Filter",
+      "labels": "Labels"
+    },
+    "newIssue": "Neues Issue",
+    "sort": "Sortieren",
+    "group": "Gruppieren"
+  },
+  "titlebar": {
+    "default": "Collier",
+    "workspace": "Arbeitsbereich",
+    "openCommandPalette": "Befehlspalette öffnen",
+    "settings": "Einstellungen",
+    "hideLeftSidebar": "Seitenleiste ausblenden",
+    "showLeftSidebar": "Seitenleiste anzeigen"
+  },
   "toast.error.fullscreenEnterFailed": "Vollbild konnte nicht aktiviert werden: {{message}}",
   "toast.error.fullscreenExitFailed": "Vollbild konnte nicht beendet werden: {{message}}",
   "toast.error.generic": "Ein Fehler ist aufgetreten",

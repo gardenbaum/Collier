@@ -8,9 +8,33 @@ import ar from '../../locales/ar.json'
  * (it is both the default and the fallback language); every other locale must
  * mirror its key set, provide non-empty values, and preserve interpolation
  * placeholders so no UI string silently falls back or breaks formatting.
+ *
+ * Catalog values may be either flat strings (e.g. `"app.name": "..."`) or
+ * nested objects (e.g. `"titlebar": { "default": "..." }`). i18next resolves
+ * dotted keys against either shape, so we flatten the tree to dotted keys for
+ * parity checks.
  */
-const reference: Record<string, string> = en
-const otherLocales: Record<string, Record<string, string>> = { de, fr, ar }
+type Catalog = Record<string, unknown>
+
+function flattenCatalog(node: Catalog, prefix = ''): Record<string, string> {
+  const out: Record<string, string> = {}
+  for (const [key, value] of Object.entries(node)) {
+    const fullKey = prefix ? `${prefix}.${key}` : key
+    if (typeof value === 'string') {
+      out[fullKey] = value
+    } else if (value && typeof value === 'object') {
+      Object.assign(out, flattenCatalog(value as Catalog, fullKey))
+    }
+  }
+  return out
+}
+
+const reference = flattenCatalog(en)
+const otherLocales: Record<string, Record<string, string>> = {
+  de: flattenCatalog(de),
+  fr: flattenCatalog(fr),
+  ar: flattenCatalog(ar),
+}
 
 const referenceKeys = Object.keys(reference).sort()
 
