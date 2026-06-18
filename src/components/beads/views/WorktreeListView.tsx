@@ -6,9 +6,9 @@
  * (closest existing subcommand — `git worktree list` style info
  * for v2 once `bd worktree` ships).
  */
-import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
+import { useCopyToClipboard } from '@/hooks/useCopyToClipboard'
 
 export interface WorktreeListViewProps {
   /** Repository root (unused for v1). */
@@ -19,16 +19,10 @@ const CLI_COMMAND = 'bd branch --json'
 
 export function WorktreeListView({ cwd: _cwd }: WorktreeListViewProps) {
   const { t } = useTranslation()
-  const [copied, setCopied] = useState(false)
+  const { copied, copy } = useCopyToClipboard()
 
-  const onCopy = async () => {
-    try {
-      await navigator.clipboard.writeText(CLI_COMMAND)
-      setCopied(true)
-      window.setTimeout(() => setCopied(false), 1500)
-    } catch {
-      // Best-effort.
-    }
+  const onCopy = () => {
+    void copy(CLI_COMMAND)
   }
 
   return (

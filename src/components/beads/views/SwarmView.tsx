@@ -6,9 +6,9 @@
  * sections (active swarms with current step + all swarms with metadata)
  * once the bd JSON shape stabilizes.
  */
-import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
+import { useCopyToClipboard } from '@/hooks/useCopyToClipboard'
 
 export interface SwarmViewProps {
   /** Repository root (unused for v1). */
@@ -19,16 +19,10 @@ const CLI_COMMAND = 'bd swarm list --json'
 
 export function SwarmView({ cwd: _cwd }: SwarmViewProps) {
   const { t } = useTranslation()
-  const [copied, setCopied] = useState(false)
+  const { copied, copy } = useCopyToClipboard()
 
-  const onCopy = async () => {
-    try {
-      await navigator.clipboard.writeText(CLI_COMMAND)
-      setCopied(true)
-      window.setTimeout(() => setCopied(false), 1500)
-    } catch {
-      // Best-effort UI feedback.
-    }
+  const onCopy = () => {
+    void copy(CLI_COMMAND)
   }
 
   return (

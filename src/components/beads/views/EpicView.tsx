@@ -13,9 +13,9 @@
  * suggested command in the Quick Pane (`Cmd+Shift+.`) and get
  * immediate JSON output.
  */
-import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
+import { useCopyToClipboard } from '@/hooks/useCopyToClipboard'
 
 export interface EpicViewProps {
   /** Repository root (unused for v1 — kept for the v2 signature). */
@@ -26,17 +26,10 @@ const CLI_COMMAND = 'bd epic status --json'
 
 export function EpicView({ cwd: _cwd }: EpicViewProps) {
   const { t } = useTranslation()
-  const [copied, setCopied] = useState(false)
+  const { copied, copy } = useCopyToClipboard()
 
-  const onCopy = async () => {
-    try {
-      await navigator.clipboard.writeText(CLI_COMMAND)
-      setCopied(true)
-      window.setTimeout(() => setCopied(false), 1500)
-    } catch {
-      // Clipboard can be denied in some webviews; the inline label
-      // flip is best-effort UI feedback, not a hard failure.
-    }
+  const onCopy = () => {
+    void copy(CLI_COMMAND)
   }
 
   return (

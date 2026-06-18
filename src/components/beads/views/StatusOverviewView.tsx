@@ -6,9 +6,9 @@
  * and `bd count --by-type --json` in parallel and renders them as a
  * card grid.
  */
-import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
+import { useCopyAndFlag } from '@/hooks/useCopyAndFlag'
 
 export interface StatusOverviewViewProps {
   /** Repository root (unused for v1). */
@@ -23,16 +23,11 @@ const CLI_COMMANDS = [
 
 export function StatusOverviewView({ cwd: _cwd }: StatusOverviewViewProps) {
   const { t } = useTranslation()
-  const [copied, setCopied] = useState<number | null>(null)
+  const { flag, copy } = useCopyAndFlag<number>()
 
-  const onCopy = async (idx: number) => {
-    try {
-      await navigator.clipboard.writeText(CLI_COMMANDS[idx] ?? '')
-      setCopied(idx)
-      window.setTimeout(() => setCopied(null), 1500)
-    } catch {
-      // Best-effort.
-    }
+  const onCopy = (idx: number) => {
+    const cmd = CLI_COMMANDS[idx]
+    if (cmd) void copy(cmd, idx)
   }
 
   return (
@@ -72,7 +67,7 @@ export function StatusOverviewView({ cwd: _cwd }: StatusOverviewViewProps) {
                 variant="outline"
                 size="sm"
               >
-                {copied === idx
+                {flag === idx
                   ? t('beads.views.status.copied', 'Copied!')
                   : t('beads.views.status.copyCommand', 'Copy CLI command')}
               </Button>
