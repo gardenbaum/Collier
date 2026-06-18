@@ -51,6 +51,18 @@ export const palette = {
 // every consumer is ported. The Bauhaus `mono9` (lightest) now maps to
 // `palette.bg` (darkest) so consumers that set `backgroundColor: colors.mono9`
 // get the new dark background without a per-call rewrite.
+//
+// ponytail: mono1, mono3, mono4, mono7 are orphan literals — kept verbatim
+// from the Bauhaus scale because their consumers (FilterSidebar borders,
+// empty-state text) rely on these exact values. Do not "tidy" them into
+// palette refs without auditing every consumer first.
+//
+// ponytail: mono5 and mono6 intentionally collapse to the same color
+// (`#a3a3a3`). In the original Bauhaus palette they were distinct
+// (`#737373` vs `#a3a3a3`); the remap loses one step of visual
+// discrimination but keeps the existing component code working. If a
+// future task needs the discrimination back, add `palette.textDisabled`
+// as a separate semantic and update mono5 → textMuted, mono6 → statusOpen.
 export const colors = {
   mono0: palette.textPrimary,
   mono1: '#171717',
@@ -85,6 +97,10 @@ export const grid = {
 } as const
 
 export const type = {
+  // ponytail: SF Pro takes precedence over Inter because macOS users see
+  // the native system font (SF Pro) before the fallback (Inter) kicks in.
+  // Do not reorder — Linux/Windows users still get Inter, Apple users get
+  // the system font (better hinting + variable axes).
   fontFamily: {
     sans: '-apple-system, "SF Pro Display", "Inter", system-ui, sans-serif',
     mono: '"SF Mono", ui-monospace, SFMono-Regular, Menlo, monospace',
@@ -119,6 +135,11 @@ export const radius = {
   full: 9999,
 } as const
 
+// ponytail: shadow.focus is wired up in Task 1.3 via the `--ring` CSS
+// variable (the `--ring` var on :root maps to palette.accent, which feeds
+// the focus-visible:ring styles on the shadcn primitives). It's defined
+// here as a parallel export so non-CSS consumers (e.g. inline styles on
+// the search input) can pull the value directly.
 export const shadow = {
   sm: '0 1px 0 rgba(0, 0, 0, 0.2), 0 1px 2px rgba(0, 0, 0, 0.16)',
   md: '0 1px 0 rgba(0, 0, 0, 0.2), 0 4px 12px rgba(0, 0, 0, 0.24)',
