@@ -26,11 +26,13 @@
 //!
 //! ## WriteLock
 //!
-//! The `bd` CLI serializes its own writes (the runner blocks
-//! subsequent `bd` calls while a write is in flight), so the
-//! frontend never coordinates locking for these commands. The
-//! `try_write_lock_cmd` IPC exists for the user-facing lock-status
-//! flow only.
+//! Each `bd_*` mutation command acquires the per-repo write lock via
+//! `runner::run_bd_locked`, holds it for the duration of the `bd`
+//! invocation, and releases on Drop. Two concurrent writes to the same
+//! `.beads/issues.jsonl` therefore serialize; writes to different
+//! repos never block each other. The previous standalone
+//! `try_write_lock_cmd` IPC acquired the lock and immediately dropped
+//! it on IPC return, providing no actual concurrency control.
 
 use std::path::PathBuf;
 
@@ -51,14 +53,18 @@ use crate::bindings::types::{CreateInput, UpdateInput};
 /// typed signal rather than silently dropping the result.
 #[tauri::command]
 #[specta::specta]
-pub async fn bd_create(cwd: String, input: CreateInput) -> BdResult<Issue> {
+pub async fn bd_create(
+    cwd: String,
+    input: CreateInput,
+    write_lock: tauri::State<'_, crate::beads::lock::WriteLock>,
+) -> BdResult<Issue> {
     let path = PathBuf::from(&cwd);
     let mut owned_args: Vec<String> = input.to_args();
     owned_args.push("--json".to_string());
     let arg_refs: Vec<&str> = owned_args.iter().map(String::as_str).collect();
     let mut argv: Vec<&str> = vec!["create"];
     argv.extend(arg_refs.iter().copied());
-    let output = runner::run_bd(&argv, &path).await?;
+    let output = runner::run_bd_locked(&write_lock, &argv, &path).await?;
     let value = parse_envelope(output)?;
     parse_issue_or_array(value, "bd create")
 }
@@ -70,14 +76,19 @@ pub async fn bd_create(cwd: String, input: CreateInput) -> BdResult<Issue> {
 /// The robust parser handles the bare-object CLI variant as well.
 #[tauri::command]
 #[specta::specta]
-pub async fn bd_update(cwd: String, id: String, input: UpdateInput) -> BdResult<Issue> {
+pub async fn bd_update(
+    cwd: String,
+    id: String,
+    input: UpdateInput,
+    write_lock: tauri::State<'_, crate::beads::lock::WriteLock>,
+) -> BdResult<Issue> {
     let path = PathBuf::from(&cwd);
     let mut owned_args: Vec<String> = input.to_args();
     owned_args.push("--json".to_string());
     let arg_refs: Vec<&str> = owned_args.iter().map(String::as_str).collect();
     let mut argv: Vec<&str> = vec!["update", &id];
     argv.extend(arg_refs.iter().copied());
-    let output = runner::run_bd(&argv, &path).await?;
+    let output = runner::run_bd_locked(&write_lock, &argv, &path).await?;
     let value = parse_envelope(output)?;
     parse_issue_or_array(value, "bd update")
 }
@@ -90,9 +101,13 @@ pub async fn bd_update(cwd: String, id: String, input: UpdateInput) -> BdResult<
 /// accepts the bare-object variant.
 #[tauri::command]
 #[specta::specta]
-pub async fn bd_close(cwd: String, id: String) -> BdResult<Issue> {
+pub async fn bd_close(
+    cwd: String,
+    id: String,
+    write_lock: tauri::State<'_, crate::beads::lock::WriteLock>,
+) -> BdResult<Issue> {
     let path = PathBuf::from(&cwd);
-    let output = runner::run_bd(&["close", &id, "--json"], &path).await?;
+    let output = runner::run_bd_locked(&write_lock, &["close", &id, "--json"], &path).await?;
     let value = parse_envelope(output)?;
     parse_issue_or_array(value, "bd close")
 }
@@ -105,9 +120,13 @@ pub async fn bd_close(cwd: String, id: String) -> BdResult<Issue> {
 /// The robust parser accepts the bare-object variant.
 #[tauri::command]
 #[specta::specta]
-pub async fn bd_reopen(cwd: String, id: String) -> BdResult<Issue> {
+pub async fn bd_reopen(
+    cwd: String,
+    id: String,
+    write_lock: tauri::State<'_, crate::beads::lock::WriteLock>,
+) -> BdResult<Issue> {
     let path = PathBuf::from(&cwd);
-    let output = runner::run_bd(&["reopen", &id, "--json"], &path).await?;
+    let output = runner::run_bd_locked(&write_lock, &["reopen", &id, "--json"], &path).await?;
     let value = parse_envelope(output)?;
     parse_issue_or_array(value, "bd reopen")
 }
@@ -127,7 +146,11 @@ pub async fn bd_reopen(cwd: String, id: String) -> BdResult<Issue> {
 /// frontend refetches the issue list and the deleted id disappears.
 #[tauri::command]
 #[specta::specta]
-pub async fn bd_delete(cwd: String, id: String) -> BdResult<()> {
+pub async fn bd_delete(
+    cwd: String,
+    id: String,
+    write_lock: tauri::State<'_, crate::beads::lock::WriteLock>,
+) -> BdResult<()> {
     let path = PathBuf::from(&cwd);
     // ponytail: any non-zero exit from `bd delete` propagates as a
     // `BdError::NonZeroExit` from the runner. Reaching the `Ok(())`
@@ -135,7 +158,7 @@ pub async fn bd_delete(cwd: String, id: String) -> BdResult<()> {
     // `{ deleted, dependencies_removed, references_updated, … }`
     // summary; the frontend refetches the list and the deleted id
     // is gone.
-    let _output = runner::run_bd(&["delete", &id, "--force", "--json"], &path).await?;
+    let _output = runner::run_bd_locked(&write_lock, &["delete", &id, "--force", "--json"], &path).await?;
     Ok(())
 }
 
@@ -189,10 +212,12 @@ pub async fn bd_dep_add(
     from_id: String,
     to_id: String,
     dep_type: DependencyType,
+    write_lock: tauri::State<'_, crate::beads::lock::WriteLock>,
 ) -> BdResult<()> {
     let path = PathBuf::from(&cwd);
     let type_str: &str = dep_type_to_cli(dep_type);
-    let _output = runner::run_bd(
+    let _output = runner::run_bd_locked(
+        &write_lock,
         &["dep", "add", &from_id, &to_id, "--type", type_str, "--json"],
         &path,
     )
@@ -208,9 +233,14 @@ pub async fn bd_dep_add(
 /// runner's normal exit-code handling.
 #[tauri::command]
 #[specta::specta]
-pub async fn bd_dep_remove(cwd: String, from_id: String, to_id: String) -> BdResult<()> {
+pub async fn bd_dep_remove(
+    cwd: String,
+    from_id: String,
+    to_id: String,
+    write_lock: tauri::State<'_, crate::beads::lock::WriteLock>,
+) -> BdResult<()> {
     let path = PathBuf::from(&cwd);
-    let _output = runner::run_bd(&["dep", "remove", &from_id, &to_id, "--json"], &path).await?;
+    let _output = runner::run_bd_locked(&write_lock, &["dep", "remove", &from_id, &to_id, "--json"], &path).await?;
     Ok(())
 }
 
@@ -300,10 +330,19 @@ fn dep_type_to_cli(dep_type: DependencyType) -> &'static str {
 /// `Issue.labels` field on `bd show`) and the new label appears.
 #[tauri::command]
 #[specta::specta]
-pub async fn bd_label_add(cwd: String, issue_id: String, label: String) -> BdResult<()> {
+pub async fn bd_label_add(
+    cwd: String,
+    issue_id: String,
+    label: String,
+    write_lock: tauri::State<'_, crate::beads::lock::WriteLock>,
+) -> BdResult<()> {
     let path = PathBuf::from(&cwd);
-    let _output =
-        runner::run_bd(&["label", "add", &issue_id, &label, "--json"], &path).await?;
+    let _output = runner::run_bd_locked(
+        &write_lock,
+        &["label", "add", &issue_id, &label, "--json"],
+        &path,
+    )
+    .await?;
     Ok(())
 }
 
@@ -315,10 +354,19 @@ pub async fn bd_label_add(cwd: String, issue_id: String, label: String) -> BdRes
 /// refetch will reflect the change.
 #[tauri::command]
 #[specta::specta]
-pub async fn bd_label_remove(cwd: String, issue_id: String, label: String) -> BdResult<()> {
+pub async fn bd_label_remove(
+    cwd: String,
+    issue_id: String,
+    label: String,
+    write_lock: tauri::State<'_, crate::beads::lock::WriteLock>,
+) -> BdResult<()> {
     let path = PathBuf::from(&cwd);
-    let _output =
-        runner::run_bd(&["label", "remove", &issue_id, &label, "--json"], &path).await?;
+    let _output = runner::run_bd_locked(
+        &write_lock,
+        &["label", "remove", &issue_id, &label, "--json"],
+        &path,
+    )
+    .await?;
     Ok(())
 }
 
@@ -390,10 +438,15 @@ pub async fn bd_label_propagate(
     cwd: String,
     parent_id: String,
     label: String,
+    write_lock: tauri::State<'_, crate::beads::lock::WriteLock>,
 ) -> BdResult<PropagationReport> {
     let path = PathBuf::from(&cwd);
-    let output =
-        runner::run_bd(&["label", "propagate", &parent_id, &label, "--json"], &path).await?;
+    let output = runner::run_bd_locked(
+        &write_lock,
+        &["label", "propagate", &parent_id, &label, "--json"],
+        &path,
+    )
+    .await?;
     let value = match output {
         runner::BdOutput::Json { value } => value,
         runner::BdOutput::Text { value } => {

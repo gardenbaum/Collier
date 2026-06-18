@@ -139,18 +139,20 @@ pub fn run() {
                 // Non-fatal: app can still run without quick pane
             }
 
-            // Start the Beads `.beads/` fs-watcher. The handle lives in
-            // managed state so it is dropped (and the watch thread is
-            // joined) on app exit.
-            // TODO(wave-1): replace the placeholder with the active
-            // repo path from preferences or user selection.
-            let active_repo_path = std::path::PathBuf::from(".");
-            match beads::watcher::spawn_watcher(app.handle().clone(), active_repo_path) {
-                Ok(handle) => {
-                    app.manage(handle);
-                }
-                Err(e) => log::error!("Failed to start beads watcher: {e}"),
+            // Start the Beads `.beads/` fs-watcher. The handle is held
+            // inside a `WatcherState` (managed below) so the active
+            // repo can be swapped at runtime via
+            // `attach_watch_repo` from the React side — and so a
+            // missing `.beads/` directory is followed by a 2s poll
+            // that re-attaches once `bd init` lands.
+            let watcher_state = beads::watcher::WatcherState::new();
+            if let Err(e) = watcher_state.attach(
+                app.handle().clone(),
+                std::path::PathBuf::from("."),
+            ) {
+                log::error!("Failed to start beads watcher: {e}");
             }
+            app.manage(watcher_state);
 
             // Per-repo write lock. The `WriteLock` is itself an
             // `Arc<Mutex<HashMap<...>>>` internally, so a single

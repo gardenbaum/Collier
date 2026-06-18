@@ -102,37 +102,11 @@ impl Default for WriteLock {
     }
 }
 
-/// Default timeout for `try_write_lock_cmd` (2s). Picked to be long
-/// enough for a single `bd` write under load but short enough that
-/// the UI doesn't sit on a spinner forever.
+/// Default timeout for the per-repo write lock acquired by
+/// `runner::run_bd_locked` (2s). Picked to be long enough for a single
+/// `bd` write under load but short enough that the UI doesn't sit on a
+/// spinner forever.
 pub const DEFAULT_WRITE_LOCK_TIMEOUT: Duration = Duration::from_secs(2);
-
-/// Tauri command: try to acquire the per-repo write lock for `cwd`.
-///
-/// Returns `Ok(())` once the lock is held; the actual `bd` invocation
-/// must follow in a separate command that holds the lock for the
-/// duration of the I/O. (We intentionally do not hold the lock across
-/// the IPC roundtrip — the guard would be released the moment this
-/// `Result` is serialized back to the React side.)
-///
-/// Used by AC-5: two TS calls to write to the same path → one
-/// gets `BdError::AlreadyLocked`.
-#[tauri::command]
-#[specta::specta]
-pub async fn try_write_lock_cmd(
-    state: tauri::State<'_, WriteLock>,
-    cwd: String,
-) -> Result<(), BdError> {
-    let _guard = state
-        .try_acquire_write(Path::new(&cwd), DEFAULT_WRITE_LOCK_TIMEOUT)
-        .await?;
-    // Drop immediately — the lock is held only for the duration of
-    // this command, but the AC is satisfied as long as *one* of two
-    // concurrent calls fails with AlreadyLocked. Real write commands
-    // will hold the guard across the bd invocation.
-    drop(_guard);
-    Ok(())
-}
 
 #[cfg(test)]
 mod tests {
