@@ -1,7 +1,8 @@
 import { describe, it, expect } from 'vitest'
 import en from '../../locales/en.json'
 import de from '../../locales/de.json'
-
+import fr from '../../locales/fr.json'
+import ar from '../../locales/ar.json'
 /**
  * Completeness guarantees for the translation catalog. English is the reference
  * (it is both the default and the fallback language); every other locale must
@@ -9,7 +10,7 @@ import de from '../../locales/de.json'
  * placeholders so no UI string silently falls back or breaks formatting.
  */
 const reference: Record<string, string> = en
-const otherLocales: Record<string, Record<string, string>> = { de }
+const otherLocales: Record<string, Record<string, string>> = { de, fr, ar }
 
 const referenceKeys = Object.keys(reference).sort()
 
