@@ -144,7 +144,7 @@ describe('BlockedView', () => {
     await waitFor(() => {
       expect(screen.getByTestId('blocked-empty')).toBeInTheDocument()
     })
-    expect(screen.getByText('No blocked issues.')).toBeInTheDocument()
+    expect(screen.getByText('Nothing blocked')).toBeInTheDocument()
     expect(
       screen.getByRole('heading', { name: /Blocked \(0\)/ })
     ).toBeInTheDocument()

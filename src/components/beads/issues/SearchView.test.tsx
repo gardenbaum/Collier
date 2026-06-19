@@ -253,7 +253,7 @@ describe('SearchView', () => {
     await waitFor(() => {
       expect(screen.getByTestId('search-empty')).toBeInTheDocument()
     })
-    expect(screen.getByText('No matches.')).toBeInTheDocument()
+    expect(screen.getByText('No matches')).toBeInTheDocument()
   })
 
   it('renders the error state when bdSearch returns an error', async () => {

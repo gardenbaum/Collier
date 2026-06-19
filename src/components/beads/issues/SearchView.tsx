@@ -18,9 +18,11 @@
  */
 import { useState, type CSSProperties } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import { Search } from 'lucide-react'
 import { commands } from '@/lib/tauri-bindings'
 import type { Issue } from '@/lib/bindings'
 import { colors, space, type } from '@/lib/design-tokens'
+import { EmptyState } from '@/components/atoms'
 import { StatusPill } from './badges/StatusPill'
 import { PriorityDot } from './badges/PriorityDot'
 import { TypeIcon } from './badges/TypeIcon'
@@ -29,10 +31,6 @@ import { hasQueryOperator } from './search-syntax'
 const RECENT_KEY = 'collier-recent-searches'
 const RECENT_MAX = 5
 
-/**
- * Push `q` onto the recent-searches list, deduplicating and capping at
- * RECENT_MAX. Newest entry is always at index 0.
- */
 function pushRecent(items: string[], q: string): string[] {
   const trimmed = q.trim()
   if (trimmed.length === 0) return items
@@ -60,6 +58,9 @@ function writeRecent(items: string[]): void {
   window.localStorage.setItem(RECENT_KEY, JSON.stringify(items))
 }
 
+const searchInputClass =
+  'w-full h-9 px-3 rounded-[var(--radius)] bg-[color:var(--secondary)] border border-[color:var(--border)] text-[color:var(--foreground)] placeholder:text-[color:var(--muted-foreground)] focus:outline-none focus:ring-2 focus:ring-[color:var(--ring)] focus:ring-offset-2 focus:ring-offset-[color:var(--background)] text-[13px]'
+
 const containerStyle: CSSProperties = {
   display: 'flex',
   flexDirection: 'column',
@@ -73,21 +74,6 @@ const formStyle: CSSProperties = {
   display: 'flex',
   gap: space[2],
   alignItems: 'center',
-}
-
-const inputStyle: CSSProperties = {
-  flex: 1,
-  fontFamily: type.fontFamily.sans,
-  fontSize: type.fontSize.sm,
-  lineHeight: type.lineHeight.normal,
-  color: colors.mono0,
-  backgroundColor: colors.mono9,
-  borderWidth: 1,
-  borderStyle: 'solid',
-  borderColor: colors.mono3,
-  paddingInline: space[3],
-  paddingBlock: space[2],
-  outline: 'none',
 }
 
 const submitStyle: CSSProperties = {
@@ -170,12 +156,6 @@ const idStyle: CSSProperties = {
   marginInlineStart: 'auto',
 }
 
-const messageStyle: CSSProperties = {
-  fontSize: type.fontSize.sm,
-  color: colors.mono3,
-  padding: space[4],
-}
-
 const errorStyle: CSSProperties = {
   fontSize: type.fontSize.sm,
   color: colors.mono0,
@@ -208,16 +188,9 @@ export interface SearchViewProps {
 export function SearchView({ cwd, onOpenIssue }: SearchViewProps) {
   const [input, setInput] = useState('')
   const [submittedQuery, setSubmittedQuery] = useState('')
-  // Lazy initializer hydrates from localStorage on first render
-  // (the previous `useEffect(() => setRecent(readRecent()))` shape
-  // triggered the cascading-renders lint and was a no-op for any
-  // render after the first). Reading localStorage at construction
-  // is safe because the value is already on the page by the time
-  // the component mounts.
   const [recent, setRecent] = useState<string[]>(() => readRecent())
   const [showRecent, setShowRecent] = useState(false)
 
-  // Route to bd search OR bd query based on operator detection.
   const { data, isLoading, error } = useQuery({
     queryKey: [
       'beads',
@@ -266,12 +239,12 @@ export function SearchView({ cwd, onOpenIssue }: SearchViewProps) {
 
       <form onSubmit={handleSubmit} style={formStyle} role="search">
         <input
-          type="text"
+          type="search"
           data-testid="search-input"
-          placeholder="Search issues…"
+          placeholder="Search issues..."
           value={input}
           onChange={e => setInput(e.target.value)}
-          style={inputStyle}
+          className={searchInputClass}
           aria-label="Search issues"
         />
         <button
@@ -310,15 +283,27 @@ export function SearchView({ cwd, onOpenIssue }: SearchViewProps) {
       )}
 
       <div data-testid="search-results">
-        {submittedQuery.length === 0 ? null : isLoading ? (
+        {submittedQuery.length === 0 ? (
+          <div data-testid="search-prompt">
+            <EmptyState
+              icon={Search}
+              title="Search for issues"
+              body="Type a query above to find issues."
+            />
+          </div>
+        ) : isLoading ? (
           <SearchSkeleton />
         ) : error ? (
           <div data-testid="search-error" style={errorStyle} role="alert">
             Search failed: {formatError(error)}
           </div>
         ) : issues.length === 0 ? (
-          <div data-testid="search-empty" style={messageStyle}>
-            No matches.
+          <div data-testid="search-empty">
+            <EmptyState
+              icon={Search}
+              title="No matches"
+              body="Try a different query or check your operators."
+            />
           </div>
         ) : (
           <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>

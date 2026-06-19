@@ -152,7 +152,7 @@ describe('ReadyView', () => {
     await waitFor(() => {
       expect(screen.getByTestId('ready-empty')).toBeInTheDocument()
     })
-    expect(screen.getByText('No ready issues.')).toBeInTheDocument()
+    expect(screen.getByText('No ready work')).toBeInTheDocument()
     expect(
       screen.getByRole('heading', { name: /Ready \(0\)/ })
     ).toBeInTheDocument()

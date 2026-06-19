@@ -17,9 +17,11 @@
  */
 import type { CSSProperties } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import { Ban } from 'lucide-react'
 import { commands } from '@/lib/tauri-bindings'
 import type { Issue } from '@/lib/bindings'
 import { colors, space, type } from '@/lib/design-tokens'
+import { EmptyState } from '@/components/atoms'
 import { StatusPill } from './badges/StatusPill'
 import { PriorityDot } from './badges/PriorityDot'
 import { TypeIcon } from './badges/TypeIcon'
@@ -67,12 +69,6 @@ const idStyle: CSSProperties = {
   fontSize: type.fontSize.xs,
   color: colors.mono5,
   marginInlineStart: 'auto',
-}
-
-const messageStyle: CSSProperties = {
-  fontSize: type.fontSize.sm,
-  color: colors.mono3,
-  padding: space[4],
 }
 
 const errorStyle: CSSProperties = {
@@ -126,8 +122,12 @@ export function BlockedView({ cwd }: BlockedViewProps) {
       ) : null}
 
       {!isLoading && !error && count === 0 ? (
-        <div data-testid="blocked-empty" style={messageStyle}>
-          No blocked issues.
+        <div data-testid="blocked-empty">
+          <EmptyState
+            icon={Ban}
+            title="Nothing blocked"
+            body="Issues blocked by dependencies will appear here."
+          />
         </div>
       ) : null}
 

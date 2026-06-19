@@ -53,19 +53,19 @@ const PRIORITIES: IssuePriority[] = ['P0', 'P1', 'P2', 'P3', 'P4']
 const DEFAULT_PRIORITY: IssuePriority = 'P2'
 
 const inputClass =
-  'border border-mono-3 bg-mono-9 px-2 py-2 font-sans text-sm text-mono-0 outline-none'
+  'w-full h-9 px-3 rounded-[var(--radius)] bg-[color:var(--secondary)] border border-[color:var(--border)] text-[color:var(--foreground)] placeholder:text-[color:var(--muted-foreground)] focus:outline-none focus:ring-2 focus:ring-[color:var(--ring)] focus:ring-offset-2 focus:ring-offset-[color:var(--background)] text-[13px]'
 const selectClass = `${inputClass} cursor-pointer`
-const textareaClass = `${inputClass} resize-y`
+const textareaClass = `${inputClass} min-h-[88px] py-2 resize-y`
 const priorityButtonClass =
-  'border border-mono-3 bg-mono-8 px-3 py-1 font-sans text-xs font-medium text-mono-3 cursor-pointer'
+  'h-8 px-3 rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--secondary)] text-[color:var(--muted-foreground)] hover:text-[color:var(--foreground)] cursor-pointer font-mono text-[11px] font-semibold tracking-[0.04em] transition-colors'
 const priorityButtonSelectedClass =
-  'border border-mono-0 bg-mono-0 px-3 py-1 font-sans text-xs font-bold text-mono-9 cursor-pointer'
+  'h-8 px-3 rounded-[var(--radius)] border border-[color:var(--ring)] bg-[color:var(--accent)]/15 text-[color:var(--foreground)] cursor-pointer font-mono text-[11px] font-semibold tracking-[0.04em]'
 const cancelButtonClass =
-  'border border-mono-3 bg-mono-9 px-4 py-2 font-sans text-sm font-normal text-mono-0 cursor-pointer'
+  'h-9 px-4 rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--secondary)] text-[color:var(--foreground)] hover:bg-[color:var(--accent)]/10 cursor-pointer font-sans text-[13px]'
 const submitButtonClass =
-  'border border-mono-0 bg-mono-0 px-6 py-2 font-sans text-sm font-bold text-mono-9 cursor-pointer'
+  'h-9 px-5 rounded-[var(--radius)] bg-[color:var(--primary)] text-[color:var(--primary-foreground)] hover:bg-[color:var(--accent)] cursor-pointer font-sans text-[13px] font-semibold'
 const submitButtonDisabledClass =
-  'border border-mono-5 bg-mono-5 px-6 py-2 font-sans text-sm font-bold text-mono-9 cursor-not-allowed'
+  'h-9 px-5 rounded-[var(--radius)] bg-[color:var(--muted-foreground)] text-[color:var(--background)] cursor-not-allowed font-sans text-[13px] font-semibold opacity-50'
 
 export function IssueCreateForm({
   cwd,
@@ -120,7 +120,9 @@ export function IssueCreateForm({
     e.preventDefault()
     const trimmedTitle = title.trim()
     if (trimmedTitle.length === 0) {
-      setTitleError(t('beads.issueCreateForm.titleRequired', 'Title is required'))
+      setTitleError(
+        t('beads.issueCreateForm.titleRequired', 'Title is required')
+      )
       return
     }
     setTitleError(null)
@@ -145,10 +147,10 @@ export function IssueCreateForm({
         data-testid="create-form"
         role="dialog"
         aria-label={t('beads.issueCreateForm.newIssue', 'New issue')}
-        className="flex max-h-[90vh] w-[560px] max-w-[90vw] flex-col overflow-y-auto border border-mono-3 bg-mono-9 font-sans text-sm leading-normal text-mono-0"
+        className="flex max-h-[90vh] w-[560px] max-w-[90vw] flex-col overflow-y-auto rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--card)] font-sans text-sm leading-normal text-[color:var(--card-foreground)] shadow-lg"
       >
-        <header className="flex items-center justify-between border-b border-mono-7 px-4 py-3">
-          <h1 className="m-0 text-lg font-bold leading-tight text-mono-0">
+        <header className="flex items-center justify-between border-b border-[color:var(--border)] px-4 py-3">
+          <h1 className="m-0 text-lg font-bold leading-tight text-[color:var(--foreground)]">
             {t('beads.issueCreateForm.newIssue', 'New Issue')}
           </h1>
           <button
@@ -156,7 +158,7 @@ export function IssueCreateForm({
             data-testid="create-close"
             onClick={onClose}
             aria-label="Close"
-            className="m-0 inline-flex h-6 w-6 cursor-pointer items-center justify-center border border-mono-3 bg-mono-8 p-0 font-sans text-base leading-none text-mono-0"
+            className="m-0 inline-flex h-6 w-6 cursor-pointer items-center justify-center rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--secondary)] p-0 font-sans text-base leading-none text-[color:var(--muted-foreground)] hover:text-[color:var(--foreground)]"
           >
             ×
           </button>
@@ -269,7 +271,7 @@ export function IssueCreateForm({
                   <span
                     key={l}
                     data-testid={`create-label-chip-${l}`}
-                    className="inline-flex items-center gap-1 border border-mono-7 bg-mono-8 px-2 py-1 font-sans text-xs text-mono-0"
+                    className="inline-flex h-5 items-center gap-1 rounded-[4px] border border-[color:var(--border)] bg-[color:var(--secondary)] px-2 font-sans text-xs font-medium text-[color:var(--foreground)]"
                   >
                     {l}
                     <button
@@ -277,7 +279,7 @@ export function IssueCreateForm({
                       data-testid={`create-label-chip-remove-${l}`}
                       onClick={() => handleRemoveLabel(l)}
                       aria-label={`Remove ${l}`}
-                      className="m-0 inline-flex h-4 w-4 cursor-pointer items-center justify-center border-0 bg-transparent p-0 font-sans text-sm leading-none text-mono-3"
+                      className="m-0 inline-flex h-4 w-4 cursor-pointer items-center justify-center rounded-[2px] border-0 bg-transparent p-0 font-sans text-sm leading-none text-[color:var(--muted-foreground)] hover:text-[color:var(--foreground)]"
                     >
                       ×
                     </button>
@@ -301,7 +303,7 @@ export function IssueCreateForm({
             <div
               data-testid="create-error"
               role="alert"
-              className="flex items-center justify-between gap-2 border border-mono-3 bg-mono-8 px-3 py-2 font-sans text-xs text-mono-0"
+              className="flex items-center justify-between gap-2 rounded-[var(--radius)] border border-[color:var(--destructive)]/40 bg-[color:var(--destructive)]/10 px-3 py-2 font-sans text-xs text-[color:var(--foreground)]"
             >
               <span>{formatMutationError(createMutation.error)}</span>
               <button
@@ -320,14 +322,14 @@ export function IssueCreateForm({
                     })
                   )
                 }
-                className="border border-mono-3 bg-mono-9 px-3 py-1 font-sans text-xs font-medium text-mono-0 cursor-pointer"
+                className="h-7 px-3 rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--secondary)] font-sans text-xs font-medium text-[color:var(--foreground)] cursor-pointer hover:bg-[color:var(--accent)]/10"
               >
                 Retry
               </button>
             </div>
           ) : null}
 
-          <footer className="mt-2 flex items-center justify-between gap-2 border-t border-mono-7 px-0 pt-2">
+          <footer className="mt-2 flex items-center justify-between gap-2 border-t border-[color:var(--border)] px-0 pt-3">
             <button
               type="button"
               data-testid="create-cancel"
@@ -369,16 +371,18 @@ function Field({
   children: React.ReactNode
 }) {
   return (
-    <label className="flex flex-col gap-1">
-      <span className="text-xs font-medium uppercase tracking-[0.4px] text-mono-3">
+    <label className="flex flex-col gap-1.5">
+      <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[color:var(--muted-foreground)]">
         {label}
-        {required ? <span className="font-bold text-mono-0"> *</span> : null}
+        {required ? (
+          <span className="font-bold text-[color:var(--foreground)]"> *</span>
+        ) : null}
       </span>
       {children}
       {error ? (
         <span
           data-testid="create-title-error"
-          className="font-medium text-xs text-mono-0"
+          className="font-medium text-xs text-[color:var(--destructive)]"
         >
           {error}
         </span>
