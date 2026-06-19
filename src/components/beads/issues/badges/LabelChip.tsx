@@ -1,6 +1,6 @@
 import type { CSSProperties, MouseEvent } from 'react'
 import { X } from 'lucide-react'
-import { colors, radius, space, type } from '@/lib/design-tokens'
+import { space, type } from '@/lib/design-tokens'
 
 export interface LabelChipProps {
   /** Label text shown in the chip. Rendered verbatim — caller passes an already-i18n'd string. */
@@ -10,28 +10,29 @@ export interface LabelChipProps {
 }
 
 /**
- * Hard-edged label tag — 1px mono border, mono background, mono text. Renders
- * a small X on the right when `onRemove` is provided (otherwise just text).
+ * Soft label tag — 1px translucent border on a slightly translucent
+ * dark background, 4px radius (radius.xs). Renders a small X on the
+ * right when `onRemove` is provided (otherwise just text).
  *
- * Uses `data-testid="label-chip"` for QA selectors. Accent is reserved for
- * destructive actions and P0 priority per AC-14 — labels stay on the mono
- * scale.
+ * Uses `data-testid="label-chip"` for QA selectors. Accent is reserved
+ * for destructive actions and P0 priority per AC-14 — labels stay on
+ * the mono scale.
  */
 export function LabelChip({ label, onRemove }: LabelChipProps) {
   const chipStyle: CSSProperties = {
     display: 'inline-flex',
     alignItems: 'center',
     gap: space[1],
-    height: 18, // ponytail: ~4px-tall visual when paired with 12px text + 1px border on each side
+    height: 20,
     paddingInline: space[2],
-    backgroundColor: colors.mono8,
-    border: `1px solid ${colors.mono7}`,
-    borderRadius: radius.sm,
+    backgroundColor: 'rgba(255, 255, 255, 0.04)',
+    border: '1px solid rgba(255, 255, 255, 0.08)',
+    borderRadius: 4,
     fontFamily: type.fontFamily.sans,
     fontSize: type.fontSize.xs,
     fontWeight: type.fontWeight.medium,
     lineHeight: type.lineHeight.tight,
-    color: colors.mono0,
+    color: '#fafafa',
   }
 
   const buttonStyle: CSSProperties = {
@@ -44,7 +45,7 @@ export function LabelChip({ label, onRemove }: LabelChipProps) {
     margin: 0,
     background: 'transparent',
     border: 0,
-    color: colors.mono0,
+    color: '#fafafa',
     cursor: 'pointer',
   }
 

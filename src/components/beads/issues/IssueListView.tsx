@@ -164,9 +164,8 @@ export function IssueListView({
 }
 
 function IssueRow({ issue, onClick }: { issue: Issue; onClick: () => void }) {
-  // ponytail: the row is a `role="button"` for keyboard a11y (Enter /
-  // Space both trigger the click). `cursor: pointer` is the only
-  // visual affordance — no hover state per the MUST NOT list.
+  const [hovered, setHovered] = useState(false)
+
   return (
     <div
       role="button"
@@ -178,9 +177,11 @@ function IssueRow({ issue, onClick }: { issue: Issue; onClick: () => void }) {
           onClick()
         }
       }}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
       data-testid="issue-row"
       data-issue-id={issue.id}
-      style={rowStyle}
+      style={{ ...rowStyle, ...(hovered ? rowHoverStyle : null) }}
     >
       <PriorityDot priority={issue.priority} />
       <TypeIcon type={issue.issue_type} />
@@ -246,10 +247,16 @@ const rowStyle: CSSProperties = {
   display: 'flex',
   alignItems: 'center',
   gap: space[2],
-  height: ROW_HEIGHT,
-  paddingInline: space[2],
-  borderBottom: `1px solid ${colors.mono8}`,
+  height: 36,
+  paddingInline: 12,
+  borderRadius: 6,
+  backgroundColor: 'transparent',
+  transition: 'background-color 120ms cubic-bezier(0.2, 0, 0, 1)',
   cursor: 'pointer',
+}
+
+const rowHoverStyle: CSSProperties = {
+  backgroundColor: 'rgba(94, 106, 210, 0.08)',
 }
 
 const titleStyle: CSSProperties = {

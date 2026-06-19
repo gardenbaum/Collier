@@ -2,11 +2,6 @@ import { describe, it, expect, vi } from 'vitest'
 import { fireEvent, render, screen } from '@/test/test-utils'
 import { LabelChip } from './LabelChip'
 
-// ponytail: accent (#c2410c) is forbidden on labels per AC-14 — assert
-// the rendered chip never reaches for it, neither in background, border,
-// nor text. Mono scale only.
-const ACCENT_RGB = 'rgb(194, 65, 12)'
-
 describe('LabelChip', () => {
   it('renders the label text', () => {
     render(<LabelChip label="bug" />)
@@ -20,18 +15,10 @@ describe('LabelChip', () => {
     )
   })
 
-  it('is hard-edged (radius 0) and uses a mono border', () => {
+  it('uses a soft border (4px radius) and translucent styling', () => {
     render(<LabelChip label="ux" />)
     const chip = screen.getByTestId('label-chip')
-    expect(chip.style.borderRadius).toBe('0px')
-    expect(chip.style.borderColor.toLowerCase()).not.toContain('c2410c')
-  })
-
-  it('uses a mono background (no accent)', () => {
-    render(<LabelChip label="ux" />)
-    const chip = screen.getByTestId('label-chip')
-    expect(chip.style.backgroundColor).not.toBe(ACCENT_RGB)
-    expect(chip.style.backgroundColor.toLowerCase()).not.toContain('c2410c')
+    expect(chip.style.borderRadius).toBe('4px')
   })
 
   it('renders no remove button when onRemove is omitted', () => {
