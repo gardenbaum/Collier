@@ -95,7 +95,7 @@ const TagInput = React.forwardRef<HTMLDivElement, TagInputProps>(
       <div
         ref={ref}
         className={cn(
-          'border-input placeholder:text-muted-foreground focus-within:border-ring focus-within:ring-ring/50 flex min-h-9 w-full rounded-md border bg-transparent px-3 py-1 text-base shadow-xs transition-[color,box-shadow] focus-within:ring-[3px] md:text-sm',
+          'border-[color:var(--border)] placeholder:text-[color:var(--muted-foreground)] focus-within:ring-2 focus-within:ring-[color:var(--ring)] focus-within:ring-offset-2 focus-within:ring-offset-[color:var(--background)] flex min-h-9 w-full rounded-[var(--radius)] border bg-transparent px-3 py-1 text-base shadow-xs transition-[color,box-shadow] md:text-sm',
           disabled && 'cursor-not-allowed opacity-50',
           className
         )}
@@ -117,7 +117,7 @@ const TagInput = React.forwardRef<HTMLDivElement, TagInputProps>(
                     e.stopPropagation()
                     removeTag(tag.id)
                   }}
-                  className="ml-1 hover:bg-destructive/20 rounded-sm p-0.5 transition-colors"
+                  className="ml-1 hover:bg-[color:var(--destructive)]/20 rounded-sm p-0.5 transition-colors"
                   aria-label={`Remove ${tag.text} tag`}
                 >
                   <X className="size-3" />
@@ -133,7 +133,7 @@ const TagInput = React.forwardRef<HTMLDivElement, TagInputProps>(
             onKeyDown={handleKeyDown}
             placeholder={tags.length === 0 ? placeholder : ''}
             disabled={disabled}
-            className="flex-1 min-w-[120px] bg-transparent border-0 outline-none placeholder:text-muted-foreground text-foreground disabled:cursor-not-allowed"
+            className="flex-1 min-w-[120px] bg-transparent border-0 outline-none placeholder:text-[color:var(--muted-foreground)] text-[color:var(--foreground)] disabled:cursor-not-allowed"
           />
         </div>
       </div>
