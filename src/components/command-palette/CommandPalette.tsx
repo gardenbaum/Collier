@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { useUIStore } from '@/store/ui-store'
 import { useCommandContext } from '@/hooks/use-command-context'
 import { getAllCommands, executeCommand } from '@/lib/commands'
+import { Monogram } from '@/components/atoms'
 import {
   CommandDialog,
   CommandInput,
@@ -85,6 +86,15 @@ export function CommandPalette() {
       title={t('commandPalette.title')}
       description={t('commandPalette.placeholder')}
     >
+      <div className="flex items-center gap-2 px-3 py-2 border-b border-[color:var(--border)]">
+        <Monogram size={18} />
+        <span className="text-[12px] font-semibold text-[color:var(--foreground)]">
+          Collier
+        </span>
+        <span className="ml-auto text-[10px] font-mono text-[color:var(--muted-foreground)]">
+          ⌘K
+        </span>
+      </div>
       <CommandInput
         placeholder={t('commandPalette.placeholder')}
         value={search}
