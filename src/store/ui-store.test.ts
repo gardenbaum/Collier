@@ -5,8 +5,7 @@ describe('UIStore', () => {
   beforeEach(() => {
     // Reset store state before each test
     useUIStore.setState({
-      leftSidebarVisible: true,
-      rightSidebarVisible: true,
+      sidebarVisible: true,
       commandPaletteOpen: false,
       preferencesOpen: false,
     })
@@ -14,30 +13,36 @@ describe('UIStore', () => {
 
   it('has correct initial state', () => {
     const state = useUIStore.getState()
-    expect(state.leftSidebarVisible).toBe(true)
-    expect(state.rightSidebarVisible).toBe(true)
+    expect(state.sidebarVisible).toBe(true)
     expect(state.commandPaletteOpen).toBe(false)
     expect(state.preferencesOpen).toBe(false)
   })
 
-  it('toggles left sidebar visibility', () => {
-    const { toggleLeftSidebar } = useUIStore.getState()
+  it('toggles sidebar visibility', () => {
+    const { toggleSidebar } = useUIStore.getState()
 
-    toggleLeftSidebar()
-    expect(useUIStore.getState().leftSidebarVisible).toBe(false)
+    toggleSidebar()
+    expect(useUIStore.getState().sidebarVisible).toBe(false)
 
-    toggleLeftSidebar()
-    expect(useUIStore.getState().leftSidebarVisible).toBe(true)
+    toggleSidebar()
+    expect(useUIStore.getState().sidebarVisible).toBe(true)
   })
 
-  it('sets left sidebar visibility directly', () => {
-    const { setLeftSidebarVisible } = useUIStore.getState()
+  it('sets sidebar visibility directly', () => {
+    const { setSidebarVisible } = useUIStore.getState()
 
-    setLeftSidebarVisible(false)
+    setSidebarVisible(false)
+    expect(useUIStore.getState().sidebarVisible).toBe(false)
+
+    setSidebarVisible(true)
+    expect(useUIStore.getState().sidebarVisible).toBe(true)
+  })
+
+  it('keeps the legacy leftSidebarVisible alias in sync', () => {
+    useUIStore.getState().setSidebarVisible(false)
     expect(useUIStore.getState().leftSidebarVisible).toBe(false)
-
-    setLeftSidebarVisible(true)
-    expect(useUIStore.getState().leftSidebarVisible).toBe(true)
+    useUIStore.getState().setLeftSidebarVisible(true)
+    expect(useUIStore.getState().sidebarVisible).toBe(true)
   })
 
   it('toggles preferences dialog', () => {

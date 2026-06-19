@@ -3,10 +3,10 @@ export { TitleBar } from './TitleBar'
 
 // Shared content components
 export {
-  TitleBarContent,
   TitleBarLeftActions,
   TitleBarRightActions,
   TitleBarTitle,
+  CommandPaletteHint,
 } from './TitleBarContent'
 
 // Platform-specific components (generally not needed externally)

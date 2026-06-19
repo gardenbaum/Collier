@@ -5,9 +5,8 @@ import {
   ResizableHandle,
 } from '@/components/ui/resizable'
 import { TitleBar } from '@/components/titlebar/TitleBar'
-import { LeftSideBar } from './LeftSideBar'
-import { RightSideBar } from './RightSideBar'
-import { MainWindowContent } from './MainWindowContent'
+import { Sidebar } from '@/components/layout/Sidebar'
+import { MainWindowContent } from '@/components/layout/MainWindowContent'
 import { CommandPalette } from '@/components/command-palette/CommandPalette'
 import { PreferencesDialog } from '@/components/preferences/PreferencesDialog'
 import { Toaster } from 'sonner'
@@ -20,77 +19,48 @@ import { logger } from '@/lib/logger'
 import { cn } from '@/lib/utils'
 
 /**
- * Layout sizing configuration for resizable panels.
- * All values are percentages of total width.
- * Sidebar defaults + main default must equal 100.
+ * Layout sizing configuration for the 2-panel app shell.
+ * All values are percentages of total width. Sidebar default + main
+ * default must sum to 100.
  */
 const LAYOUT = {
-  leftSidebar: { default: 20, min: 15, max: 40 },
-  rightSidebar: { default: 20, min: 15, max: 40 },
-  main: { min: 30 },
+  sidebar: { default: 20, min: 17, max: 30 },
+  main: { min: 40 },
 } as const
 
-// Main content default is calculated to ensure totals sum to 100%
-const MAIN_CONTENT_DEFAULT =
-  100 - LAYOUT.leftSidebar.default - LAYOUT.rightSidebar.default
+const MAIN_DEFAULT = 100 - LAYOUT.sidebar.default
 
 export function MainWindow() {
   const { theme } = useTheme()
-  const leftSidebarVisible = useUIStore(state => state.leftSidebarVisible)
-  const rightSidebarVisible = useUIStore(state => state.rightSidebarVisible)
-  const repoPath = useWorkspaceStore(state => state.repoPath)
-
-  // Set up global event listeners (keyboard shortcuts, etc.)
+  const sidebarVisible = useUIStore(s => s.sidebarVisible)
+  const repoPath = useWorkspaceStore(s => s.repoPath)
   useMainWindowEventListeners()
-
-  // Tell the Rust watcher to (re)attach to the active repo. The
-  // FE side's `useBeadsInvalidation` filter requires the event
-  // payload to carry the right `repo_path`; this IPC is the only
-  // path that re-roots the watcher mid-session.
   useEffect(() => {
     if (repoPath === null) return
-    commands.attachWatchRepo(repoPath).catch(err => {
-      logger.warn('Failed to attach watcher', { err })
-    })
+    commands
+      .attachWatchRepo(repoPath)
+      .catch(err => logger.warn('Failed to attach watcher', { err }))
   }, [repoPath])
-  return (
-    <div className="flex h-screen w-full flex-col overflow-hidden rounded-[var(--app-corner-radius)] bg-background">
-      <TitleBar />
 
+  return (
+    <div className="flex h-screen w-full flex-col overflow-hidden rounded-[var(--app-corner-radius)] bg-[color:var(--background)]">
+      <TitleBar />
       <div className="flex flex-1 overflow-hidden">
         <ResizablePanelGroup direction="horizontal">
           <ResizablePanel
-            defaultSize={LAYOUT.leftSidebar.default}
-            minSize={LAYOUT.leftSidebar.min}
-            maxSize={LAYOUT.leftSidebar.max}
-            className={cn(!leftSidebarVisible && 'hidden')}
+            defaultSize={LAYOUT.sidebar.default}
+            minSize={LAYOUT.sidebar.min}
+            maxSize={LAYOUT.sidebar.max}
+            className={cn(!sidebarVisible && 'hidden')}
           >
-            <LeftSideBar />
+            <Sidebar />
           </ResizablePanel>
-
-          <ResizableHandle className={cn(!leftSidebarVisible && 'hidden')} />
-
-          <ResizablePanel
-            defaultSize={MAIN_CONTENT_DEFAULT}
-            minSize={LAYOUT.main.min}
-          >
+          <ResizableHandle className={cn(!sidebarVisible && 'hidden')} />
+          <ResizablePanel defaultSize={MAIN_DEFAULT} minSize={LAYOUT.main.min}>
             <MainWindowContent />
-          </ResizablePanel>
-
-          <ResizableHandle className={cn(!rightSidebarVisible && 'hidden')} />
-
-          <ResizablePanel
-            defaultSize={LAYOUT.rightSidebar.default}
-            minSize={LAYOUT.rightSidebar.min}
-            maxSize={LAYOUT.rightSidebar.max}
-            className={cn(!rightSidebarVisible && 'hidden')}
-          >
-            <RightSideBar />
           </ResizablePanel>
         </ResizablePanelGroup>
       </div>
-
-      {/* Global UI Components (hidden until triggered) */}
       <CommandPalette />
       <PreferencesDialog />
       <Toaster
@@ -102,12 +72,12 @@ export function MainWindow() {
         toastOptions={{
           classNames: {
             toast:
-              'group toast group-[.toaster]:bg-background group-[.toaster]:text-foreground group-[.toaster]:border-border group-[.toaster]:shadow-lg',
-            description: 'group-[.toast]:text-muted-foreground',
+              'group toast group-[.toaster]:bg-[color:var(--popover)] group-[.toaster]:backdrop-blur-xl group-[.toaster]:text-[color:var(--popover-foreground)] group-[.toaster]:border group-[.toaster]:border-[color:var(--border)] group-[.toaster]:shadow-lg',
+            description: 'group-[.toast]:text-[color:var(--muted-foreground)]',
             actionButton:
-              'group-[.toast]:bg-primary group-[.toast]:text-primary-foreground',
+              'group-[.toast]:bg-[color:var(--primary)] group-[.toast]:text-[color:var(--primary-foreground)]',
             cancelButton:
-              'group-[.toast]:bg-muted group-[.toast]:text-muted-foreground',
+              'group-[.toast]:bg-[color:var(--muted)] group-[.toast]:text-[color:var(--muted-foreground)]',
           },
         }}
       />
