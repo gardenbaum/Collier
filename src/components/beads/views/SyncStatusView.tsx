@@ -1,74 +1,29 @@
 /**
  * SyncStatusView — read-only sync status (Dolt vs version control).
  *
- * v1 ships as a `Coming in v1.1` empty state with copyable CLI
- * commands (`bd vc status --json`, `bd dolt status --json`). v2 will
- * issue both in parallel and render each as a JSON card.
+ * v1 ships as an empty state. v2 will issue both `bd vc status` and
+ * `bd dolt status` in parallel and render each as a JSON card.
  */
-import { useTranslation } from 'react-i18next'
-import { Button } from '@/components/ui/button'
-import { useCopyAndFlag } from '@/hooks/useCopyAndFlag'
+import { Cloud } from 'lucide-react'
+import { EmptyState } from '@/components/atoms'
 
 export interface SyncStatusViewProps {
   /** Repository root (unused for v1). */
   cwd: string
 }
 
-const CLI_COMMANDS = ['bd vc status --json', 'bd dolt status --json'] as const
-
 export function SyncStatusView({ cwd: _cwd }: SyncStatusViewProps) {
-  const { t } = useTranslation()
-  const { flag, copy } = useCopyAndFlag<number>()
-
-  const onCopy = (idx: number) => {
-    const cmd = CLI_COMMANDS[idx]
-    if (cmd) void copy(cmd, idx)
-  }
-
   return (
-    <section
-      data-testid="sync-view"
-      className="flex h-full flex-col gap-3 p-4 text-mono-1"
-    >
-      <header>
-        <h2 className="m-0 text-lg font-bold">
-          {t('beads.views.sync.title', 'Sync status')}
-        </h2>
-      </header>
+    <section data-testid="sync-view" className="flex h-full flex-col">
       <div
         data-testid="sync-empty"
-        className="flex flex-1 flex-col items-center justify-center gap-3 text-center"
+        className="flex flex-1 items-center justify-center"
       >
-        <p className="m-0 max-w-md text-sm text-mono-2">
-          {t(
-            'beads.views.sync.comingSoon',
-            'Coming in v1.1 — use the CLI for now'
-          )}
-        </p>
-        <div className="flex flex-col gap-2">
-          {CLI_COMMANDS.map((cmd, idx) => (
-            <div
-              key={cmd}
-              className="flex items-center gap-2"
-              data-testid={`sync-cli-row-${idx}`}
-            >
-              <code className="border border-mono-3 bg-mono-9 px-3 py-1 font-mono text-xs text-mono-0">
-                {cmd}
-              </code>
-              <Button
-                type="button"
-                data-testid={`sync-copy-command-${idx}`}
-                onClick={() => onCopy(idx)}
-                variant="outline"
-                size="sm"
-              >
-                {flag === idx
-                  ? t('beads.views.sync.copied', 'Copied!')
-                  : t('beads.views.sync.copyCommand', 'Copy CLI command')}
-              </Button>
-            </div>
-          ))}
-        </div>
+        <EmptyState
+          icon={Cloud}
+          title="Not yet synced"
+          body="Run `bd sync` to push local state."
+        />
       </div>
     </section>
   )

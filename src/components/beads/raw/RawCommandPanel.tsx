@@ -11,11 +11,13 @@
  * during render (the React Compiler / `react-hooks/refs` lint
  * rejects ref-during-render).
  */
-import { useState, useRef, type CSSProperties, type FormEvent } from 'react'
+import { useState, useRef, type FormEvent } from 'react'
+import { Terminal } from 'lucide-react'
 import { useMutation } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { commands } from '@/lib/tauri-bindings'
 import { logger } from '@/lib/logger'
+import { EmptyState } from '@/components/atoms'
 import { OutputRenderer } from './OutputRenderer'
 
 const HISTORY_MAX = 50
@@ -25,47 +27,16 @@ interface RawCommandPanelProps {
   initialCommand?: string
 }
 
-const containerStyle: CSSProperties = {
-  display: 'flex',
-  flexDirection: 'column',
-  gap: '12px',
-  padding: '16px',
-  background: 'var(--background)',
-  border: '1px solid var(--border)',
-}
-const formStyle: CSSProperties = {
-  display: 'flex',
-  gap: '8px',
-  alignItems: 'center',
-}
-const inputStyle: CSSProperties = {
-  flex: 1,
-  fontFamily: 'ui-monospace, SFMono-Regular, monospace',
-  fontSize: '13px',
-  padding: '6px 8px',
-  border: '1px solid var(--border)',
-  background: 'var(--background)',
-  color: 'var(--foreground)',
-}
-const buttonStyle: CSSProperties = {
-  fontFamily: 'Inter, system-ui, sans-serif',
-  fontSize: '13px',
-  padding: '6px 12px',
-  border: '1px solid var(--foreground)',
-  background: 'var(--foreground)',
-  color: 'var(--background)',
-  cursor: 'pointer',
-}
-const buttonDisabledStyle: CSSProperties = {
-  ...buttonStyle,
-  opacity: 0.5,
-  cursor: 'not-allowed',
-}
-const hintStyle: CSSProperties = {
-  fontFamily: 'Inter, system-ui, sans-serif',
-  fontSize: '11px',
-  color: 'var(--muted-foreground)',
-}
+const containerClass =
+  'flex flex-col gap-3 p-4 bg-[color:var(--background)] border border-[color:var(--border)] rounded-[var(--radius)]'
+const formClass = 'flex gap-2 items-center'
+const inputClass =
+  'flex-1 h-9 px-3 rounded-[var(--radius)] bg-[color:var(--secondary)] border border-[color:var(--border)] font-mono text-[12px] text-[color:var(--foreground)] placeholder:text-[color:var(--muted-foreground)] focus:outline-none focus:ring-2 focus:ring-[color:var(--ring)] focus:ring-offset-2 focus:ring-offset-[color:var(--background)]'
+const submitClass =
+  'h-9 px-4 rounded-[var(--radius)] bg-[color:var(--primary)] text-[color:var(--primary-foreground)] hover:bg-[color:var(--accent)] cursor-pointer font-sans text-[13px] font-semibold disabled:opacity-50 disabled:cursor-not-allowed'
+const hintClass = 'font-sans text-[11px] text-[color:var(--muted-foreground)]'
+const outputClass =
+  'bg-[color:var(--card)] border-l border-[color:var(--border)] font-mono text-[12px] p-3 overflow-y-auto rounded-[var(--radius)] min-h-[120px]'
 
 /**
  * `commands.runBdCommand` returns a `Result<T, BdError>`. The
@@ -98,9 +69,6 @@ export function RawCommandPanel({ cwd, initialCommand }: RawCommandPanelProps) {
   const [input, setInput] = useState(initialCommand ?? '')
   const [history, setHistory] = useState<string[]>([])
 
-  // `lastInvoked` is a ref because it's an out-of-band "what did the
-  // user just submit" signal for tests; reading it during render
-  // is not a path we need.
   const lastInvokedRef = useRef<string[]>([])
 
   const runMutation = useMutation({
@@ -126,16 +94,19 @@ export function RawCommandPanel({ cwd, initialCommand }: RawCommandPanelProps) {
     runMutation.mutate(args)
   }
 
+  const showEmpty =
+    runMutation.status === 'idle' && !runMutation.data && !runMutation.error
+
   return (
-    <section data-testid="raw-command-panel" style={containerStyle}>
+    <section data-testid="raw-command-panel" className={containerClass}>
       <form
         onSubmit={handleSubmit}
-        style={formStyle}
+        className={formClass}
         aria-label="Run bd command"
       >
         <input
           data-testid="raw-command-input"
-          style={inputStyle}
+          className={inputClass}
           type="text"
           value={input}
           onChange={e => setInput(e.target.value)}
@@ -147,25 +118,29 @@ export function RawCommandPanel({ cwd, initialCommand }: RawCommandPanelProps) {
           data-testid="raw-command-submit"
           type="submit"
           disabled={runMutation.isPending || input.trim().length === 0}
-          style={
-            runMutation.isPending || input.trim().length === 0
-              ? buttonDisabledStyle
-              : buttonStyle
-          }
+          className={submitClass}
         >
           {runMutation.isPending ? 'Running…' : 'Run'}
         </button>
       </form>
 
-      <div data-testid="raw-command-history" style={hintStyle}>
+      <div data-testid="raw-command-history" className={hintClass}>
         History: {history.length}
       </div>
 
-      <div data-testid="raw-command-output">
-        <OutputRenderer
-          value={runMutation.data ?? null}
-          error={runMutation.error}
-        />
+      <div data-testid="raw-command-output" className={outputClass}>
+        {showEmpty ? (
+          <EmptyState
+            icon={Terminal}
+            title="No command run"
+            body="Type a `bd` command above to start."
+          />
+        ) : (
+          <OutputRenderer
+            value={runMutation.data ?? null}
+            error={runMutation.error}
+          />
+        )}
       </div>
     </section>
   )
