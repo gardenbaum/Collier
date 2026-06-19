@@ -1,12 +1,14 @@
 import { useTranslation } from 'react-i18next'
 import { cn } from '@/lib/utils'
 import { usePlatform, type AppPlatform } from '@/hooks/use-platform'
+import { useWorkspaceStore } from '@/store/workspace-store'
 import { MacOSWindowControls } from './MacOSWindowControls'
 import { WindowsWindowControls } from './WindowsWindowControls'
 import {
   TitleBarLeftActions,
   TitleBarRightActions,
   TitleBarTitle,
+  CommandPaletteHint,
 } from './TitleBarContent'
 import { LinuxTitleBar } from './LinuxTitleBar'
 
@@ -32,6 +34,7 @@ interface TitleBarProps {
  */
 export function TitleBar({ className, title, forcePlatform }: TitleBarProps) {
   const { t } = useTranslation()
+  const repoPath = useWorkspaceStore(s => s.repoPath)
   const displayTitle = title ?? t('titlebar.default')
   const detectedPlatform = usePlatform()
 
@@ -41,7 +44,13 @@ export function TitleBar({ className, title, forcePlatform }: TitleBarProps) {
 
   // Linux uses native decorations, so render just the toolbar
   if (platform === 'linux') {
-    return <LinuxTitleBar className={className} title={displayTitle} />
+    return (
+      <LinuxTitleBar
+        className={className}
+        title={displayTitle}
+        repoPath={repoPath}
+      />
+    )
   }
 
   // Windows: controls on the right
@@ -50,7 +59,7 @@ export function TitleBar({ className, title, forcePlatform }: TitleBarProps) {
       <div
         data-tauri-drag-region
         className={cn(
-          'relative flex h-8 w-full shrink-0 items-center justify-between border-b bg-background',
+          'relative flex h-[38px] w-full shrink-0 items-center justify-between border-b border-[color:var(--border)] bg-[color:var(--sidebar)]',
           className
         )}
       >
@@ -60,10 +69,11 @@ export function TitleBar({ className, title, forcePlatform }: TitleBarProps) {
         </div>
 
         {/* Center - Title */}
-        <TitleBarTitle title={displayTitle} />
+        <TitleBarTitle title={displayTitle} repoPath={repoPath} />
 
         {/* Right side - Actions + Window Controls */}
-        <div className="flex items-center">
+        <div className="flex items-center gap-1 pr-2">
+          <CommandPaletteHint />
           <TitleBarRightActions />
           <WindowsWindowControls />
         </div>
@@ -76,7 +86,7 @@ export function TitleBar({ className, title, forcePlatform }: TitleBarProps) {
     <div
       data-tauri-drag-region
       className={cn(
-        'relative flex h-8 w-full shrink-0 items-center justify-between border-b bg-background',
+        'relative flex h-[38px] w-full shrink-0 items-center justify-between border-b border-[color:var(--border)] bg-[color:var(--sidebar)] backdrop-blur-xl',
         className
       )}
     >
@@ -87,10 +97,11 @@ export function TitleBar({ className, title, forcePlatform }: TitleBarProps) {
       </div>
 
       {/* Center - Title */}
-      <TitleBarTitle title={displayTitle} />
+      <TitleBarTitle title={displayTitle} repoPath={repoPath} />
 
       {/* Right side - Actions */}
-      <div className="flex items-center pr-2">
+      <div className="flex items-center gap-1 pr-2">
+        <CommandPaletteHint />
         <TitleBarRightActions />
       </div>
     </div>

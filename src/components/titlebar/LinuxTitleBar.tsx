@@ -3,11 +3,13 @@ import {
   TitleBarLeftActions,
   TitleBarRightActions,
   TitleBarTitle,
+  CommandPaletteHint,
 } from './TitleBarContent'
 
 interface LinuxTitleBarProps {
   className?: string
   title?: string
+  repoPath?: string | null
 }
 
 /**
@@ -20,11 +22,15 @@ interface LinuxTitleBarProps {
  * The toolbar sits below the native title bar and contains app-specific
  * toolbar buttons and the title.
  */
-export function LinuxTitleBar({ className, title }: LinuxTitleBarProps) {
+export function LinuxTitleBar({
+  className,
+  title,
+  repoPath,
+}: LinuxTitleBarProps) {
   return (
     <div
       className={cn(
-        'relative flex h-8 w-full shrink-0 items-center justify-between border-b bg-background',
+        'relative flex h-[38px] w-full shrink-0 items-center justify-between border-b border-[color:var(--border)] bg-[color:var(--sidebar)]',
         className
       )}
     >
@@ -34,10 +40,11 @@ export function LinuxTitleBar({ className, title }: LinuxTitleBarProps) {
       </div>
 
       {/* Center - Title */}
-      <TitleBarTitle title={title} />
+      <TitleBarTitle title={title} repoPath={repoPath} />
 
       {/* Right side - Actions */}
-      <div className="flex items-center pr-2">
+      <div className="flex items-center gap-1 pr-2">
+        <CommandPaletteHint />
         <TitleBarRightActions />
       </div>
     </div>
