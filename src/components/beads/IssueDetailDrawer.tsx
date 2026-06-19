@@ -1,21 +1,3 @@
-/**
- * IssueDetailDrawer — slide-in drawer that wraps `IssueDetailView`.
- *
- * Renders as a fixed-position overlay so the list behind stays in place
- * and resizable. Closes on backdrop click or on the view's own close
- * button. The drawer is mounted only when `issueId` is non-null, so
- * closing is just "unmount"; no DOM clutter when no issue is open.
- *
- * Accessibility:
- *  - `role="dialog" aria-modal="true"` on the panel.
- *  - On open, focus moves to the panel header's close button.
- *  - Tab / Shift+Tab are trapped between the first and last focusable
- *    elements inside the panel so a keyboard user can't escape into the
- *    dimmed list behind the drawer.
- *  - On close, focus is restored to the element that triggered the open
- *    (typically the row in the list view that was clicked).
- *  - Escape closes the drawer (macOS / Windows modal sheet convention).
- */
 import { useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { X } from 'lucide-react'
@@ -43,23 +25,14 @@ export function IssueDetailDrawer({
   const closeButtonRef = useRef<HTMLButtonElement>(null)
   const previouslyFocusedRef = useRef<HTMLElement | null>(null)
 
-  // Open: capture the previously-focused element (likely the row the
-  // user just clicked) and move focus to the close button. The user
-  // can Tab forward into the issue body or Shift+Tab back to the close
-  // button. Close: restore focus to that element.
   useEffect(() => {
     previouslyFocusedRef.current = document.activeElement as HTMLElement | null
     closeButtonRef.current?.focus()
     return () => {
-      // On unmount only — not on every effect — restore focus. This
-      // runs when the parent sets `selectedIssueId = null` or
-      // `repoPath = null`, both of which unmount this component.
       previouslyFocusedRef.current?.focus()
     }
   }, [])
 
-  // Escape closes (matches the macOS / Windows modal sheet convention).
-  // Also handles Tab / Shift+Tab to keep focus inside the panel.
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
@@ -92,21 +65,25 @@ export function IssueDetailDrawer({
 
   return (
     <div
-      className="fixed inset-0 z-40 flex justify-end bg-black/40"
+      className="fixed inset-0 z-40 flex justify-end bg-black/40 animate-in fade-in-0 duration-200"
       onClick={onClose}
       data-testid="issue-detail-drawer"
     >
       <div
         ref={panelRef}
-        className="h-full w-full max-w-2xl overflow-y-auto border-l bg-background shadow-xl"
+        className="h-full w-full max-w-[480px] overflow-y-auto border-l border-[color:var(--border)] bg-[color:var(--drawer)] text-[color:var(--foreground)]"
+        style={{
+          backgroundColor: 'rgba(20, 20, 20, 0.92)',
+          backdropFilter: 'blur(24px)',
+        }}
         onClick={e => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
         aria-label={t('beads.issueDetail.title', 'Issue details')}
         tabIndex={-1}
       >
-        <div className="sticky top-0 z-10 flex items-center justify-between border-b bg-background px-4 py-2">
-          <h2 className="text-sm font-semibold">
+        <div className="sticky top-0 z-10 flex items-center justify-between px-4 h-10 border-b border-[color:var(--border)] bg-[color:var(--card)]">
+          <h2 className="text-[13px] font-semibold">
             {t('beads.issueDetail.title', 'Issue details')}
           </h2>
           <Button
