@@ -99,15 +99,16 @@ Event-Driven Bridge
 
 ```
 MainWindow (Top-level orchestrator)
-├── TitleBar (Window controls + toolbar)
-├── LeftSidebar (Collapsible panel)
-├── MainWindowContent (Primary content area)
-├── RightSidebar (Collapsible panel)
+├── TitleBar (Monogram + workspace breadcrumb + ⌘K hint)
+├── Sidebar (Consolidated rail: VIEWS + FILTERS + LABELS)
+├── MainWindowContent (Page header + active view)
 └── Global Overlays
-    ├── PreferencesDialog (Settings)
-    ├── CommandPalette (Cmd+K)
+    ├── PreferencesDialog (Icon-strip nav + 3 panes)
+    ├── CommandPalette (Cmd+K — Monogram + wordmark header)
     └── Toaster (Notifications)
 ```
+
+> **Consolidated-sidebar pattern:** the main window is a 2-panel shell (`Sidebar` + `MainWindowContent`) inside one horizontal `ResizablePanelGroup`. The Sidebar hosts three `<SectionLabel>`-separated sections (VIEWS, FILTERS, LABELS) in a single rail. This replaces the older 3-panel layout (left sidebar / center / right sidebar). See [ui-patterns.md](./ui-patterns.md#consolidated-sidebar-1-rail-3-sections) for details.
 
 ## File Organization
 
@@ -115,17 +116,20 @@ MainWindow (Top-level orchestrator)
 locales/                  # Translation JSON files
 src/
 ├── components/
-│   ├── layout/          # Layout components (MainWindow, sidebars)
+│   ├── atoms/           # Brand-aware building blocks (Monogram, StatusDot, …)
+│   ├── layout/          # Layout components (MainWindow, Sidebar, MainWindowContent)
 │   ├── command-palette/ # Command palette system
 │   ├── preferences/     # Preferences dialog system
-│   └── ui/              # Shadcn UI components
+│   └── ui/              # Shadcn UI components (mechanically overridden — see ui-patterns.md)
 ├── hooks/               # Custom React hooks
 ├── i18n/                # Internationalization config
 ├── lib/
 │   ├── commands/        # Command system implementation
+│   ├── design-tokens.ts # TS design tokens (palette, radius, motion, vibrancy, shadow)
 │   └── menu.ts          # Native menu builder with i18n
 ├── services/            # TanStack Query + Tauri integration
 ├── store/               # Zustand stores
+├── theme-variables.css  # CSS variables (dark default, .light opt-in, @supports vibrancy)
 └── types/               # Shared TypeScript types
 ```
 
