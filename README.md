@@ -91,6 +91,12 @@ This template is designed to work well with AI coding agents like Claude Code:
 
 See **[Using This Template](docs/USING_THIS_TEMPLATE.md)** for setup instructions and workflow guidance.
 
+### Prerequisites
+
+- **[bun](https://bun.sh)** - JavaScript runtime and package manager
+- **Rust toolchain** (stable) - install via [rustup.rs](https://rustup.rs/); the channel is pinned in `rust-toolchain.toml`
+- **Platform build dependencies** - see the [Tauri prerequisites](https://tauri.app/start/prerequisites/) for what your OS needs (Xcode CLT, MSVC Build Tools, webkit2gtk, etc.)
+
 ### Quick Start
 
 ```bash
