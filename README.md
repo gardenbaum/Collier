@@ -89,25 +89,22 @@ This template is designed to work well with AI coding agents like Claude Code:
 
 ## Getting Started
 
-See **[Using This Template](docs/USING_THIS_TEMPLATE.md)** for setup instructions and workflow guidance.
-
 ### Prerequisites
 
 - **[bun](https://bun.sh)** - JavaScript runtime and package manager
 - **Rust toolchain** (stable) - install via [rustup.rs](https://rustup.rs/); the channel is pinned in `rust-toolchain.toml`
 - **Platform build dependencies** - see the [Tauri prerequisites](https://tauri.app/start/prerequisites/) for what your OS needs (Xcode CLT, MSVC Build Tools, webkit2gtk, etc.)
 
-### Quick Start
+### Install & Run
 
 ```bash
-# Prerequisites: Node.js 18+, Rust (latest stable)
-# See https://tauri.app/start/prerequisites/ for platform-specific deps
-
 git clone https://github.com/gardenbaum/Collier.git
 cd Collier
 bun install
 bun run dev
 ```
+
+For template setup and workflow guidance, see **[Using This Template](docs/USING_THIS_TEMPLATE.md)**.
 
 ## Documentation
 
