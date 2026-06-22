@@ -162,10 +162,9 @@ pub fn run() {
             // missing `.beads/` directory is followed by a 2s poll
             // that re-attaches once `bd init` lands.
             let watcher_state = beads::watcher::WatcherState::new();
-            if let Err(e) = watcher_state.attach(
-                app.handle().clone(),
-                std::path::PathBuf::from("."),
-            ) {
+            if let Err(e) =
+                watcher_state.attach(app.handle().clone(), std::path::PathBuf::from("."))
+            {
                 log::error!("Failed to start beads watcher: {e}");
             }
             app.manage(watcher_state);

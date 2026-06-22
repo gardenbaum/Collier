@@ -158,7 +158,8 @@ pub async fn bd_delete(
     // `{ deleted, dependencies_removed, references_updated, … }`
     // summary; the frontend refetches the list and the deleted id
     // is gone.
-    let _output = runner::run_bd_locked(&write_lock, &["delete", &id, "--force", "--json"], &path).await?;
+    let _output =
+        runner::run_bd_locked(&write_lock, &["delete", &id, "--force", "--json"], &path).await?;
     Ok(())
 }
 
@@ -240,7 +241,12 @@ pub async fn bd_dep_remove(
     write_lock: tauri::State<'_, crate::beads::lock::WriteLock>,
 ) -> BdResult<()> {
     let path = PathBuf::from(&cwd);
-    let _output = runner::run_bd_locked(&write_lock, &["dep", "remove", &from_id, &to_id, "--json"], &path).await?;
+    let _output = runner::run_bd_locked(
+        &write_lock,
+        &["dep", "remove", &from_id, &to_id, "--json"],
+        &path,
+    )
+    .await?;
     Ok(())
 }
 
@@ -285,11 +291,7 @@ pub async fn bd_dep_tree(cwd: String, id: String) -> BdResult<Vec<Dependency>> {
 /// integration point doesn't have to change.
 #[tauri::command]
 #[specta::specta]
-pub async fn bd_dep_check_cycle(
-    _cwd: String,
-    _from_id: String,
-    _to_id: String,
-) -> BdResult<bool> {
+pub async fn bd_dep_check_cycle(_cwd: String, _from_id: String, _to_id: String) -> BdResult<bool> {
     Ok(false)
 }
 
@@ -501,9 +503,7 @@ pub async fn bd_label_propagate(
 /// `{ issue_id, label, status }` rows on success and
 /// `{ error }` on mid-command failure (e.g. parent has no
 /// children with `--ignore-missing` off).
-fn parse_label_propagate_rows(
-    value: serde_json::Value,
-) -> BdResult<Vec<serde_json::Value>> {
+fn parse_label_propagate_rows(value: serde_json::Value) -> BdResult<Vec<serde_json::Value>> {
     let data = value.get("data").ok_or_else(|| BdError::ParseError {
         message: "bd label propagate: missing 'data' field in JSON envelope".to_string(),
     })?;
@@ -590,11 +590,11 @@ fn parse_issue_or_array(value: Value, cmd_name: &str) -> BdResult<Issue> {
 // to handle).
 fn parse_dep_vec(value: Value, cmd_name: &str) -> BdResult<Vec<Dependency>> {
     if let Some(arr) = value.as_array() {
-        return serde_json::from_value::<Vec<Dependency>>(Value::Array(arr.clone())).map_err(
-            |e| BdError::ParseError {
+        return serde_json::from_value::<Vec<Dependency>>(Value::Array(arr.clone())).map_err(|e| {
+            BdError::ParseError {
                 message: format!("{cmd_name} failed to parse deps: {e}"),
-            },
-        );
+            }
+        });
     }
     let raw: Value = value
         .get("data")
@@ -1417,9 +1417,7 @@ mod tests {
     /// (the CLI is order-sensitive).
     #[test]
     fn test_label_add_argv_shape() {
-        let argv: Vec<&str> = vec![
-            "label", "add", "beads-99", "priority-high", "--json",
-        ];
+        let argv: Vec<&str> = vec!["label", "add", "beads-99", "priority-high", "--json"];
         assert_eq!(
             argv,
             vec!["label", "add", "beads-99", "priority-high", "--json"]
@@ -1439,9 +1437,7 @@ mod tests {
         // print a one-liner) or `Json` (1.0.5 emits JSON). Reaching
         // `Ok(())` covers both. The runner is the source of truth
         // for the exit code; the function just drops the body.
-        let success_outcomes = [
-            r#"[{"issue_id":"beads-99","label":"bug","status":"added"}]"#,
-        ];
+        let success_outcomes = [r#"[{"issue_id":"beads-99","label":"bug","status":"added"}]"#];
         for out in success_outcomes {
             assert!(!out.is_empty());
         }
@@ -1457,9 +1453,7 @@ mod tests {
     /// id and label is caught here.
     #[test]
     fn test_label_remove_argv_shape() {
-        let argv: Vec<&str> = vec![
-            "label", "remove", "beads-99", "priority-high", "--json",
-        ];
+        let argv: Vec<&str> = vec!["label", "remove", "beads-99", "priority-high", "--json"];
         assert_eq!(
             argv,
             vec!["label", "remove", "beads-99", "priority-high", "--json"]
@@ -1472,12 +1466,8 @@ mod tests {
     /// maintainer is forced to look at both call sites.
     #[test]
     fn test_label_remove_argv_is_symmetric_with_add() {
-        let add: Vec<&str> = vec![
-            "label", "add", "beads-99", "bug", "--json",
-        ];
-        let remove: Vec<&str> = vec![
-            "label", "remove", "beads-99", "bug", "--json",
-        ];
+        let add: Vec<&str> = vec!["label", "add", "beads-99", "bug", "--json"];
+        let remove: Vec<&str> = vec!["label", "remove", "beads-99", "bug", "--json"];
         assert_eq!(add.len(), remove.len());
         assert_eq!(add[2..add.len() - 1], remove[2..remove.len() - 1]);
         assert_eq!(add[add.len() - 1], remove[remove.len() - 1]);
@@ -1489,9 +1479,7 @@ mod tests {
     /// disappears from the chip list.
     #[test]
     fn test_label_remove_any_output_is_success() {
-        let success_outcomes = [
-            r#"[{"issue_id":"beads-99","label":"bug","status":"removed"}]"#,
-        ];
+        let success_outcomes = [r#"[{"issue_id":"beads-99","label":"bug","status":"removed"}]"#];
         for out in success_outcomes {
             assert!(!out.is_empty());
         }
@@ -1617,18 +1605,10 @@ mod tests {
     /// swapping parent and label is caught here.
     #[test]
     fn test_label_propagate_argv_shape() {
-        let argv: Vec<&str> = vec![
-            "label", "propagate", "beads-99", "priority-high", "--json",
-        ];
+        let argv: Vec<&str> = vec!["label", "propagate", "beads-99", "priority-high", "--json"];
         assert_eq!(
             argv,
-            vec![
-                "label",
-                "propagate",
-                "beads-99",
-                "priority-high",
-                "--json"
-            ]
+            vec!["label", "propagate", "beads-99", "priority-high", "--json"]
         );
     }
     /// Same envelope handling as `test_label_list_all_error_envelope`:

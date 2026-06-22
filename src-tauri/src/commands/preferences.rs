@@ -89,7 +89,6 @@ pub fn load_quick_pane_shortcut(app: &AppHandle) -> Option<String> {
     prefs.quick_pane_shortcut
 }
 
-
 /// Loads user preferences from disk.
 /// Returns default preferences if the file doesn't exist.
 #[tauri::command]
@@ -97,7 +96,8 @@ pub fn load_quick_pane_shortcut(app: &AppHandle) -> Option<String> {
 pub async fn load_preferences(app: AppHandle) -> BdResult<AppPreferences> {
     log::debug!("Loading preferences from disk");
     let prefs_path = get_preferences_path(&app).map_err(|e| BdError::IoError { message: e })?;
-    let preferences = load_preferences_inner(&prefs_path).map_err(|e| BdError::IoError { message: e })?;
+    let preferences =
+        load_preferences_inner(&prefs_path).map_err(|e| BdError::IoError { message: e })?;
     log::info!("Successfully loaded preferences");
     Ok(preferences)
 }
@@ -110,7 +110,8 @@ pub async fn save_preferences(app: AppHandle, preferences: AppPreferences) -> Bd
     validate_theme(&preferences.theme).map_err(|e| BdError::ParseError { message: e })?;
     log::debug!("Saving preferences to disk: {preferences:?}");
     let prefs_path = get_preferences_path(&app).map_err(|e| BdError::IoError { message: e })?;
-    save_preferences_inner(&prefs_path, &preferences).map_err(|e| BdError::IoError { message: e })?;
+    save_preferences_inner(&prefs_path, &preferences)
+        .map_err(|e| BdError::IoError { message: e })?;
     log::info!("Successfully saved preferences to {prefs_path:?}");
     Ok(())
 }

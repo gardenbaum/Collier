@@ -192,7 +192,10 @@ fn schedule_retry(app: AppHandle, repo_path: PathBuf, state: WatcherState) {
                 repo_path.display()
             );
             if let Err(e) = state.attach(app.clone(), repo_path.clone()) {
-                log::error!("Failed to re-attach watcher for {}: {e}", repo_path.display());
+                log::error!(
+                    "Failed to re-attach watcher for {}: {e}",
+                    repo_path.display()
+                );
             }
             return;
         }
