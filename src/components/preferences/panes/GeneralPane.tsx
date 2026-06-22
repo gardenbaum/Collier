@@ -128,10 +128,7 @@ export function GeneralPane() {
         title={t('preferences.common.dangerZone', 'Danger zone')}
       >
         <SettingsField
-          label={t(
-            'preferences.common.resetToDefaults',
-            'Reset to defaults'
-          )}
+          label={t('preferences.common.resetToDefaults', 'Reset to defaults')}
           description={t(
             'preferences.common.resetToDefaultsDescription',
             'Reset theme, language, shortcuts, and bd path to defaults.'

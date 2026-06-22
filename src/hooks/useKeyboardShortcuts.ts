@@ -19,7 +19,7 @@ import { useEffect } from 'react'
 
 export type ShortcutHandler = (e: KeyboardEvent) => void
 
-export type ShortcutMap = Record<string, ShortcutHandler>;
+export type ShortcutMap = Record<string, ShortcutHandler>
 
 const LEADER_TIMEOUT_MS = 1000
 

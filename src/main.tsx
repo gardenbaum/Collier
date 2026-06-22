@@ -20,7 +20,9 @@ document.documentElement.dir = rtlLanguages.includes(initialLng) ? 'rtl' : 'ltr'
 
 const rootElement = document.getElementById('root')
 if (rootElement === null) {
-  throw new Error('Collier could not mount: #root element is missing from index.html')
+  throw new Error(
+    'Collier could not mount: #root element is missing from index.html'
+  )
 }
 
 ReactDOM.createRoot(rootElement).render(
