@@ -102,7 +102,7 @@ fn parse_jsonl_content(content: &str) -> BdResult<JsonlResult> {
     }
 
     // Sort by created_at descending
-    issues.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+    issues.sort_by_key(|issue| std::cmp::Reverse(issue.created_at));
 
     Ok(JsonlResult {
         issues,
