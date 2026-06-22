@@ -3,9 +3,7 @@
     "tauri-mcp-server": {
       "type": "stdio",
       "command": "npx",
-      "args": [
-        "@hypothesi/tauri-mcp-server"
-      ],
+      "args": ["@hypothesi/tauri-mcp-server"],
       "env": {}
     }
   }
