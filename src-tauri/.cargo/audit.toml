@@ -1,0 +1,76 @@
+# cargo-audit configuration for Collier (src-tauri).
+#
+# Background: `cargo audit` distinguishes between *vulnerabilities* (which fail
+# the run with a non-zero exit) and *informational warnings* about
+# unmaintained/unsound/yanked crates (which are reported but do not fail by
+# default). Collier currently has zero vulnerability advisories; the 19
+# warnings listed below are all transitive dependencies pulled in by the
+# Tauri 2 GTK/Linux backend (muda -> gtk-rs) and by Tauri's proc-macro
+# toolchain. None of them expose a security issue we can remediate from
+# this repo -- the fixes land upstream when Tauri migrates off gtk-rs and
+# bumps proc-macro-error/paste. They are documented here so future audits
+# stay clean and the rationale is auditable.
+#
+# Each ignored ID below is grouped by category with a one-line justification.
+# Detailed reasoning lives in docs/SECURITY.md.
+
+[advisories]
+ignore = [
+  # gtk-rs GTK3 bindings -- unmaintained since 2024-03. Pulled in on Linux
+  # by muda -> gtk (the Tauri 2 dialog backend). Replaced by gtk4-rs upstream
+  # but Tauri 2 has not migrated. No security impact; replacement is an
+  # upstream Tauri concern.
+  "RUSTSEC-2024-0411", # gdkwayland-sys
+  "RUSTSEC-2024-0412", # gdk
+  "RUSTSEC-2024-0413", # atk
+  "RUSTSEC-2024-0414", # gdkx11-sys
+  "RUSTSEC-2024-0415", # gtk
+  "RUSTSEC-2024-0416", # atk-sys
+  "RUSTSEC-2024-0417", # gdkx11
+  "RUSTSEC-2024-0418", # gdk-sys
+  "RUSTSEC-2024-0419", # gtk3-macros
+  "RUSTSEC-2024-0420", # gtk-sys
+  # glib::VariantStrIter is unsound, but the affected Iterator/DoubleEndedIterator
+  # impls are not used by Collier (we never iterate a glib::Variant as a string).
+  # Pulled in on Linux by gtk-rs.
+  "RUSTSEC-2024-0429", # glib unsound
+
+  # bincode 1.3.3 -- unmaintained since 2025-12. Transitive via a Tauri
+  # internal dependency; Collier does not use bincode directly. Tracking
+  # upstream Tauri migration to bincode 2.
+  "RUSTSEC-2025-0141", # bincode
+
+  # proc-macro-error 1.0.4 -- unmaintained. Pulled in by proc-macro-error2
+  # via the Tauri proc-macro stack. No runtime impact; build-time only.
+  "RUSTSEC-2024-0370",
+
+  # paste 1.0.15 -- unmaintained. Procedural macro helper for `paste!`-style
+  # token pasting. Used by tauri's internal proc-macros; no runtime impact.
+  "RUSTSEC-2024-0436",
+
+  # unic-* 0.9.0 -- unmaintained. Unicode property/range tables used by
+  # idna adapter code in the url stack; pulled in by the Tauri/wry HTTP
+  # stack on Linux. No security impact; the data is static and read-only.
+  "RUSTSEC-2025-0075", # unic-char-range
+  "RUSTSEC-2025-0080", # unic-common
+  "RUSTSEC-2025-0081", # unic-char-property
+  "RUSTSEC-2025-0098", # unic-ucd-version
+  "RUSTSEC-2025-0100", # unic-ucd-ident
+]
+
+# Still emit informational warnings for these categories so a NEW transitive
+# dependency going unmaintained is visible. The 19 IDs above are the only
+# pre-existing exceptions, and they are pinned individually above.
+informational_warnings = ["unmaintained", "unsound"]
+
+# Treat any non-ignored warning as a hard error in CI, so a new transitive
+# going unmaintained will fail the audit run rather than being silently
+# absorbed by a blanket config.
+severity_threshold = "low"
+
+[output]
+# Fail on any of the categories we still warn about, so a future unignored
+# unmaintained/unsound advisory produces a non-zero exit.
+deny = ["warnings"]
+quiet = false
+show_tree = true
