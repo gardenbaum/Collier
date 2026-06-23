@@ -28,10 +28,17 @@
  * `src/components/beads/issues/IssueDetailView.tsx`,
  * `src/components/beads/issues/InlineDescriptionEdit.tsx`, and
  * `src/components/beads/dependencies/DependencyListView.tsx`.
+ *
+ * The "open the fixture workspace" step is shared via
+ * `tests/e2e/helpers.ts` -- see that file for the isolation
+ * rationale. Spec-specific waits (full fixture footer + reading
+ * `.fixture-ids.json`) live below.
  */
 
 import { readFileSync } from 'node:fs'
 import { browser, expect, $ } from '@wdio/globals'
+
+import { openFixtureWorkspace } from './helpers'
 
 interface FixtureIds {
   TASK_LOGIN: string
@@ -61,28 +68,7 @@ describe('Collier M1 R4 detail panel completeness', () => {
   let taskOauthId = ''
 
   before(async () => {
-    // -- Given: app launches and the fixture list is rendered --
-    //
-    // Window title comes from tauri.conf.json -> app.windows[0].title
-    // (and from index.html's <title>; both are "Collier").
-    const title = await browser.execute(() => document.title)
-    expect(title).toBe('Collier')
-
-    // The bootstrap screen (RepoSelection) gates the issue list.
-    // When `bd` is on PATH and `.beads/` exists in CWD, the
-    // "Use CWD" button appears -- click it to load the fixture.
-    const useCwdButton = await $('[data-testid="use-cwd-button"]')
-    await useCwdButton.waitForDisplayed({ timeout: 30_000 })
-    await useCwdButton.click()
-
-    // Wait for the React Query behind <IssueListView /> to resolve
-    // -- the first `bd list` call on a fresh fixture pays the
-    // Dolt cold-start cost (~5-30s on CI).
-    const list = await $('[data-testid="issue-list-view"]')
-    await list.waitForDisplayed({ timeout: 30_000 })
-
-    const firstRow = await $('[data-testid="issue-row"]')
-    await firstRow.waitForDisplayed({ timeout: 150_000 })
+    await openFixtureWorkspace('r4')
 
     // The footer reflects the total count. Wait for the full
     // fixture (25 issues) to be loaded before sampling -- a

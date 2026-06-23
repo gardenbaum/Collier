@@ -28,54 +28,19 @@
  * Selectors target the `data-testid` attributes baked into
  * `src/components/beads/issues/IssueListView.tsx` — the stable
  * contract between the frontend and this test.
+ *
+ * The "open the fixture workspace" step is shared via
+ * `tests/e2e/helpers.ts` -- see that file for the isolation
+ * rationale. Spec-specific waits (headers row) live below.
  */
 
-import { browser, expect, $ } from '@wdio/globals'
+import { expect, $ } from '@wdio/globals'
+
+import { openFixtureWorkspace } from './helpers'
 
 describe('Collier M1 R1 sortable columns', () => {
   before(async () => {
-    // -- Given: app launches and the fixture list is rendered --
-    //
-    // Window title comes from tauri.conf.json -> app.windows[0].title
-    // (and from index.html's <title>; both are "Collier").
-    const title = await browser.execute(() => document.title)
-    expect(title).toBe('Collier')
-
-    // The bootstrap screen (RepoSelection) gates the issue list.
-    // When `bd` is on PATH and `.beads/` exists in CWD, the
-    // "Use CWD" button appears — click it to load the fixture.
-    const useCwdButton = await $('[data-testid="use-cwd-button"]')
-    await useCwdButton.waitForDisplayed({ timeout: 30_000 })
-    await useCwdButton.click()
-
-    // Wait for the React Query behind <IssueListView /> to resolve
-    // — the first `bd list` call on a fresh fixture pays the
-    // Dolt cold-start cost (~5-30s on CI). The list-loading /
-    // list-error / list-empty divs are mutually exclusive siblings
-    // of the virtualised rows; whichever is present tells us what
-    // state the query is in. We log them on the way past so the CI
-    // log shows whether we hit a real error or just a slow data
-    // load.
-    const list = await $('[data-testid="issue-list-view"]')
-    await list.waitForDisplayed({ timeout: 30_000 })
-
-    const loading = await $('[data-testid="list-loading"]')
-    const errorDiv = await $('[data-testid="list-error"]')
-    if (await loading.isExisting()) {
-      console.log('[e2e:r1] list-loading is visible (query in flight)')
-    }
-    if (await errorDiv.isExisting()) {
-      const err = await errorDiv.getText()
-      console.log(`[e2e:r1] list-error is visible: ${err}`)
-    }
-
-    // The fixture ships 25 issues (acceptance: >=1). Wait for at
-    // least one row to mount before sampling. The budget must exceed
-    // the app's bd subprocess timeout (120s) so a slow first Dolt
-    // cold-start query under CI still resolves in time; steady-state
-    // is ~1-2s.
-    const firstRow = await $('[data-testid="issue-row"]')
-    await firstRow.waitForDisplayed({ timeout: 150_000 })
+    await openFixtureWorkspace('r1')
 
     // The header row is a sibling of the scroll container inside
     // the issue-list-view — wait for it explicitly so the click
