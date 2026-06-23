@@ -48,10 +48,34 @@ describe('Collier M0 smoke', () => {
     const list = await $('[data-testid="issue-list-view"]')
     await list.waitForDisplayed({ timeout: 30_000 })
 
+    // Wait for the React Query behind <IssueListView /> to resolve
+    // -- the first `bd list` call on a fresh fixture pays the
+    // Dolt cold-start cost (~5-30s on CI). The list-loading /
+    // list-error / list-empty divs are mutually exclusive siblings
+    // of the virtualised rows; whichever is present tells us what
+    // state the query is in. We log them on the way past so the
+    // CI log shows whether we hit a real error or just a slow
+    // data load.
+    const loading = await $('[data-testid="list-loading"]')
+    const errorDiv = await $('[data-testid="list-error"]')
+    const empty = await $('[data-testid="list-empty"]')
+    if (await loading.isExisting()) {
+      console.log('[e2e] list-loading is visible (query in flight)')
+    }
+    if (await errorDiv.isExisting()) {
+      const err = await errorDiv.getText()
+      console.log(`[e2e] list-error is visible: ${err}`)
+    }
+    if (await empty.isExisting()) {
+      console.log('[e2e] list-empty is visible (query returned 0 issues)')
+    }
+
     // The fixture ships 25 issues (acceptance: >=1). Wait for at
-    // least one row to mount before sampling the count.
+    // least one row to mount before sampling the count. 60 s
+    // budget covers a worst-case Dolt cold-start on a fresh
+    // runner; steady-state is ~1-2s.
     const firstRow = await $('[data-testid="issue-row"]')
-    await firstRow.waitForDisplayed({ timeout: 30_000 })
+    await firstRow.waitForDisplayed({ timeout: 60_000 })
 
     const rowCount = (await $$('[data-testid="issue-row"]')).length
     console.log(`[e2e] issue rows visible: ${rowCount}`)
