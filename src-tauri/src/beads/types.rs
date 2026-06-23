@@ -1,7 +1,9 @@
 use chrono::{DateTime, Utc};
+use serde::de::{self, Deserializer, Visitor};
 use serde::{Deserialize, Serialize};
 use serde_repr::{Deserialize_repr, Serialize_repr};
 use specta::Type;
+use std::fmt;
 
 // ============================================================================
 // Issue Status & Priority & Type
@@ -69,10 +71,75 @@ pub struct Dependency {
 // Label & Comment
 // ============================================================================
 
-#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+/// A label attached to an issue. Beads v1 has no colour metadata
+/// for labels, but the v1 `bd list --json` output may emit labels
+/// as either a bare string (`"security"`) or a `{name, color}`
+/// object depending on the CLI build. Both shapes are accepted by
+/// the custom `Deserialize` impl below; serialization is unchanged
+/// (the `Label { name, color }` shape). The frontend bindings
+/// (specta-generated `bindings.ts`) keep the `Label` name.
+#[derive(Debug, Clone, Serialize, Type)]
 pub struct Label {
     pub name: String,
     pub color: Option<String>,
+}
+
+impl<'de> Deserialize<'de> for Label {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        struct LabelVisitor;
+
+        impl<'de> Visitor<'de> for LabelVisitor {
+            type Value = Label;
+
+            fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+                f.write_str("a label string or a {name, color} object")
+            }
+
+            fn visit_str<E>(self, s: &str) -> Result<Self::Value, E>
+            where
+                E: de::Error,
+            {
+                Ok(Label {
+                    name: s.to_string(),
+                    color: None,
+                })
+            }
+
+            fn visit_string<E>(self, s: String) -> Result<Self::Value, E>
+            where
+                E: de::Error,
+            {
+                Ok(Label {
+                    name: s,
+                    color: None,
+                })
+            }
+
+            fn visit_map<M>(self, mut map: M) -> Result<Self::Value, M::Error>
+            where
+                M: de::MapAccess<'de>,
+            {
+                #[derive(Deserialize)]
+                struct Raw {
+                    #[serde(default)]
+                    name: String,
+                    #[serde(default)]
+                    color: Option<String>,
+                }
+                let raw: Raw =
+                    Deserialize::deserialize(de::value::MapAccessDeserializer::new(&mut map))?;
+                Ok(Label {
+                    name: raw.name,
+                    color: raw.color,
+                })
+            }
+        }
+
+        deserializer.deserialize_any(LabelVisitor)
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Type)]
@@ -485,5 +552,193 @@ mod tests {
         assert_eq!(issue.issue_type, back.issue_type);
         assert_eq!(issue.labels.len(), back.labels.len());
         assert_eq!(issue.dependencies.len(), back.dependencies.len());
+    }
+
+    /// Regression: `bd list --json` emits labels as bare strings
+    /// (`["security", "auth"]`), not as `{name, color}` objects.
+    /// The default `#[derive(Deserialize)]` for `Label` rejects the
+    /// bare-string shape, which surfaced in the M0 E2E smoke test
+    /// as a `Failed to load: ... invalid type: string "security",
+    /// expected struct Label` parse error from the Tauri command.
+    /// The custom deserializer on `Label` accepts both.
+    #[test]
+    fn test_label_deserializes_bare_string_and_object_shapes() {
+        let from_str: Label = serde_json::from_str("\"security\"").unwrap();
+        assert_eq!(from_str.name, "security");
+        assert_eq!(from_str.color, None);
+
+        let from_obj: Label = serde_json::from_str(r##"{"name":"auth","color":"#abc"}"##).unwrap();
+        assert_eq!(from_obj.name, "auth");
+        assert_eq!(from_obj.color.as_deref(), Some("#abc"));
+
+        // Object with no color field -- also valid.
+        let from_obj_no_color: Label = serde_json::from_str(r#"{"name":"perf"}"#).unwrap();
+        assert_eq!(from_obj_no_color.name, "perf");
+        assert_eq!(from_obj_no_color.color, None);
+
+        // Serialization is unchanged -- still emits the object shape.
+        let serialized = serde_json::to_string(&Label {
+            name: "x".to_string(),
+            color: None,
+        })
+        .unwrap();
+        assert_eq!(serialized, r#"{"name":"x","color":null}"#);
+    }
+
+    /// Regression: an `Issue` with labels-as-strings (the shape bd
+    /// actually emits) parses through the same `Vec<Label>` field
+    /// that previously rejected it.
+    #[test]
+    fn test_issue_with_string_labels_parses() {
+        let json = r#"{
+            "id": "beads-1",
+            "title": "x",
+            "status": "open",
+            "priority": 1,
+            "issue_type": "task",
+            "created_at": "2026-04-20T12:00:00Z",
+            "updated_at": null,
+            "closed_at": null,
+            "description": null,
+            "owner": null,
+            "labels": ["security", "auth"],
+            "dependencies": [],
+            "dependency_count": 0,
+            "dependent_count": 0,
+            "comment_count": 0,
+            "parent": null,
+            "acceptance_criteria": null,
+            "external_ref": null
+        }"#;
+        let issue: Issue = serde_json::from_str(json).expect("string labels should parse");
+        assert_eq!(issue.labels.len(), 2);
+        assert_eq!(issue.labels[0].name, "security");
+        assert_eq!(issue.labels[1].name, "auth");
+        assert!(issue.labels.iter().all(|l| l.color.is_none()));
+    }
+
+    /// Regression: a `bd list --json` envelope captured from a real
+    /// `scripts/make-fixture.sh` workspace (bd v1.0.4, with
+    /// `BD_JSON_ENVELOPE=1` set by `runner::build_bd_command`).
+    /// Captured via:
+    ///
+    ///   bash scripts/make-fixture.sh /tmp/fx
+    ///   (cd /tmp/fx && BD_JSON_ENVELOPE=1 bd list --json)
+    ///
+    /// bd emits each issue's labels as bare strings (e.g.
+    /// `"labels": ["security"]`). The `Issue` struct's `labels:
+    /// Vec<Label>` field used to reject this with
+    /// `invalid type: string "security", expected struct Label`,
+    /// which surfaced in the M0 E2E smoke test as
+    /// `Failed to load: ... invalid type: string "security", expected struct Label`.
+    /// `bd` doesn't always emit every Issue field (notably
+    /// `dependencies`, `closed_at`, `description`, `parent`,
+    /// `acceptance_criteria`, `external_ref` are missing in the
+    /// captured payload); we pad them to `null` / `[]` before
+    /// deserialising so this test pins down the *label* regression
+    /// specifically, not the broader schema-drift question.
+    /// Touching the broader schema is a separate card.
+    #[test]
+    fn test_real_bd_list_envelope_with_string_labels_parses() {
+        // Real envelope captured from `bd list --json` against the
+        // fixture at /tmp/fx on bd v1.0.4. Two issues covering the
+        // open and in_progress statuses; both carry a single bare-
+        // string label.
+        let envelope_json = r#"{
+  "schema_version": 1,
+  "data": [
+    {
+      "id": "fx-de2",
+      "title": "Security audit",
+      "status": "open",
+      "priority": 1,
+      "issue_type": "task",
+      "owner": "fabian.baumgartner@dynasoft.ch",
+      "created_at": "2026-06-23T19:36:22Z",
+      "created_by": "Hermes Worker",
+      "updated_at": "2026-06-23T19:36:22Z",
+      "labels": ["security"],
+      "dependency_count": 0,
+      "dependent_count": 0,
+      "comment_count": 0
+    },
+    {
+      "id": "fx-si4",
+      "title": "Write integration tests",
+      "status": "in_progress",
+      "priority": 1,
+      "issue_type": "task",
+      "owner": "fabian.baumgartner@dynasoft.ch",
+      "created_at": "2026-06-23T19:36:21Z",
+      "created_by": "Hermes Worker",
+      "updated_at": "2026-06-23T19:36:30Z",
+      "started_at": "2026-06-23T19:36:30Z",
+      "labels": ["testing"],
+      "dependency_count": 0,
+      "dependent_count": 0,
+      "comment_count": 0
+    }
+  ]
+}"#;
+
+        // Step 1: the envelope must parse as a Value with a `data`
+        // array — this is the same shape the runner hands to
+        // `extract_data`.
+        let envelope: serde_json::Value =
+            serde_json::from_str(envelope_json).expect("envelope is valid JSON");
+        let data = envelope
+            .get("data")
+            .and_then(|v| v.as_array())
+            .expect("envelope has a data array");
+        assert_eq!(data.len(), 2);
+
+        // Step 2: the precise production regression — `Vec<Label>`
+        // parses a bare-string labels array from the real payload.
+        // Before the fix this returned
+        // `Err("invalid type: string \"security\", expected struct Label")`.
+        let labels_from_issue_0: Vec<Label> =
+            serde_json::from_value(data[0].get("labels").cloned().expect("issue has labels"))
+                .expect("real bd labels-as-strings should parse as Vec<Label>");
+        assert_eq!(labels_from_issue_0.len(), 1);
+        assert_eq!(labels_from_issue_0[0].name, "security");
+        assert_eq!(labels_from_issue_0[0].color, None);
+
+        let labels_from_issue_1: Vec<Label> =
+            serde_json::from_value(data[1].get("labels").cloned().expect("issue has labels"))
+                .expect("real bd labels-as-strings should parse as Vec<Label>");
+        assert_eq!(labels_from_issue_1[0].name, "testing");
+
+        // Step 3: pad the missing Issue fields bd didn't emit and
+        // confirm the full Issue struct parses end-to-end with the
+        // bare-string labels. Pins down: the label regression is
+        // the ONLY blocker on this payload — if a future bd version
+        // drops another field we don't tolerate, this test fails
+        // loudly and we can address the broader schema drift in
+        // one place.
+        let mut padded: Vec<serde_json::Value> = Vec::with_capacity(data.len());
+        for issue in data {
+            let mut obj = issue.as_object().cloned().expect("issue is an object");
+            obj.entry("closed_at".to_string())
+                .or_insert(serde_json::Value::Null);
+            obj.entry("description".to_string())
+                .or_insert(serde_json::Value::Null);
+            obj.entry("dependencies".to_string())
+                .or_insert(serde_json::Value::Array(Vec::new()));
+            obj.entry("parent".to_string())
+                .or_insert(serde_json::Value::Null);
+            obj.entry("acceptance_criteria".to_string())
+                .or_insert(serde_json::Value::Null);
+            obj.entry("external_ref".to_string())
+                .or_insert(serde_json::Value::Null);
+            padded.push(serde_json::Value::Object(obj));
+        }
+        let issues: Vec<Issue> = serde_json::from_value(serde_json::Value::Array(padded))
+            .expect("real bd issues with padded defaults should parse end-to-end");
+        assert_eq!(issues.len(), 2);
+        assert_eq!(issues[0].id, "fx-de2");
+        assert_eq!(issues[0].labels.len(), 1);
+        assert_eq!(issues[0].labels[0].name, "security");
+        assert_eq!(issues[1].id, "fx-si4");
+        assert_eq!(issues[1].labels[0].name, "testing");
     }
 }
