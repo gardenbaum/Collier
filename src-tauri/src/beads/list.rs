@@ -19,8 +19,16 @@ use crate::bindings::types::ListFilters;
 #[specta::specta]
 pub async fn bd_list(cwd: String, filters: ListFilters) -> BdResult<Vec<Issue>> {
     let path = std::path::PathBuf::from(&cwd);
-    let mut argv: Vec<String> = Vec::with_capacity(filters.to_args().len() + 2);
+    // ponytail: pass `--all` so `bd list` returns every issue including
+    // closed ones. Without it, `bd list` hides status=closed by default
+    // (the Beads CLI's "active only" filter), which silently shrinks the
+    // list the user sees and breaks any spec/caller that assumes a
+    // known total (e.g. the M1 e2e specs that wait for the full
+    // 25-issue fixture). The frontend's status filter is the surface for
+    // "hide closed" — the app should never hide them by default.
+    let mut argv: Vec<String> = Vec::with_capacity(filters.to_args().len() + 3);
     argv.push("list".to_string());
+    argv.push("--all".to_string());
     argv.extend(filters.to_args());
     argv.push("--json".to_string());
     let arg_refs: Vec<&str> = argv.iter().map(String::as_str).collect();
