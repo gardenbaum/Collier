@@ -71,11 +71,12 @@ describe('Collier M0 smoke', () => {
     }
 
     // The fixture ships 25 issues (acceptance: >=1). Wait for at
-    // least one row to mount before sampling the count. 60 s
-    // budget covers a worst-case Dolt cold-start on a fresh
-    // runner; steady-state is ~1-2s.
+    // least one row to mount before sampling the count. The budget
+    // must exceed the app's bd subprocess timeout (120 s) so a slow
+    // first Dolt cold-start query under CI still resolves in time;
+    // steady-state is ~1-2s.
     const firstRow = await $('[data-testid="issue-row"]')
-    await firstRow.waitForDisplayed({ timeout: 60_000 })
+    await firstRow.waitForDisplayed({ timeout: 150_000 })
 
     const rowCount = (await $$('[data-testid="issue-row"]')).length
     console.log(`[e2e] issue rows visible: ${rowCount}`)
