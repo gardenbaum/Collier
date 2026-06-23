@@ -49,6 +49,11 @@ pub enum IssueType {
 #[serde(rename_all = "snake_case")]
 pub enum DependencyType {
     Blocks,
+    /// bd v1.0.4 emits this as `parent-child` (kebab-case) instead of
+    /// the snake_case the enum's `rename_all` would produce. The
+    /// alias keeps bd's output deserialisable; serialization stays
+    /// `parent_child` so the existing TS contract is unchanged.
+    #[serde(alias = "parent-child")]
     ParentChild,
     ConditionalBlocks,
     WaitsFor,
@@ -62,8 +67,27 @@ pub enum DependencyType {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Type)]
 pub struct Dependency {
+    /// The target issue id (the issue being depended on, i.e. the
+    /// "to" side of the relationship). The field is named
+    /// `dependency_id` in the Rust→TS contract (see
+    /// `DependencyTreeView.tsx`) but bd's `bd list --json` emits it
+    /// as `depends_on_id`. The alias keeps both shapes deserialisable;
+    /// serialization stays `dependency_id` so the frontend contract
+    /// is unchanged. The `issue_id` bd also emits is the source side
+    /// — that's already on the enclosing `Issue`, so we just ignore
+    /// it on deserialize (serde_json drops unknown fields).
+    #[serde(alias = "depends_on_id")]
     pub dependency_id: String,
+    /// bd emits this as `type` (a reserved Rust keyword, hence the
+    /// Rust field rename). Alias keeps bd's output deserialisable;
+    /// serialization stays `dependency_type`.
+    #[serde(rename = "dependency_type", alias = "type")]
     pub dependency_type: DependencyType,
+    /// `#[serde(default)]` because bd v1.0.4 does NOT emit a
+    /// `blocked_by` flag in `bd list --json` — that direction is
+    /// implicit from `type` (a `blocks` edge on a non-closed issue
+    /// means the source is blocked). Default = `None`.
+    #[serde(default)]
     pub blocked_by: Option<bool>,
 }
 
@@ -651,6 +675,71 @@ mod tests {
         assert!(issue.labels.iter().all(|l| l.color.is_none()));
     }
 
+    /// Regression: bd v1.0.4's `bd list --json` emits each
+    /// dependency entry as `{ issue_id, depends_on_id, type, ... }`,
+    /// but the Rust `Dependency` struct (and the TS contract behind
+    /// it — `DependencyTreeView.tsx`) uses
+    /// `{ dependency_id, dependency_type, blocked_by }`. Without
+    /// the field aliases + `parent-child` enum alias added in this
+    /// file, parsing fails with
+    /// `missing field 'dependency_id'` /
+    /// `unknown variant 'parent-child', expected 'parent_child'`.
+    /// This test pins both shapes so neither can regress.
+    #[test]
+    fn test_dependency_accepts_bd_and_rust_shapes() {
+        // bd's shape: { issue_id, depends_on_id, type, created_at, ... }
+        let bd_shape = r#"{
+            "issue_id": "fx-qwt.2",
+            "depends_on_id": "fx-fiv",
+            "type": "blocks",
+            "created_at": "2026-06-23T19:36:31Z",
+            "created_by": "Hermes Worker",
+            "metadata": "{}"
+        }"#;
+        let d: Dependency =
+            serde_json::from_str(bd_shape).expect("bd dependency shape should parse");
+        assert_eq!(d.dependency_id, "fx-fiv");
+        assert_eq!(d.dependency_type, DependencyType::Blocks);
+        assert_eq!(d.blocked_by, None); // default
+
+        // bd's `parent-child` (kebab) -> Rust's ParentChild (snake).
+        let bd_parent_child = r#"{
+            "issue_id": "fx-qwt.2",
+            "depends_on_id": "fx-qwt",
+            "type": "parent-child",
+            "created_at": "2026-06-23T19:36:18Z",
+            "created_by": "Hermes Worker",
+            "metadata": "{}"
+        }"#;
+        let d: Dependency =
+            serde_json::from_str(bd_parent_child).expect("parent-child should parse");
+        assert_eq!(d.dependency_type, DependencyType::ParentChild);
+
+        // Rust's shape (the one the frontend sends back) still works.
+        let rust_shape = r#"{
+            "dependency_id": "fx-fiv",
+            "dependency_type": "blocks",
+            "blocked_by": true
+        }"#;
+        let d: Dependency =
+            serde_json::from_str(rust_shape).expect("rust dependency shape should parse");
+        assert_eq!(d.dependency_id, "fx-fiv");
+        assert_eq!(d.dependency_type, DependencyType::Blocks);
+        assert_eq!(d.blocked_by, Some(true));
+
+        // Serialization stays in the rust/TS shape (snake_case).
+        let serialized = serde_json::to_string(&Dependency {
+            dependency_id: "x".to_string(),
+            dependency_type: DependencyType::ParentChild,
+            blocked_by: None,
+        })
+        .unwrap();
+        assert_eq!(
+            serialized,
+            r#"{"dependency_id":"x","dependency_type":"parent_child","blocked_by":null}"#
+        );
+    }
+
     /// Regression: a `bd list --json` envelope captured from a real
     /// `scripts/make-fixture.sh` workspace (bd v1.0.4, with
     /// `BD_JSON_ENVELOPE=1` set by `runner::build_bd_command`).
@@ -659,25 +748,30 @@ mod tests {
     ///   bash scripts/make-fixture.sh /tmp/fx
     ///   (cd /tmp/fx && BD_JSON_ENVELOPE=1 bd list --json)
     ///
-    /// bd emits each issue's labels as bare strings (e.g.
-    /// `"labels": ["security"]`). The `Issue` struct's `labels:
-    /// Vec<Label>` field used to reject this with
-    /// `invalid type: string "security", expected struct Label`,
-    /// which surfaced in the M0 E2E smoke test as
-    /// `Failed to load: ... invalid type: string "security", expected struct Label`.
-    /// `bd` doesn't always emit every Issue field (notably
-    /// `dependencies`, `closed_at`, `description`, `parent`,
-    /// `acceptance_criteria`, `external_ref` are missing in the
-    /// captured payload); we pad them to `null` / `[]` before
-    /// deserialising so this test pins down the *label* regression
-    /// specifically, not the broader schema-drift question.
-    /// Touching the broader schema is a separate card.
+    /// Pins down three real-world regressions the M0 E2E smoke
+    /// surfaced and we fixed:
+    ///
+    /// 1. **Labels as bare strings.** bd emits
+    ///    `"labels": ["security"]` instead of `[{name, color}]`.
+    ///    Custom `Deserialize` on `Label` (above) accepts both.
+    /// 2. **Optional Issue fields absent.** bd omits `closed_at`,
+    ///    `description`, `dependencies`, `parent`,
+    ///    `acceptance_criteria`, `external_ref`. `#[serde(default)]`
+    ///    on those fields makes them optional.
+    /// 3. **Dependency shape mismatch.** bd emits
+    ///    `{ issue_id, depends_on_id, type, created_at, ... }`,
+    ///    the Rust struct expects
+    ///    `{ dependency_id, dependency_type, blocked_by }`. Field
+    ///    aliases on `Dependency` accept both shapes.
     #[test]
     fn test_real_bd_list_envelope_with_string_labels_parses() {
         // Real envelope captured from `bd list --json` against the
-        // fixture at /tmp/fx on bd v1.0.4. Two issues covering the
-        // open and in_progress statuses; both carry a single bare-
-        // string label.
+        // fixture at /tmp/fx on bd v1.0.4. Three issues:
+        //   - "fx-de2" / "fx-si4" / "fx-fiv" : no dependencies,
+        //     exercise the label + missing-fields path.
+        //   - "fx-qwt.2" (Optimize queries): has TWO real bd-shaped
+        //     dependencies (one `blocks`, one `parent-child`),
+        //     exercising the dependency-field aliases.
         let envelope_json = r#"{
   "schema_version": 1,
   "data": [
@@ -711,6 +805,40 @@ mod tests {
       "dependency_count": 0,
       "dependent_count": 0,
       "comment_count": 0
+    },
+    {
+      "id": "fx-qwt.2",
+      "title": "Optimize queries",
+      "status": "blocked",
+      "priority": 1,
+      "issue_type": "task",
+      "owner": "fabian.baumgartner@dynasoft.ch",
+      "created_at": "2026-06-23T19:36:18Z",
+      "created_by": "Hermes Worker",
+      "updated_at": "2026-06-23T19:36:33Z",
+      "labels": ["backend", "epic", "perf", "performance"],
+      "dependencies": [
+        {
+          "issue_id": "fx-qwt.2",
+          "depends_on_id": "fx-fiv",
+          "type": "blocks",
+          "created_at": "2026-06-23T19:36:31Z",
+          "created_by": "Hermes Worker",
+          "metadata": "{}"
+        },
+        {
+          "issue_id": "fx-qwt.2",
+          "depends_on_id": "fx-qwt",
+          "type": "parent-child",
+          "created_at": "2026-06-23T19:36:18Z",
+          "created_by": "Hermes Worker",
+          "metadata": "{}"
+        }
+      ],
+      "dependency_count": 1,
+      "dependent_count": 1,
+      "comment_count": 0,
+      "parent": "fx-qwt"
     }
   ]
 }"#;
@@ -724,7 +852,7 @@ mod tests {
             .get("data")
             .and_then(|v| v.as_array())
             .expect("envelope has a data array");
-        assert_eq!(data.len(), 2);
+        assert_eq!(data.len(), 3);
 
         // Step 2: the precise production regression — `Vec<Label>`
         // parses a bare-string labels array from the real payload.
@@ -753,7 +881,7 @@ mod tests {
         let issues: Vec<Issue> =
             serde_json::from_value(serde_json::Value::Array(data.iter().cloned().collect()))
                 .expect("real bd list payload should parse end-to-end as Vec<Issue>");
-        assert_eq!(issues.len(), 2);
+        assert_eq!(issues.len(), 3);
         assert_eq!(issues[0].id, "fx-de2");
         assert_eq!(issues[0].labels.len(), 1);
         assert_eq!(issues[0].labels[0].name, "security");
@@ -767,5 +895,29 @@ mod tests {
         assert_eq!(issues[1].id, "fx-si4");
         assert_eq!(issues[1].labels[0].name, "testing");
         assert!(issues[1].dependencies.is_empty());
+
+        // Step 4: the issue with `dependencies` parses too, with
+        // bd's `{issue_id, depends_on_id, type, ...}` shape mapped
+        // onto the Rust struct's `{dependency_id, dependency_type,
+        // blocked_by}` via serde aliases. Before this fix, the parse
+        // failed with `missing field 'dependency_id'`.
+        let opt_queries = &issues[2];
+        assert_eq!(opt_queries.id, "fx-qwt.2");
+        assert_eq!(opt_queries.parent.as_deref(), Some("fx-qwt"));
+        assert_eq!(opt_queries.dependencies.len(), 2);
+        // bd's `depends_on_id` -> Rust's `dependency_id`.
+        assert_eq!(opt_queries.dependencies[0].dependency_id, "fx-fiv");
+        // bd's `type: "blocks"` -> Rust's `dependency_type: Blocks`.
+        assert_eq!(
+            opt_queries.dependencies[0].dependency_type,
+            DependencyType::Blocks
+        );
+        // bd omits `blocked_by` -> Rust default None.
+        assert_eq!(opt_queries.dependencies[0].blocked_by, None);
+        assert_eq!(opt_queries.dependencies[1].dependency_id, "fx-qwt");
+        assert_eq!(
+            opt_queries.dependencies[1].dependency_type,
+            DependencyType::ParentChild
+        );
     }
 }
