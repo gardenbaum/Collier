@@ -1,15 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "quick-pane-capability",
-  "description": "Capability for the quick pane floating window",
+  "description": "Capability for the quick pane floating window. Least-privilege: only what the quick-pane webview itself invokes; show/hide/focus are driven from Rust via custom commands.",
   "windows": ["quick-pane"],
-  "permissions": [
-    "core:default",
-    "core:window:allow-show",
-    "core:window:allow-hide",
-    "core:window:allow-set-focus",
-    "core:window:allow-is-visible",
-    "core:event:default",
-    "core:event:allow-emit"
-  ]
+  "permissions": ["core:default", "core:event:default", "core:event:allow-emit"]
 }
