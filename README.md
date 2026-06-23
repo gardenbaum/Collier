@@ -89,25 +89,180 @@ This template is designed to work well with AI coding agents like Claude Code:
 
 ## Getting Started
 
-See **[Using This Template](docs/USING_THIS_TEMPLATE.md)** for setup instructions and workflow guidance.
+### Prerequisites
+
+- **Node.js** ≥ 20 (`node -v`) — required by the Vite/vitest toolchain
+- **[Bun](https://bun.sh)** ≥ 1.2 — used for installs, scripts and the
+  CI quality gate (`bun install`, `bun run ...`). This project does not
+  use `npm`.
+- **Rust** stable (≥ 1.82) — install via [rustup](https://rustup.rs/).
+  `rust-toolchain.toml` pins the channel to `stable`.
+- **Platform Tauri v2 build dependencies** — see
+  <https://tauri.app/start/prerequisites/> for the current list. The CI
+  workflow installs the Linux set on every run; locally you need them
+  too:
+  - **macOS**: `xcode-select --install`
+  - **Windows**: [Microsoft C++ Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/)
+    plus the WebView2 runtime
+  - **Linux**: `build-essential`, `libssl-dev`, `pkg-config`,
+    `libgtk-3-dev`, `libwebkit2gtk-4.1-dev`,
+    `libjavascriptcoregtk-4.1-dev`, `libsoup-3.0-dev`, `librsvg2-dev`,
+    `libxdo-dev`
 
 ### Quick Start
 
 ```bash
-# Prerequisites: Node.js 18+, Rust (latest stable)
-# See https://tauri.app/start/prerequisites/ for platform-specific deps
-
 git clone https://github.com/gardenbaum/Collier.git
 cd Collier
 bun install
-bun run dev
+bun run dev          # starts Vite + opens Tauri dev window
 ```
+
+`bun run dev` launches Vite on `http://localhost:1420` and starts the
+Tauri shell. TypeScript, Rust and tauri-specta bindings are all wired
+through the same command.
+
+### Development Commands
+
+| Command               | What it does                                                          |
+| --------------------- | --------------------------------------------------------------------- |
+| `bun run dev`         | Vite dev server + `tauri dev` window                                  |
+| `bun run build`       | Type-check + production Vite build (frontend only)                    |
+| `bun run tauri:dev`   | Tauri dev window (same as `bun run dev`)                              |
+| `bun run tauri:build` | Local Tauri bundle for the current platform                           |
+| `bun run check:all`   | **Single quality gate** — see below                                   |
+| `bun run fix:all`     | Auto-fix the lintable subset (eslint, prettier, rustfmt, clippy)      |
+| `bun run test:run`    | Vitest unit suite                                                     |
+| `bun run test:coverage` | Vitest with V8 coverage report (thresholds enforced)               |
+| `bun run rust:test`   | `cargo test` for the Rust crate                                       |
+| `bun run knip`        | Detect unused files / exports                                         |
+| `bun run jscpd`       | Detect duplicated code                                                |
+
+The quality gate `bun run check:all` runs, in order: typecheck, ESLint
+(`--max-warnings 0`), ast-grep, Prettier (`--check`), rustfmt
+(`--check`), `cargo clippy -- -D warnings`, Vitest, and `cargo test`.
+It MUST exit 0 on every PR and before any release; the release
+workflow gates on it.
+
+### Building a Local Bundle
+
+```bash
+bun install
+bun run tauri:build
+```
+
+This produces a platform-specific bundle in `src-tauri/target/release/bundle/`:
+
+- **macOS**: `.app` and `.dmg`
+- **Windows**: `.msi`
+- **Linux**: `.AppImage` (and `.deb` if `dpkg` is available)
+
+Signing and notarization are not configured for local builds — see the
+Release section below for the GitHub Actions path.
+
+### Release Process
+
+Releases are tag-driven: pushing a `v*` tag (or running the workflow
+via `workflow_dispatch`) triggers `.github/workflows/release.yml`,
+which first runs `bun run check:all` and then builds per-platform
+bundles with [`tauri-action`](https://github.com/tauri-apps/tauri-action),
+publishing a **draft** GitHub Release.
+
+1. **One-time repository setup** — add the secrets listed below under
+   *Required GitHub Actions secrets*.
+2. **Bump the version** in three places (the `release:prepare` script
+   does this for you):
+   - `package.json` → `"version"`
+   - `src-tauri/Cargo.toml` → `version`
+   - `src-tauri/tauri.conf.json` → `version`
+3. **Commit, tag, push**:
+
+   ```bash
+   bun run release:prepare v1.2.3   # updates versions, runs check:all
+   git push origin chore/production-ready --tags   # or merge to main first
+   ```
+
+4. **Publish the draft** — once the workflow finishes, open the draft
+   release on GitHub and click *Publish*. Existing users receive the
+   new version via the Tauri updater on their next launch.
+
+#### Required GitHub Actions secrets
+
+| Secret name                          | Purpose                                                                                  |
+| ------------------------------------ | ---------------------------------------------------------------------------------------- |
+| `TAURI_PRIVATE_KEY`                  | Content of the signing key generated by `tauri signer generate` (see below).             |
+| `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | Password that protects `TAURI_PRIVATE_KEY`. Leave empty if you generated the key without one. |
+| `GITHUB_TOKEN`                       | Provided automatically by GitHub Actions; used to create the Release and upload assets.  |
+
+These are mapped to the env vars that `tauri-action` expects inside
+`.github/workflows/release.yml`:
+
+```yaml
+env:
+  TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
+  TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+```
+
+#### Generating the updater key pair
+
+The Tauri updater signs each release so that existing installations
+can verify the update before applying it. The key pair is generated
+once and the **private key never leaves CI**:
+
+```bash
+# Locally, with @tauri-apps/cli installed (or via `bunx`):
+bunx @tauri-apps/cli signer generate -w ~/.tauri/collier.key
+# → saves the private key to ~/.tauri/collier.key (or your chosen path)
+# → prints the public key on stdout
+```
+
+1. Copy the entire contents of `~/.tauri/collier.key` into the
+   `TAURI_PRIVATE_KEY` GitHub secret (Settings → Secrets and variables
+   → Actions → *New repository secret*).
+2. If you set a password during generation, store it in
+   `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`.
+3. Copy the printed public key into
+   `src-tauri/tauri.conf.json` under `plugins.updater.pubkey`,
+   replacing the current `REPLACE_WITH_TAURI_UPDATER_PUBLIC_KEY`
+   placeholder. The public key is safe to commit.
+
+The endpoint `plugins.updater.endpoints` must point at the same
+GitHub Releases path the workflow uses (`includeUpdaterJson: true`
+emits `latest.json` next to the platform bundles). For a fork, update
+both the endpoint URL and the bundle `publisher`/`identifier` fields
+to match the new repository.
+
+#### Manual release (no `release:prepare` script)
+
+```bash
+# 1. bump versions in package.json, src-tauri/Cargo.toml, src-tauri/tauri.conf.json
+bun run check:all
+git add .
+git commit -m "chore: release v1.2.3"
+git tag v1.2.3
+git push origin main --tags
+```
+
+### Auto-Update System
+
+The app checks for updates 5 seconds after launch by fetching
+`latest.json` from the endpoint configured in
+`tauri.conf.json` and verifying the signature against the bundled
+public key. If a valid newer release is found, the user is prompted
+to download and install it, then optionally restart. A manual check
+is also available via the *App → Check for Updates* menu item and the
+*Check for Updates* command in the command palette.
+
+See [docs/developer/releases.md](docs/developer/releases.md) for the
+implementation details and the upstream-updater-flow diagram.
 
 ## Documentation
 
 - **[Developer Docs](docs/developer/)** - Architecture, patterns, and detailed guides
 - **[User Guide](docs/userguide/)** - End-user documentation template
 - **[Using This Template](docs/USING_THIS_TEMPLATE.md)** - Setup and workflow guide
+- **[CHANGELOG.md](CHANGELOG.md)** - Release notes (Keep a Changelog format)
+- **[SECURITY.md](docs/SECURITY.md)** - Vulnerability reporting and security model
 
 ## License
 
