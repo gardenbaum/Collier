@@ -66,7 +66,7 @@ First public release of Collier, a cross-platform desktop GUI for
   `^7.28.0` to pick up the upstream fix for GHSA-vmh5-mc38-953g.
 - Rust dependency audit: zero vulnerabilities; 19 documented
   transitive exceptions (gtk-rs, glib, bincode 1.3.3,
-  proc-macro-error, paste, unic-*) recorded in
+  proc-macro-error, paste and the unic family) recorded in
   `src-tauri/.cargo/audit.toml` and `docs/SECURITY.md`.
 
 [Unreleased]: https://github.com/gardenbaum/Collier/compare/v0.1.0...HEAD
