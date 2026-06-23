@@ -20,7 +20,7 @@
  * Dolt cold-start under CI).
  */
 
-import { browser, $ } from '@wdio/globals'
+import { browser, $, $$ } from '@wdio/globals'
 
 /**
  * Open the fixture workspace and wait for the first issue row to
@@ -112,4 +112,41 @@ export async function openFixtureWorkspace(specLabel: string): Promise<void> {
   //    still resolves in time; steady-state is ~1-2s.
   const firstRow = await $('[data-testid="issue-row"]')
   await firstRow.waitForDisplayed({ timeout: 150_000 })
+
+  // Diagnostic: log the total count the footer reports, the rendered
+  // row count, and the `cwd` the app booted with. Specs that need
+  // the "full fixture" assertion read the footer; this log makes a
+  // mismatch (e.g. footer says 17 but the fixture seeded 25) visible
+  // in the CI log without waiting for the assertion to time out.
+  // `cwd` is read via the Tauri IPC bridge that the webview exposes
+  // -- the helper itself is in the wdio testrunner process, so it
+  // can't import the typed `commands` wrapper that lives in the
+  // frontend bundle.
+  const footerText = await browser.execute(
+    () =>
+      document.querySelector('[data-testid="list-footer"]')?.textContent ?? null
+  )
+  const renderedRowCount = (await $$('[data-testid="issue-row"]')).length
+  type GetCurrentDirResult =
+    | { status: 'ok'; data: string }
+    | { status: 'error'; error: string }
+  const cwd = await browser.execute(async (): Promise<string | null> => {
+    const w = window as unknown as {
+      __TAURI__?: {
+        core?: {
+          invoke?: (
+            cmd: string,
+            args?: Record<string, unknown>
+          ) => Promise<unknown>
+        }
+      }
+    }
+    const invoke = w.__TAURI__?.core?.invoke
+    if (!invoke) return null
+    const result = (await invoke('get_current_dir')) as GetCurrentDirResult
+    return result.status === 'ok' ? result.data : `error: ${result.error}`
+  })
+  console.log(
+    `[e2e:${specLabel}] post-open: footer="${String(footerText)}" renderedRows=${renderedRowCount} cwd=${JSON.stringify(cwd)}`
+  )
 }

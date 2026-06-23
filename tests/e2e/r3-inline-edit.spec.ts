@@ -154,9 +154,12 @@ describe('Collier M1 R3 inline editing', () => {
 
     // Pick a priority different from the current one so we can
     // verify the change. The fixture ships only P1-P4 (no P0),
-    // so we cycle through P1..P4 to find an alternative.
-    const allPriorities = ['P0', 'P1', 'P2', 'P3', 'P4']
-    const nextPriority = allPriorities.find(p => p !== originalPriority) ?? 'P0'
+    // so we cycle through 1..4 to find an alternative. The
+    // `IssuePriority` enum serialises as the bare integer 0..4
+    // via `#[repr(u8)] Serialize_repr`, so the data attribute
+    // and the <select> value are the integers, not "P0".."P4".
+    const allPriorities = ['0', '1', '2', '3', '4']
+    const nextPriority = allPriorities.find(p => p !== originalPriority) ?? '0'
 
     // -- When: change the row's priority via the inline select --
     type SetPriorityArgs = [string | null, string]

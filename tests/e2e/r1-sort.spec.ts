@@ -61,18 +61,21 @@ describe('Collier M1 R1 sortable columns', () => {
     // Read the priorities of the rendered (windowed) slice BEFORE
     // and AFTER the click. The fixture (scripts/make-fixture.sh)
     // ships 25 issues with priorities in {1,2,3,4} (P1..P4 — no P0)
-    // so the most-urgent bucket in this dataset is P1. Ascending
-    // sort must therefore put P1 at the top of the rendered slice.
+    // so the most-urgent bucket in this dataset is P1 (the `IssuePriority`
+    // enum serialises as the bare integer 1..4 via `#[repr(u8)]
+    // Serialize_repr`, so the `data-issue-priority` attribute is
+    // "1" not "P1"). Ascending sort must therefore put "1" at the
+    // top of the rendered slice.
     const topPrioritiesAsc = await readRenderedPriorities(15)
     console.log(
       `[e2e:r1] top priorities after asc: ${topPrioritiesAsc.join(',')}`
     )
 
     // First row is the highest-urgency bucket present in the fixture.
-    expect(topPrioritiesAsc[0]).toBe('P1')
+    expect(topPrioritiesAsc[0]).toBe('1')
 
     // Subsequent priorities are monotonically non-decreasing
-    // (P-rank-wise: P1 < P2 < P3 < P4). This proves the sort is
+    // (P-rank-wise: 1 < 2 < 3 < 4). This proves the sort is
     // applied across the list, not a single-row swap.
     for (let i = 1; i < topPrioritiesAsc.length; i++) {
       const prev = priorityRank(topPrioritiesAsc[i - 1] as string)
@@ -92,7 +95,7 @@ describe('Collier M1 R1 sortable columns', () => {
     )
 
     // First row is the LEAST-urgent bucket in the fixture.
-    expect(topPrioritiesDesc[0]).toBe('P4')
+    expect(topPrioritiesDesc[0]).toBe('4')
 
     // Subsequent priorities are monotonically non-increasing.
     for (let i = 1; i < topPrioritiesDesc.length; i++) {
