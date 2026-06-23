@@ -48,7 +48,9 @@ vi.mock('@/lib/tauri-bindings', () => ({
     isDiagnosticLoggingEnabled: vi
       .fn()
       .mockResolvedValue({ status: 'ok', data: false }),
-    setDiagnosticLogging: vi.fn().mockResolvedValue({ status: 'ok', data: null }),
+    setDiagnosticLogging: vi
+      .fn()
+      .mockResolvedValue({ status: 'ok', data: null }),
     writeLogLine: vi.fn().mockResolvedValue({ status: 'ok', data: null }),
   },
   unwrapResult: vi.fn((result: { status: string; data?: unknown }) => {

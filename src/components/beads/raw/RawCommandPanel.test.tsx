@@ -100,7 +100,12 @@ describe('RawCommandPanel', () => {
   it('renders the error state when the command fails', async () => {
     mockRunBdCommand.mockResolvedValue({
       status: 'error',
-      error: { type: 'NonZeroExit', code: 1, stdout: '', stderr: 'unknown subcmd' },
+      error: {
+        type: 'NonZeroExit',
+        code: 1,
+        stdout: '',
+        stderr: 'unknown subcmd',
+      },
     })
 
     const { RawCommandPanel } = await importSut()

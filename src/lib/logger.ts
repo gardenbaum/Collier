@@ -43,10 +43,7 @@ class Logger {
       .setDiagnosticLogging(enabled)
       .then(result => {
         if (result.status === 'error') {
-          console.error(
-            'setDiagnosticLogging IPC failed:',
-            result.error
-          )
+          console.error('setDiagnosticLogging IPC failed:', result.error)
         }
       })
       .catch(error => {
@@ -169,12 +166,16 @@ class Logger {
       level: entry.level,
       message: entry.message,
       source: 'frontend',
-      context: entry.context as Parameters<typeof commands.writeLogLine>[0]['context'],
+      context: entry.context as Parameters<
+        typeof commands.writeLogLine
+      >[0]['context'],
     })
     if (result.status === 'error') {
-      throw new Error(typeof result.error === 'string'
-        ? result.error
-        : JSON.stringify(result.error))
+      throw new Error(
+        typeof result.error === 'string'
+          ? result.error
+          : JSON.stringify(result.error)
+      )
     }
   }
 }

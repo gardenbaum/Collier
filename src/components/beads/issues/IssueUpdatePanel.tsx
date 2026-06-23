@@ -96,9 +96,7 @@ export function IssueUpdatePanel({
   // `issue` reference (not a snapshot copy) so the dirty check is a
   // plain equality compare against live fields.
   const [title, setTitle] = useState(issue.title)
-  const [description, setDescription] = useState(
-    issue.description ?? ''
-  )
+  const [description, setDescription] = useState(issue.description ?? '')
   const [issueType, setIssueType] = useState<IssueType>(issue.issue_type)
   const [priority, setPriority] = useState<IssuePriority>(issue.priority)
   const [status, setStatus] = useState<IssueStatus>(issue.status)
@@ -273,7 +271,9 @@ export function IssueUpdatePanel({
             />
           </Field>
 
-          <Field label={t('beads.issueUpdatePanel.externalRef', 'External ref')}>
+          <Field
+            label={t('beads.issueUpdatePanel.externalRef', 'External ref')}
+          >
             <input
               type="text"
               data-testid="update-external-ref"
@@ -299,7 +299,9 @@ export function IssueUpdatePanel({
               data-testid="update-cancel"
               onClick={onClose}
               disabled={!isDirty}
-              className={!isDirty ? cancelButtonDisabledClass : cancelButtonClass}
+              className={
+                !isDirty ? cancelButtonDisabledClass : cancelButtonClass
+              }
             >
               Cancel
             </button>

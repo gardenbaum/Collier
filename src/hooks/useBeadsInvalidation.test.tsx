@@ -98,7 +98,6 @@ describe('useBeadsInvalidation', () => {
     const invalidateSpy = vi.spyOn(qc, 'invalidateQueries')
     useWorkspaceStore.setState({ repoPath: '/tmp/repo' })
 
-
     renderWithClient(qc)
 
     await act(async () => {

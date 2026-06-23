@@ -17,11 +17,19 @@ vi.mock('@/lib/tauri-bindings', () => ({
     loadPreferences: vi.fn(),
     savePreferences: vi.fn(),
     getCurrentDir: vi.fn(),
-    checkBdVersionCmd: vi.fn().mockResolvedValue({ status: 'ok', data: '1.0.5' }),
-    cleanupOldRecoveryFiles: vi.fn().mockResolvedValue({ status: 'ok', data: 0 }),
+    checkBdVersionCmd: vi
+      .fn()
+      .mockResolvedValue({ status: 'ok', data: '1.0.5' }),
+    cleanupOldRecoveryFiles: vi
+      .fn()
+      .mockResolvedValue({ status: 'ok', data: 0 }),
     saveEmergencyData: vi.fn().mockResolvedValue({ status: 'ok', data: null }),
-    getDefaultQuickPaneShortcut: vi.fn().mockResolvedValue('CommandOrControl+Shift+.'),
-    updateQuickPaneShortcut: vi.fn().mockResolvedValue({ status: 'ok', data: null }),
+    getDefaultQuickPaneShortcut: vi
+      .fn()
+      .mockResolvedValue('CommandOrControl+Shift+.'),
+    updateQuickPaneShortcut: vi
+      .fn()
+      .mockResolvedValue({ status: 'ok', data: null }),
     attachWatchRepo: vi.fn().mockResolvedValue({ status: 'ok', data: null }),
     detachWatchRepo: vi.fn().mockResolvedValue({ status: 'ok', data: null }),
   },

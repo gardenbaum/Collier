@@ -18,7 +18,7 @@
 use std::{
     fs::{self, File, OpenOptions},
     io::Write as _,
-    path::PathBuf,
+    path::{Path, PathBuf},
     sync::atomic::{AtomicBool, Ordering},
     sync::Mutex,
 };
@@ -45,7 +45,7 @@ static DIAGNOSTIC_LOGGING_ENABLED: AtomicBool = AtomicBool::new(false);
 
 /// Resolve the canonical log path for today, e.g.
 /// `<APPLOCALDATA>/logs/collier-2026-06-18.log`.
-fn log_path_for_today(app_local_data_dir: &PathBuf) -> PathBuf {
+fn log_path_for_today(app_local_data_dir: &Path) -> PathBuf {
     let today = Local::now().format("%Y-%m-%d").to_string();
     app_local_data_dir
         .join("logs")
@@ -76,7 +76,7 @@ pub struct LogLine {
 /// Open (or re-open) the log file for today. Called on the first
 /// write of the session and any time the date rolls over while the
 /// app is open.
-fn open_log_file(app_local_data_dir: &PathBuf) -> BdResult<File> {
+fn open_log_file(app_local_data_dir: &Path) -> BdResult<File> {
     let path = log_path_for_today(app_local_data_dir);
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).map_err(|e| BdError::ParseError {
@@ -98,10 +98,7 @@ fn open_log_file(app_local_data_dir: &PathBuf) -> BdResult<File> {
 /// already crashing.
 #[tauri::command]
 #[specta::specta]
-pub async fn write_log_line(
-    app: tauri::AppHandle,
-    line: LogLine,
-) -> BdResult<()> {
+pub async fn write_log_line(app: tauri::AppHandle, line: LogLine) -> BdResult<()> {
     // Per-session toggle: when the user has not enabled diagnostic
     // logging, drop the line silently. The frontend may still log
     // freely to the dev-tools console — this is purely about
@@ -137,10 +134,9 @@ pub async fn write_log_line(
         // record is one physical line. The format prefix is the only
         // structural whitespace.
         let sanitized = sanitize_for_log(&line_str);
-        writeln!(f, "{sanitized}")
-            .map_err(|e| BdError::ParseError {
-                message: format!("log write failed: {e}"),
-            })?;
+        writeln!(f, "{sanitized}").map_err(|e| BdError::ParseError {
+            message: format!("log write failed: {e}"),
+        })?;
         let _ = f.flush();
     }
 
@@ -174,7 +170,7 @@ fn sanitize_for_log(s: &str) -> String {
 /// True when the held file is from today's path (date roll-over
 /// protection). Best-effort: if metadata() fails, we treat the file
 /// as "stale" and re-open.
-fn path_uses_today(file: &File, app_local_data_dir: &PathBuf) -> bool {
+fn path_uses_today(file: &File, app_local_data_dir: &Path) -> bool {
     let today = Local::now().format("%Y-%m-%d").to_string();
     let expected = app_local_data_dir
         .join("logs")
@@ -238,7 +234,6 @@ mod tests {
         assert!(s.contains("| {\"stack\":\"at foo\"}"));
     }
 }
-
 
 /// Flip the in-process diagnostic-logging flag. The Advanced
 /// preferences "Enable diagnostic logging" switch is the only

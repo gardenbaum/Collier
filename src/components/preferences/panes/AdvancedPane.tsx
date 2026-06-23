@@ -166,7 +166,7 @@ export function AdvancedPane() {
           label={t('preferences.advanced.openLogFile', 'Open log file')}
           description={t(
             'preferences.advanced.openLogFileDescription',
-            'Reveal the current day\'s log file in your file explorer.'
+            "Reveal the current day's log file in your file explorer."
           )}
         >
           <Button

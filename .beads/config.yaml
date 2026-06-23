@@ -65,7 +65,7 @@
 # - linear.api_key  → use LINEAR_API_KEY env var instead
 # - github.token    → use GITHUB_TOKEN env var instead
 
-sync.remote: "git@github.com:gardenbaum/Collier.git"
+sync.remote: 'git@github.com:gardenbaum/Collier.git'
 
 export.git-add: false
 

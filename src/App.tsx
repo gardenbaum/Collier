@@ -20,7 +20,11 @@ import type { TFunction } from 'i18next'
 import { useTranslation } from 'react-i18next'
 import { check } from '@tauri-apps/plugin-updater'
 import { relaunch } from '@tauri-apps/plugin-process'
-import { ask, message, type MessageDialogOptions } from '@tauri-apps/plugin-dialog'
+import {
+  ask,
+  message,
+  type MessageDialogOptions,
+} from '@tauri-apps/plugin-dialog'
 import { initializeCommandSystem } from './lib/commands'
 import { buildAppMenu, setupMenuLanguageListener } from './lib/menu'
 import { initializeLanguage } from './i18n/language-init'

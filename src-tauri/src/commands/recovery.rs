@@ -38,15 +38,10 @@ fn get_recovery_dir(app: &AppHandle) -> Result<PathBuf, String> {
 /// Validates filename and enforces a 10MB size limit.
 #[tauri::command]
 #[specta::specta]
-pub async fn save_emergency_data(
-    app: AppHandle,
-    filename: String,
-    data: Value,
-) -> BdResult<()> {
+pub async fn save_emergency_data(app: AppHandle, filename: String, data: Value) -> BdResult<()> {
     log::info!("Saving emergency data to file: {filename}");
 
-    validate_filename(&filename)
-        .map_err(|e| BdError::ParseError { message: e })?;
+    validate_filename(&filename).map_err(|e| BdError::ParseError { message: e })?;
 
     let json_content = serde_json::to_string_pretty(&data).map_err(|e| {
         log::error!("Failed to serialize emergency data: {e}");
@@ -65,8 +60,7 @@ pub async fn save_emergency_data(
         });
     }
 
-    let recovery_dir =
-        get_recovery_dir(&app).map_err(|e| BdError::IoError { message: e })?;
+    let recovery_dir = get_recovery_dir(&app).map_err(|e| BdError::IoError { message: e })?;
     let file_path = recovery_dir.join(format!("{filename}.json"));
 
     // Write to a temporary file first, then rename (atomic operation)
@@ -97,17 +91,12 @@ pub async fn save_emergency_data(
 /// Returns `BdError::NotFound` if the file doesn't exist.
 #[tauri::command]
 #[specta::specta]
-pub async fn load_emergency_data(
-    app: AppHandle,
-    filename: String,
-) -> BdResult<Value> {
+pub async fn load_emergency_data(app: AppHandle, filename: String) -> BdResult<Value> {
     log::info!("Loading emergency data from file: {filename}");
 
-    validate_filename(&filename)
-        .map_err(|e| BdError::ParseError { message: e })?;
+    validate_filename(&filename).map_err(|e| BdError::ParseError { message: e })?;
 
-    let recovery_dir =
-        get_recovery_dir(&app).map_err(|e| BdError::IoError { message: e })?;
+    let recovery_dir = get_recovery_dir(&app).map_err(|e| BdError::IoError { message: e })?;
     let file_path = recovery_dir.join(format!("{filename}.json"));
 
     if !file_path.exists() {
@@ -142,8 +131,7 @@ pub async fn load_emergency_data(
 pub async fn cleanup_old_recovery_files(app: AppHandle) -> BdResult<u32> {
     log::info!("Cleaning up old recovery files");
 
-    let recovery_dir =
-        get_recovery_dir(&app).map_err(|e| BdError::IoError { message: e })?;
+    let recovery_dir = get_recovery_dir(&app).map_err(|e| BdError::IoError { message: e })?;
     let mut removed_count = 0;
 
     // Calculate cutoff time (7 days ago)

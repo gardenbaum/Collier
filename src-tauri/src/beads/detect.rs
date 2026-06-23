@@ -85,17 +85,11 @@ pub async fn detect(cwd: &Path) -> BdResult<BdInfo> {
     // Probe 1: version. We use the lower-level `check_bd_version` so
     // a missing `bd` binary surfaces as `None` rather than aborting
     // the rest of the detection.
-    let version = match crate::beads::runner::check_bd_version().await {
-        Ok(v) => Some(v),
-        Err(_) => None,
-    };
+    let version = crate::beads::runner::check_bd_version().await.ok();
 
     // Probe 2: schema. Same rationale: a fresh or Dolt-only workspace
     // returns `None` here, not a hard error.
-    let schema_version = match crate::beads::runner::check_schema_version(cwd).await {
-        Ok(v) => Some(v),
-        Err(_) => None,
-    };
+    let schema_version = crate::beads::runner::check_schema_version(cwd).await.ok();
 
     // Probe 3: JSONL path. We use the glob directly (not `jsonl::read_jsonl`)
     // because `read_jsonl` reads the file — we only need the path here.

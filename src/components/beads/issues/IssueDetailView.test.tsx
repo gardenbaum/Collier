@@ -20,14 +20,19 @@ import { render } from '@/test/test-utils'
 // `bdShow` is the only command that fires on mount; `bdComments` and
 // `bdHistory` are gated by the active tab, and `bdAddComment` is only
 // invoked by the form's submit handler.
-const { mockBdShow, mockBdComments, mockBdHistory, mockBdAddComment, mockBdDepList } =
-  vi.hoisted(() => ({
-    mockBdShow: vi.fn(),
-    mockBdComments: vi.fn(),
-    mockBdHistory: vi.fn(),
-    mockBdAddComment: vi.fn(),
-    mockBdDepList: vi.fn(),
-  }))
+const {
+  mockBdShow,
+  mockBdComments,
+  mockBdHistory,
+  mockBdAddComment,
+  mockBdDepList,
+} = vi.hoisted(() => ({
+  mockBdShow: vi.fn(),
+  mockBdComments: vi.fn(),
+  mockBdHistory: vi.fn(),
+  mockBdAddComment: vi.fn(),
+  mockBdDepList: vi.fn(),
+}))
 
 vi.mock('@/lib/tauri-bindings', () => ({
   commands: {

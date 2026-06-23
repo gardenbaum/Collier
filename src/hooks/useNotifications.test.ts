@@ -20,9 +20,7 @@ vi.mock('@/lib/tauri-bindings', () => ({
   },
 }))
 
-const mockedSendNativeNotification = vi.mocked(
-  commands.sendNativeNotification
-)
+const mockedSendNativeNotification = vi.mocked(commands.sendNativeNotification)
 
 beforeEach(() => {
   vi.clearAllMocks()
