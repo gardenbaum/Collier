@@ -925,12 +925,71 @@ actor: string | null;
  * the status. Helps the History tab render a useful one-liner.
  */
 details?: string | null }
-export type Issue = { id: string; title: string; status: IssueStatus; priority: IssuePriority; issue_type: IssueType; created_at: string; updated_at: string | null; closed_at: string | null; description: string | null; owner: string | null; labels: Label[]; dependencies: Dependency[]; dependency_count: number; dependent_count: number; comment_count: number; parent: string | null; acceptance_criteria: string | null; external_ref: string | null }
+export type Issue = { id: string; title: string; status: IssueStatus; priority: IssuePriority; issue_type: IssueType; created_at: string; 
+/**
+ * `#[serde(default)]` because bd v1.0.4's `bd list --json`
+ * omits `updated_at` for issues that have never been updated
+ * after creation. Default = `None`.
+ */
+updated_at?: string | null; 
+/**
+ * `#[serde(default)]` because bd only emits `closed_at` when
+ * the issue is actually closed; open / in_progress issues have
+ * no entry. Default = `None`.
+ */
+closed_at?: string | null; 
+/**
+ * `#[serde(default)]` because bd v1.0.4's list output omits
+ * `description` for issues with no description. Default = `None`.
+ */
+description?: string | null; 
+/**
+ * `#[serde(default)]` because bd v1.0.4's list output omits
+ * `owner` for unassigned issues. Default = `None`.
+ */
+owner?: string | null; labels: Label[]; 
+/**
+ * `#[serde(default)]` because bd v1.0.4's `bd list --json`
+ * output does NOT include a `dependencies` array — only the
+ * `dependency_count` and `dependent_count` summary fields are
+ * emitted. The full dependency list is only present in
+ * `bd show --json`. Default = empty `Vec`. Surfaced as the
+ * `missing field 'dependencies'` ParseError after the M0
+ * label regression was fixed.
+ */
+dependencies?: Dependency[]; dependency_count: number; dependent_count: number; comment_count: number; 
+/**
+ * `#[serde(default)]` because bd v1.0.4's list output omits
+ * `parent` for issues that aren't children of an epic. Default
+ * = `None`.
+ */
+parent?: string | null; 
+/**
+ * `#[serde(default)]` because bd v1.0.4's list output omits
+ * `acceptance_criteria` for issues without a defined AC field.
+ * Default = `None`.
+ */
+acceptance_criteria?: string | null; 
+/**
+ * `#[serde(default)]` because bd v1.0.4's list output omits
+ * `external_ref` for issues without a linked external ticket.
+ * Default = `None`.
+ */
+external_ref?: string | null }
 export type IssuePriority = "P0" | "P1" | "P2" | "P3" | "P4"
 export type IssueStatus = "open" | "in_progress" | "blocked" | "closed" | "deferred"
 export type IssueType = "bug" | "feature" | "task" | "epic" | "chore" | "decision" | "gate"
 export type JsonValue = null | boolean | number | string | JsonValue[] | Partial<{ [key in string]: JsonValue }>
 export type JsonlResult = { issues: Issue[]; skipped_lines: ([number, string])[] }
+/**
+ * A label attached to an issue. Beads v1 has no colour metadata
+ * for labels, but the v1 `bd list --json` output may emit labels
+ * as either a bare string (`"security"`) or a `{name, color}`
+ * object depending on the CLI build. Both shapes are accepted by
+ * the custom `Deserialize` impl below; serialization is unchanged
+ * (the `Label { name, color }` shape). The frontend bindings
+ * (specta-generated `bindings.ts`) keep the `Label` name.
+ */
 export type Label = { name: string; color: string | null }
 /**
  * One row of `bd label list-all --json`.

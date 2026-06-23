@@ -23,7 +23,13 @@ use crate::beads::{BdError, BdResult};
 /// Hard ceiling on every `bd` invocation. Chosen to be large enough
 /// for cold `bd list` on a large repo, small enough that a hung CLI
 /// fails fast in the UI.
-const BD_TIMEOUT_SECS: u64 = 10;
+/// `bd list --json` on a fresh fixture pays the Dolt cold-start
+/// cost (~10-30s on a fresh CI runner); 10s was too tight and
+/// surfaced as a flaky E2E smoke test (see t_f449df3e in the kanban
+/// board). 120s is the wdio-side session-creation budget divided
+/// by 5 -- the bd subprocess is owned by the Tauri command, not
+/// the test runner, so a generous ceiling here is cheap.
+const BD_TIMEOUT_SECS: u64 = 120;
 
 /// Output of a `bd` invocation. The JSON variant covers both the
 /// `{ schema_version, data }` envelope (default for `bd >= 1.0.5`

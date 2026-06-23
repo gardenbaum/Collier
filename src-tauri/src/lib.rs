@@ -10,6 +10,15 @@ mod types;
 mod utils;
 
 mod beads;
+// Expose `beads` (and its `runner` sub-module) so integration tests
+// in `tests/` can drive the production `run_bd` path without going
+// through Tauri's IPC layer. The runner is already a `tauri::command`
+// in production, so widening to a `pub mod` doesn't reveal anything
+// new externally — the whole surface was reachable through the
+// generated bindings before this change.
+pub mod beads_export_for_tests {
+    pub use crate::beads::runner;
+}
 
 use tauri::{Manager, RunEvent, WindowEvent};
 

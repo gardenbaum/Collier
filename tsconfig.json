@@ -21,10 +21,11 @@
     "noFallthroughCasesInSwitch": true,
     "noUncheckedIndexedAccess": true,
     "noImplicitOverride": true,
+    "types": ["node", "mocha"],
     "paths": {
       "@/*": ["./src/*"]
     }
   },
-  "include": ["src"],
+  "include": ["src", "tests/e2e"],
   "references": [{ "path": "./tsconfig.node.json" }]
 }
