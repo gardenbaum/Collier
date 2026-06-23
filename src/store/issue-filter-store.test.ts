@@ -1,8 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import {
-  useIssueFilterStore,
-  getIssueFilterCounts,
-} from './issue-filter-store'
+import { useIssueFilterStore, getIssueFilterCounts } from './issue-filter-store'
 
 describe('useIssueFilterStore', () => {
   beforeEach(() => {
@@ -87,10 +84,7 @@ describe('useIssueFilterStore', () => {
       const { toggleAssignee } = useIssueFilterStore.getState()
       toggleAssignee('alice')
       toggleAssignee('bob')
-      expect(useIssueFilterStore.getState().assignees).toEqual([
-        'alice',
-        'bob',
-      ])
+      expect(useIssueFilterStore.getState().assignees).toEqual(['alice', 'bob'])
       toggleAssignee('alice')
       expect(useIssueFilterStore.getState().assignees).toEqual(['bob'])
     })
