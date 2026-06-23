@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **M0 foundation (issue R1 + R2).** Deterministic Beads test
+  fixture (`scripts/make-fixture.sh`) seeds a clean `.beads/`
+  workspace with 25 issues covering all five statuses, two epics
+  with parent-child children, a 2-hop blocked dependency chain,
+  and a stable role-to-ID mapping written to
+  `.fixture-ids.json` (Beads IDs are non-deterministic — see the
+  script header for the contract). Seven Rust integration tests in
+  `src-tauri/tests/fixture.rs` load the fixture via the production
+  `run_bd` runner and assert the seeded shape (status counts,
+  epics + children, the blocked chain, dependency edge count,
+  label diversity, and a non-empty `bd ready` / `bd blocked` split).
+  The runner module is re-exported as
+  `tauri_app_lib::beads_export_for_tests::runner` so the
+  integration tests can drive production code without widening
+  the lib's public surface beyond what the Tauri command layer
+  already exposes.
+
 ## [0.1.0] - 2026-06-23
 
 First public release of Collier, a cross-platform desktop GUI for
