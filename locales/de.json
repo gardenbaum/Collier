@@ -206,7 +206,8 @@
     "sections": {
       "views": "Ansichten",
       "filters": "Filter",
-      "labels": "Labels"
+      "labels": "Labels",
+      "assignees": "Zugewiesen an"
     },
     "newIssue": "Neues Issue",
     "sort": "Sortieren",

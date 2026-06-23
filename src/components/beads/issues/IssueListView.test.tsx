@@ -251,6 +251,118 @@ describe('IssueListView', () => {
     expect(screen.queryByTestId('filter-chip-labels')).not.toBeInTheDocument()
   })
 
+  it('clicking a chip \u00d7 removes the entire dimension in one click', async () => {
+    mockBdList.mockResolvedValue({ status: 'ok', data: [] })
+
+    // Two statuses + one priority + one type + one label.
+    useIssueFilterStore.getState().toggleStatus('open')
+    useIssueFilterStore.getState().toggleStatus('in_progress')
+    useIssueFilterStore.getState().togglePriority('P0')
+    useIssueFilterStore.getState().toggleType('bug')
+    useIssueFilterStore.getState().toggleLabel('urgent')
+
+    const { IssueListView } = await importSut()
+    render(<IssueListView cwd="/fake" onOpenIssue={vi.fn()} />)
+
+    await waitFor(() => {
+      expect(screen.getByTestId('list-empty')).toBeInTheDocument()
+    })
+
+    // Click the Status chip's remove button.
+    act(() => {
+      screen.getByTestId('filter-chip-status-remove').click()
+    })
+
+    // Status dimension is now empty (both values cleared in one
+    // click), the chip disappears, the others remain.
+    expect(useIssueFilterStore.getState().status).toEqual([])
+    expect(screen.queryByTestId('filter-chip-status')).not.toBeInTheDocument()
+    expect(screen.getByTestId('filter-chip-priority')).toBeInTheDocument()
+    expect(screen.getByTestId('filter-chip-type')).toBeInTheDocument()
+    expect(screen.getByTestId('filter-chip-labels')).toBeInTheDocument()
+  })
+
+  it('clicking the Clear all chip empties every dimension in one click', async () => {
+    mockBdList.mockResolvedValue({ status: 'ok', data: [] })
+
+    useIssueFilterStore.getState().toggleStatus('open')
+    useIssueFilterStore.getState().togglePriority('P0')
+    useIssueFilterStore.getState().toggleType('bug')
+    useIssueFilterStore.getState().toggleLabel('urgent')
+    useIssueFilterStore.getState().toggleAssignee('alice')
+
+    const { IssueListView } = await importSut()
+    render(<IssueListView cwd="/fake" onOpenIssue={vi.fn()} />)
+
+    await waitFor(() => {
+      expect(screen.getByTestId('list-empty')).toBeInTheDocument()
+    })
+
+    expect(screen.getByTestId('filter-clear-all')).toBeInTheDocument()
+
+    act(() => {
+      screen.getByTestId('filter-clear-all').click()
+    })
+
+    const s = useIssueFilterStore.getState()
+    expect(s.status).toEqual([])
+    expect(s.priority).toEqual([])
+    expect(s.type).toEqual([])
+    expect(s.labels).toEqual([])
+    expect(s.assignees).toEqual([])
+
+    // The entire chip row disappears when no filter is active.
+    expect(screen.queryByTestId('filter-chips')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('filter-clear-all')).not.toBeInTheDocument()
+  })
+
+  it('hides the chip row when no filter is active', async () => {
+    mockBdList.mockResolvedValue({ status: 'ok', data: [] })
+
+    const { IssueListView } = await importSut()
+    render(<IssueListView cwd="/fake" onOpenIssue={vi.fn()} />)
+
+    await waitFor(() => {
+      expect(screen.getByTestId('list-empty')).toBeInTheDocument()
+    })
+
+    expect(screen.queryByTestId('filter-chips')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('filter-clear-all')).not.toBeInTheDocument()
+  })
+
+  it('multiple filters compose with AND in the bdList payload (R2 spec)', async () => {
+    // ponytail: spec R2 explicitly requires AND composition. With
+    // two statuses and one priority active, the bdList call must
+    // carry all three values; the backend (`bd list`) treats
+    // repeatable flags as AND. We assert the bridge payload shape
+    // to lock the contract.
+    mockBdList.mockResolvedValue({ status: 'ok', data: [] })
+
+    useIssueFilterStore.getState().toggleStatus('open')
+    useIssueFilterStore.getState().toggleStatus('in_progress')
+    useIssueFilterStore.getState().togglePriority('P0')
+    useIssueFilterStore.getState().toggleType('bug')
+    useIssueFilterStore.getState().toggleLabel('urgent')
+    useIssueFilterStore.getState().toggleAssignee('alice')
+
+    const { IssueListView } = await importSut()
+    render(<IssueListView cwd="/fake" onOpenIssue={vi.fn()} />)
+
+    await waitFor(() => {
+      expect(mockBdList).toHaveBeenCalled()
+    })
+
+    const [, filters] = mockBdList.mock.calls[
+      mockBdList.mock.calls.length - 1
+    ] as [string, ListFilters]
+    // All five dimensions active; all carry every value (AND).
+    expect(filters.status).toEqual(['open', 'in_progress'])
+    expect(filters.priority).toEqual(['P0'])
+    expect(filters.issueType).toEqual(['bug'])
+    expect(filters.labels).toEqual(['urgent'])
+    expect(filters.assignees).toEqual(['alice'])
+  })
+
   it('passes the active filter snapshot into bdList', async () => {
     mockBdList.mockResolvedValue({ status: 'ok', data: [] })
 

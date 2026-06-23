@@ -206,7 +206,8 @@
     "sections": {
       "views": "العروض",
       "filters": "الفلاتر",
-      "labels": "التسميات"
+      "labels": "التسميات",
+      "assignees": "المسند إليهم"
     },
     "newIssue": "تذكرة جديدة",
     "sort": "ترتيب",
