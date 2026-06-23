@@ -261,17 +261,51 @@ pub struct Issue {
     pub priority: IssuePriority,
     pub issue_type: IssueType,
     pub created_at: DateTime<Utc>,
+    /// `#[serde(default)]` because bd v1.0.4's `bd list --json`
+    /// omits `updated_at` for issues that have never been updated
+    /// after creation. Default = `None`.
+    #[serde(default)]
     pub updated_at: Option<DateTime<Utc>>,
+    /// `#[serde(default)]` because bd only emits `closed_at` when
+    /// the issue is actually closed; open / in_progress issues have
+    /// no entry. Default = `None`.
+    #[serde(default)]
     pub closed_at: Option<DateTime<Utc>>,
+    /// `#[serde(default)]` because bd v1.0.4's list output omits
+    /// `description` for issues with no description. Default = `None`.
+    #[serde(default)]
     pub description: Option<String>,
+    /// `#[serde(default)]` because bd v1.0.4's list output omits
+    /// `owner` for unassigned issues. Default = `None`.
+    #[serde(default)]
     pub owner: Option<String>,
     pub labels: Vec<Label>,
+    /// `#[serde(default)]` because bd v1.0.4's `bd list --json`
+    /// output does NOT include a `dependencies` array — only the
+    /// `dependency_count` and `dependent_count` summary fields are
+    /// emitted. The full dependency list is only present in
+    /// `bd show --json`. Default = empty `Vec`. Surfaced as the
+    /// `missing field 'dependencies'` ParseError after the M0
+    /// label regression was fixed.
+    #[serde(default)]
     pub dependencies: Vec<Dependency>,
     pub dependency_count: u32,
     pub dependent_count: u32,
     pub comment_count: u32,
+    /// `#[serde(default)]` because bd v1.0.4's list output omits
+    /// `parent` for issues that aren't children of an epic. Default
+    /// = `None`.
+    #[serde(default)]
     pub parent: Option<String>,
+    /// `#[serde(default)]` because bd v1.0.4's list output omits
+    /// `acceptance_criteria` for issues without a defined AC field.
+    /// Default = `None`.
+    #[serde(default)]
     pub acceptance_criteria: Option<String>,
+    /// `#[serde(default)]` because bd v1.0.4's list output omits
+    /// `external_ref` for issues without a linked external ticket.
+    /// Default = `None`.
+    #[serde(default)]
     pub external_ref: Option<String>,
 }
 
@@ -708,37 +742,30 @@ mod tests {
                 .expect("real bd labels-as-strings should parse as Vec<Label>");
         assert_eq!(labels_from_issue_1[0].name, "testing");
 
-        // Step 3: pad the missing Issue fields bd didn't emit and
-        // confirm the full Issue struct parses end-to-end with the
-        // bare-string labels. Pins down: the label regression is
-        // the ONLY blocker on this payload — if a future bd version
-        // drops another field we don't tolerate, this test fails
-        // loudly and we can address the broader schema drift in
-        // one place.
-        let mut padded: Vec<serde_json::Value> = Vec::with_capacity(data.len());
-        for issue in data {
-            let mut obj = issue.as_object().cloned().expect("issue is an object");
-            obj.entry("closed_at".to_string())
-                .or_insert(serde_json::Value::Null);
-            obj.entry("description".to_string())
-                .or_insert(serde_json::Value::Null);
-            obj.entry("dependencies".to_string())
-                .or_insert(serde_json::Value::Array(Vec::new()));
-            obj.entry("parent".to_string())
-                .or_insert(serde_json::Value::Null);
-            obj.entry("acceptance_criteria".to_string())
-                .or_insert(serde_json::Value::Null);
-            obj.entry("external_ref".to_string())
-                .or_insert(serde_json::Value::Null);
-            padded.push(serde_json::Value::Object(obj));
-        }
-        let issues: Vec<Issue> = serde_json::from_value(serde_json::Value::Array(padded))
-            .expect("real bd issues with padded defaults should parse end-to-end");
+        // Step 3: the full `Vec<Issue>` parses directly from the
+        // real bd payload — no padding required. `Issue`'s optional
+        // / Vec fields carry `#[serde(default)]` (see the field
+        // docs in this file) so bd's truncated schema (it omits
+        // `closed_at`, `description`, `dependencies`, `parent`,
+        // `acceptance_criteria`, `external_ref` for list output)
+        // tolerates the missing fields. Before this fix, the parse
+        // failed with `missing field 'dependencies'`.
+        let issues: Vec<Issue> =
+            serde_json::from_value(serde_json::Value::Array(data.iter().cloned().collect()))
+                .expect("real bd list payload should parse end-to-end as Vec<Issue>");
         assert_eq!(issues.len(), 2);
         assert_eq!(issues[0].id, "fx-de2");
         assert_eq!(issues[0].labels.len(), 1);
         assert_eq!(issues[0].labels[0].name, "security");
+        // Defaults applied via `#[serde(default)]`:
+        assert_eq!(issues[0].closed_at, None);
+        assert_eq!(issues[0].description, None);
+        assert!(issues[0].dependencies.is_empty());
+        assert_eq!(issues[0].parent, None);
+        assert_eq!(issues[0].acceptance_criteria, None);
+        assert_eq!(issues[0].external_ref, None);
         assert_eq!(issues[1].id, "fx-si4");
         assert_eq!(issues[1].labels[0].name, "testing");
+        assert!(issues[1].dependencies.is_empty());
     }
 }
