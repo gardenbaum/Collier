@@ -33,7 +33,7 @@
 import { useMemo, useRef, useState, type CSSProperties } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { useQuery } from '@tanstack/react-query'
-import { ArrowDown, ArrowUp, ArrowUpDown } from 'lucide-react'
+import { ArrowDown, ArrowUp, ArrowUpDown, X } from 'lucide-react'
 import { commands } from '@/lib/tauri-bindings'
 import type { Issue, ListFilters } from '@/lib/bindings'
 import { useIssueFilterStore } from '@/store/issue-filter-store'
@@ -140,6 +140,12 @@ export function IssueListView({
   const storeType = useIssueFilterStore(s => s.type)
   const labels = useIssueFilterStore(s => s.labels)
   const assignees = useIssueFilterStore(s => s.assignees)
+  const toggleStatus = useIssueFilterStore(s => s.toggleStatus)
+  const togglePriority = useIssueFilterStore(s => s.togglePriority)
+  const toggleType = useIssueFilterStore(s => s.toggleType)
+  const toggleLabel = useIssueFilterStore(s => s.toggleLabel)
+  const toggleAssignee = useIssueFilterStore(s => s.toggleAssignee)
+  const clearAll = useIssueFilterStore(s => s.clearAll)
 
   // Build the ListFilters payload. `useMemo` keeps the queryKey stable
   // when the user toggles a checkbox on and off (the resulting array
@@ -254,31 +260,90 @@ export function IssueListView({
 
   // Active filter chips — one entry per non-empty dimension. Pure
   // projection over the store arrays; nothing persisted or mutated.
-  const chips: { label: string; count: number }[] = []
-  if (status.length > 0) chips.push({ label: 'Status', count: status.length })
-  if (priority.length > 0)
-    chips.push({ label: 'Priority', count: priority.length })
-  if (storeType.length > 0)
-    chips.push({ label: 'Type', count: storeType.length })
-  if (labels.length > 0) chips.push({ label: 'Labels', count: labels.length })
-  if (assignees.length > 0)
-    chips.push({ label: 'Assignees', count: assignees.length })
+  // Each chip carries a remove button (`×`) that clears that
+  // dimension in one click; the trailing "Clear all" chip clears
+  // every dimension. The store's per-dimension toggle actions are
+  // intentionally NOT used here — a chip × removes the entire
+  // dimension, not a single value (toggling N times to remove N
+  // values is the wrong affordance).
+  const hasAnyFilter =
+    status.length > 0 ||
+    priority.length > 0 ||
+    storeType.length > 0 ||
+    labels.length > 0 ||
+    assignees.length > 0
+
+  const removeStatus = () => {
+    for (const s of [...status]) toggleStatus(s)
+  }
+  const removePriority = () => {
+    for (const p of [...priority]) togglePriority(p)
+  }
+  const removeType = () => {
+    for (const t of [...storeType]) toggleType(t)
+  }
+  const removeLabels = () => {
+    for (const l of [...labels]) toggleLabel(l)
+  }
+  const removeAssignees = () => {
+    for (const a of [...assignees]) toggleAssignee(a)
+  }
 
   return (
     <section data-testid="issue-list-view" style={containerStyle}>
-      {chips.length > 0 && (
+      {hasAnyFilter ? (
         <div data-testid="filter-chips" style={chipsRowStyle}>
-          {chips.map(chip => (
-            <span
-              key={chip.label}
-              data-testid={`filter-chip-${chip.label.toLowerCase()}`}
-              style={chipStyle}
-            >
-              {chip.label} ({chip.count})
-            </span>
-          ))}
+          {status.length > 0 ? (
+            <RemovableChip
+              testid="filter-chip-status"
+              label="Status"
+              count={status.length}
+              onRemove={removeStatus}
+            />
+          ) : null}
+          {priority.length > 0 ? (
+            <RemovableChip
+              testid="filter-chip-priority"
+              label="Priority"
+              count={priority.length}
+              onRemove={removePriority}
+            />
+          ) : null}
+          {storeType.length > 0 ? (
+            <RemovableChip
+              testid="filter-chip-type"
+              label="Type"
+              count={storeType.length}
+              onRemove={removeType}
+            />
+          ) : null}
+          {labels.length > 0 ? (
+            <RemovableChip
+              testid="filter-chip-labels"
+              label="Labels"
+              count={labels.length}
+              onRemove={removeLabels}
+            />
+          ) : null}
+          {assignees.length > 0 ? (
+            <RemovableChip
+              testid="filter-chip-assignees"
+              label="Assignees"
+              count={assignees.length}
+              onRemove={removeAssignees}
+            />
+          ) : null}
+          <button
+            type="button"
+            data-testid="filter-clear-all"
+            onClick={() => clearAll()}
+            style={clearAllButtonStyle}
+            aria-label="Clear all filters"
+          >
+            Clear all
+          </button>
         </div>
-      )}
+      ) : null}
 
       <ColumnHeaders sort={sort} onSortClick={onSortClick} />
 
@@ -559,6 +624,41 @@ function IssueRow({ issue, onClick, positionStyle }: IssueRowProps) {
   )
 }
 
+interface RemovableChipProps {
+  testid: string
+  label: string
+  count: number
+  onRemove: () => void
+}
+
+/**
+ * Active-filter chip with a remove button. One chip per non-empty
+ * dimension; the × button clears the whole dimension in one click.
+ *
+ * The chip itself is a plain `<span>` (not a button) — the only
+ * interactive element is the ×. Clicking the label body does
+ * nothing; the affordance is "remove this dimension's filter".
+ * That mirrors the LabelFilterChip pattern (T36).
+ */
+function RemovableChip({ testid, label, count, onRemove }: RemovableChipProps) {
+  return (
+    <span data-testid={testid} style={chipStyle}>
+      <span style={chipLabelStyle}>
+        {label} ({count})
+      </span>
+      <button
+        type="button"
+        data-testid={`${testid}-remove`}
+        onClick={onRemove}
+        aria-label={`Remove ${label} filter`}
+        style={chipRemoveButtonStyle}
+      >
+        <X size={10} aria-hidden="true" />
+      </button>
+    </span>
+  )
+}
+
 // ponytail: hard-coded inline styles, mono only, no brand colour.
 // radius is always 0 — the design-token `radius.sm` is already 0,
 // but the explicit `0` here makes the intent obvious to the next
@@ -577,6 +677,9 @@ const chipsRowStyle: CSSProperties = {
 }
 
 const chipStyle: CSSProperties = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: space[1],
   fontFamily: type.fontFamily.sans,
   fontSize: type.fontSize.xs,
   color: colors.mono2,
@@ -584,6 +687,40 @@ const chipStyle: CSSProperties = {
   paddingInline: space[2],
   paddingBlock: space[1],
   borderRadius: radius.sm,
+}
+
+const chipLabelStyle: CSSProperties = {
+  fontFamily: type.fontFamily.sans,
+  fontSize: type.fontSize.xs,
+  color: colors.mono2,
+}
+
+const chipRemoveButtonStyle: CSSProperties = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  width: 14,
+  height: 14,
+  padding: 0,
+  margin: 0,
+  background: 'transparent',
+  border: 0,
+  color: colors.mono3,
+  cursor: 'pointer',
+}
+
+const clearAllButtonStyle: CSSProperties = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  height: 22,
+  paddingInline: space[2],
+  fontFamily: type.fontFamily.sans,
+  fontSize: type.fontSize.xs,
+  color: colors.mono5,
+  backgroundColor: 'transparent',
+  border: `1px solid ${colors.mono7}`,
+  borderRadius: radius.sm,
+  cursor: 'pointer',
 }
 
 // ponytail: the header row is a separate flex child, NOT a sticky

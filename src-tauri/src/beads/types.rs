@@ -907,9 +907,8 @@ mod tests {
         // `acceptance_criteria`, `external_ref` for list output)
         // tolerates the missing fields. Before this fix, the parse
         // failed with `missing field 'dependencies'`.
-        let issues: Vec<Issue> =
-            serde_json::from_value(serde_json::Value::Array(data.iter().cloned().collect()))
-                .expect("real bd list payload should parse end-to-end as Vec<Issue>");
+        let issues: Vec<Issue> = serde_json::from_value(serde_json::Value::Array(data.to_vec()))
+            .expect("real bd list payload should parse end-to-end as Vec<Issue>");
         assert_eq!(issues.len(), 3);
         assert_eq!(issues[0].id, "fx-de2");
         assert_eq!(issues[0].labels.len(), 1);

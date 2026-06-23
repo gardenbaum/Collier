@@ -36,12 +36,12 @@
 
 use std::path::PathBuf;
 
-use serde_json::Value;
-use crate::bindings::types::{CreateInput, ListFilters, UpdateInput};
 use crate::beads::{
-    runner, search_query, AssigneeWithCount, BdError, BdResult, Dependency, DependencyType,
-    Issue, LabelWithCount, PropagationReport,
+    runner, search_query, AssigneeWithCount, BdError, BdResult, Dependency, DependencyType, Issue,
+    LabelWithCount, PropagationReport,
 };
+use crate::bindings::types::{CreateInput, ListFilters, UpdateInput};
+use serde_json::Value;
 
 /// Run `bd create <flags> --json` in `cwd` and return the new issue.
 ///
@@ -1482,7 +1482,7 @@ mod tests {
         )
         .await;
         assert!(result.is_ok());
-        assert_eq!(result.unwrap(), false);
+        assert!(!result.unwrap());
     }
 
     // ========================================================================
@@ -1655,7 +1655,7 @@ mod tests {
     /// or a case-insensitive comparator is caught.
     #[test]
     fn test_label_list_all_sorted_by_label() {
-        let mut rows = vec![
+        let mut rows = [
             LabelWithCount {
                 label: "zeta".to_string(),
                 count: 1,
