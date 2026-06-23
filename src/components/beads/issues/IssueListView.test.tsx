@@ -251,6 +251,118 @@ describe('IssueListView', () => {
     expect(screen.queryByTestId('filter-chip-labels')).not.toBeInTheDocument()
   })
 
+  it('clicking a chip \u00d7 removes the entire dimension in one click', async () => {
+    mockBdList.mockResolvedValue({ status: 'ok', data: [] })
+
+    // Two statuses + one priority + one type + one label.
+    useIssueFilterStore.getState().toggleStatus('open')
+    useIssueFilterStore.getState().toggleStatus('in_progress')
+    useIssueFilterStore.getState().togglePriority('P0')
+    useIssueFilterStore.getState().toggleType('bug')
+    useIssueFilterStore.getState().toggleLabel('urgent')
+
+    const { IssueListView } = await importSut()
+    render(<IssueListView cwd="/fake" onOpenIssue={vi.fn()} />)
+
+    await waitFor(() => {
+      expect(screen.getByTestId('list-empty')).toBeInTheDocument()
+    })
+
+    // Click the Status chip's remove button.
+    act(() => {
+      screen.getByTestId('filter-chip-status-remove').click()
+    })
+
+    // Status dimension is now empty (both values cleared in one
+    // click), the chip disappears, the others remain.
+    expect(useIssueFilterStore.getState().status).toEqual([])
+    expect(screen.queryByTestId('filter-chip-status')).not.toBeInTheDocument()
+    expect(screen.getByTestId('filter-chip-priority')).toBeInTheDocument()
+    expect(screen.getByTestId('filter-chip-type')).toBeInTheDocument()
+    expect(screen.getByTestId('filter-chip-labels')).toBeInTheDocument()
+  })
+
+  it('clicking the Clear all chip empties every dimension in one click', async () => {
+    mockBdList.mockResolvedValue({ status: 'ok', data: [] })
+
+    useIssueFilterStore.getState().toggleStatus('open')
+    useIssueFilterStore.getState().togglePriority('P0')
+    useIssueFilterStore.getState().toggleType('bug')
+    useIssueFilterStore.getState().toggleLabel('urgent')
+    useIssueFilterStore.getState().toggleAssignee('alice')
+
+    const { IssueListView } = await importSut()
+    render(<IssueListView cwd="/fake" onOpenIssue={vi.fn()} />)
+
+    await waitFor(() => {
+      expect(screen.getByTestId('list-empty')).toBeInTheDocument()
+    })
+
+    expect(screen.getByTestId('filter-clear-all')).toBeInTheDocument()
+
+    act(() => {
+      screen.getByTestId('filter-clear-all').click()
+    })
+
+    const s = useIssueFilterStore.getState()
+    expect(s.status).toEqual([])
+    expect(s.priority).toEqual([])
+    expect(s.type).toEqual([])
+    expect(s.labels).toEqual([])
+    expect(s.assignees).toEqual([])
+
+    // The entire chip row disappears when no filter is active.
+    expect(screen.queryByTestId('filter-chips')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('filter-clear-all')).not.toBeInTheDocument()
+  })
+
+  it('hides the chip row when no filter is active', async () => {
+    mockBdList.mockResolvedValue({ status: 'ok', data: [] })
+
+    const { IssueListView } = await importSut()
+    render(<IssueListView cwd="/fake" onOpenIssue={vi.fn()} />)
+
+    await waitFor(() => {
+      expect(screen.getByTestId('list-empty')).toBeInTheDocument()
+    })
+
+    expect(screen.queryByTestId('filter-chips')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('filter-clear-all')).not.toBeInTheDocument()
+  })
+
+  it('multiple filters compose with AND in the bdList payload (R2 spec)', async () => {
+    // ponytail: spec R2 explicitly requires AND composition. With
+    // two statuses and one priority active, the bdList call must
+    // carry all three values; the backend (`bd list`) treats
+    // repeatable flags as AND. We assert the bridge payload shape
+    // to lock the contract.
+    mockBdList.mockResolvedValue({ status: 'ok', data: [] })
+
+    useIssueFilterStore.getState().toggleStatus('open')
+    useIssueFilterStore.getState().toggleStatus('in_progress')
+    useIssueFilterStore.getState().togglePriority('P0')
+    useIssueFilterStore.getState().toggleType('bug')
+    useIssueFilterStore.getState().toggleLabel('urgent')
+    useIssueFilterStore.getState().toggleAssignee('alice')
+
+    const { IssueListView } = await importSut()
+    render(<IssueListView cwd="/fake" onOpenIssue={vi.fn()} />)
+
+    await waitFor(() => {
+      expect(mockBdList).toHaveBeenCalled()
+    })
+
+    const [, filters] = mockBdList.mock.calls[
+      mockBdList.mock.calls.length - 1
+    ] as [string, ListFilters]
+    // All five dimensions active; all carry every value (AND).
+    expect(filters.status).toEqual(['open', 'in_progress'])
+    expect(filters.priority).toEqual(['P0'])
+    expect(filters.issueType).toEqual(['bug'])
+    expect(filters.labels).toEqual(['urgent'])
+    expect(filters.assignees).toEqual(['alice'])
+  })
+
   it('passes the active filter snapshot into bdList', async () => {
     mockBdList.mockResolvedValue({ status: 'ok', data: [] })
 
@@ -424,6 +536,367 @@ describe('IssueListView', () => {
     expect(screen.getByTestId('list-footer').textContent).toContain(
       '1000 issues'
     )
+  })
+
+  it('renders a column header row with the spec R1 columns', async () => {
+    const issues = [
+      makeIssue({ id: 'beads-1', status: 'open', priority: 'P1' }),
+    ]
+    mockBdList.mockResolvedValue({ status: 'ok', data: issues })
+
+    const { IssueListView } = await importSut()
+    render(
+      <IssueListView cwd="/fake" onOpenIssue={vi.fn()} containerHeight={200} />
+    )
+
+    await waitFor(() => {
+      expect(screen.getByTestId('issue-list-headers')).toBeInTheDocument()
+    })
+
+    // Every spec R1 column is present as a sortable header except
+    // Title (intentionally not sortable per the spec).
+    expect(screen.getByTestId('sort-header-id')).toBeInTheDocument()
+    expect(screen.getByTestId('sort-header-status')).toBeInTheDocument()
+    expect(screen.getByTestId('sort-header-priority')).toBeInTheDocument()
+    expect(screen.getByTestId('sort-header-type')).toBeInTheDocument()
+    expect(screen.getByTestId('sort-header-assignee')).toBeInTheDocument()
+    // No `sort-header-title` — title is not sortable.
+    expect(screen.queryByTestId('sort-header-title')).not.toBeInTheDocument()
+
+    // No sort active by default.
+    const idHeader = screen.getByTestId('sort-header-id')
+    expect(idHeader.getAttribute('data-sort-direction')).toBe('none')
+  })
+
+  it('renders each row as a six-column grid with the spec R1 columns', async () => {
+    const issues = [
+      makeIssue({
+        id: 'beads-1',
+        title: 'Hello world',
+        status: 'in_progress',
+        priority: 'P2',
+        issue_type: 'bug',
+        owner: 'alice',
+      }),
+    ]
+    mockBdList.mockResolvedValue({ status: 'ok', data: issues })
+
+    const { IssueListView } = await importSut()
+    render(
+      <IssueListView cwd="/fake" onOpenIssue={vi.fn()} containerHeight={200} />
+    )
+
+    await waitFor(() => {
+      expect(screen.getByTestId('issue-row')).toBeInTheDocument()
+    })
+
+    const row = screen.getByTestId('issue-row')
+    expect(row.querySelector('[data-column="id"]')?.textContent).toBe('beads-1')
+    expect(row.querySelector('[data-column="title"]')?.textContent).toContain(
+      'Hello world'
+    )
+    expect(row.querySelector('[data-column="status"]')).toBeTruthy()
+    expect(row.querySelector('[data-column="priority"]')).toBeTruthy()
+    expect(row.querySelector('[data-column="type"]')).toBeTruthy()
+    // ponytail: the assignee cell now also embeds an inline-edit
+    // <select> with all assignees as options (for the R3 dropdown).
+    // The visible text is the first child <span>; assert against
+    // it directly so the test stays scoped to the user-visible
+    // owner rather than the full select option list.
+    expect(
+      row
+        .querySelector(
+          '[data-column="assignee"] [data-testid="inline-assignee-edit"]'
+        )
+        ?.querySelector('span')
+    ).toHaveTextContent('alice')
+
+    // Spec R1 also bakes the column values onto the row for QA selectors
+    // that don't have to traverse the DOM tree.
+    expect(row.getAttribute('data-issue-id')).toBe('beads-1')
+    expect(row.getAttribute('data-issue-status')).toBe('in_progress')
+    expect(row.getAttribute('data-issue-priority')).toBe('P2')
+    expect(row.getAttribute('data-issue-type')).toBe('bug')
+    expect(row.getAttribute('data-issue-assignee')).toBe('alice')
+  })
+
+  it('renders an em-dash placeholder for issues without an assignee', async () => {
+    const issues = [makeIssue({ id: 'beads-1', owner: null })]
+    mockBdList.mockResolvedValue({ status: 'ok', data: issues })
+
+    const { IssueListView } = await importSut()
+    render(
+      <IssueListView cwd="/fake" onOpenIssue={vi.fn()} containerHeight={200} />
+    )
+
+    await waitFor(() => {
+      expect(screen.getByTestId('issue-row')).toBeInTheDocument()
+    })
+
+    const row = screen.getByTestId('issue-row')
+    // The data attribute is empty for unassigned, NOT the string "null".
+    expect(row.getAttribute('data-issue-assignee')).toBe('')
+    // The cell carries the em-dash placeholder. Same scope as the
+    // owner test above: read the visible span, not the whole cell
+    // (the inline-edit select adds option texts that are not part
+    // of the visible owner).
+    expect(
+      row
+        .querySelector(
+          '[data-column="assignee"] [data-testid="inline-assignee-edit"]'
+        )
+        ?.querySelector('span')
+    ).toHaveTextContent('—')
+  })
+
+  it('clicking a sort header reorders the rows by that key (asc)', async () => {
+    // ponytail: 4 issues with mixed priorities, deterministically
+    // ordered by issue id in the mock. After clicking the priority
+    // header, the row order must match the P0..P3 rank, NOT the
+    // original id order.
+    const issues = [
+      makeIssue({ id: 'beads-1', priority: 'P3' }),
+      makeIssue({ id: 'beads-2', priority: 'P0' }),
+      makeIssue({ id: 'beads-3', priority: 'P2' }),
+      makeIssue({ id: 'beads-4', priority: 'P1' }),
+    ]
+    mockBdList.mockResolvedValue({ status: 'ok', data: issues })
+
+    const { IssueListView } = await importSut()
+    render(
+      <IssueListView cwd="/fake" onOpenIssue={vi.fn()} containerHeight={400} />
+    )
+
+    await waitFor(() => {
+      expect(screen.getAllByTestId('issue-row')).toHaveLength(4)
+    })
+
+    // Header starts inactive.
+    const header = screen.getByTestId('sort-header-priority')
+    expect(header.getAttribute('data-sort-direction')).toBe('none')
+
+    act(() => {
+      header.click()
+    })
+
+    // After click: ascending priority order.
+    const rows = screen.getAllByTestId('issue-row')
+    const idsInOrder = rows.map(r => r.getAttribute('data-issue-id'))
+    expect(idsInOrder).toEqual(['beads-2', 'beads-4', 'beads-3', 'beads-1'])
+    expect(header.getAttribute('data-sort-direction')).toBe('asc')
+  })
+
+  it('clicking the active sort header again toggles to desc', async () => {
+    const issues = [
+      makeIssue({ id: 'beads-1', priority: 'P3' }),
+      makeIssue({ id: 'beads-2', priority: 'P0' }),
+    ]
+    mockBdList.mockResolvedValue({ status: 'ok', data: issues })
+
+    const { IssueListView } = await importSut()
+    render(
+      <IssueListView cwd="/fake" onOpenIssue={vi.fn()} containerHeight={400} />
+    )
+
+    await waitFor(() => {
+      expect(screen.getAllByTestId('issue-row')).toHaveLength(2)
+    })
+
+    const header = screen.getByTestId('sort-header-priority')
+    act(() => {
+      header.click()
+    })
+    expect(header.getAttribute('data-sort-direction')).toBe('asc')
+    let ids = screen
+      .getAllByTestId('issue-row')
+      .map(r => r.getAttribute('data-issue-id'))
+    expect(ids).toEqual(['beads-2', 'beads-1'])
+
+    act(() => {
+      header.click()
+    })
+    expect(header.getAttribute('data-sort-direction')).toBe('desc')
+    ids = screen
+      .getAllByTestId('issue-row')
+      .map(r => r.getAttribute('data-issue-id'))
+    expect(ids).toEqual(['beads-1', 'beads-2'])
+  })
+
+  it('clicking a different sort header resets direction to asc', async () => {
+    const issues = [
+      makeIssue({ id: 'beads-1', status: 'closed', priority: 'P0' }),
+      makeIssue({ id: 'beads-2', status: 'open', priority: 'P3' }),
+    ]
+    mockBdList.mockResolvedValue({ status: 'ok', data: issues })
+
+    const { IssueListView } = await importSut()
+    render(
+      <IssueListView cwd="/fake" onOpenIssue={vi.fn()} containerHeight={400} />
+    )
+
+    await waitFor(() => {
+      expect(screen.getAllByTestId('issue-row')).toHaveLength(2)
+    })
+
+    const statusHeader = screen.getByTestId('sort-header-status')
+    const priorityHeader = screen.getByTestId('sort-header-priority')
+
+    // Sort status DESC first.
+    act(() => {
+      statusHeader.click()
+    })
+    act(() => {
+      statusHeader.click()
+    })
+    expect(statusHeader.getAttribute('data-sort-direction')).toBe('desc')
+    expect(priorityHeader.getAttribute('data-sort-direction')).toBe('none')
+
+    // Now click priority — should be active in asc, status should reset to none.
+    act(() => {
+      priorityHeader.click()
+    })
+    expect(priorityHeader.getAttribute('data-sort-direction')).toBe('asc')
+    expect(statusHeader.getAttribute('data-sort-direction')).toBe('none')
+  })
+
+  it('sorts by status using the lifecycle order (open → closed)', async () => {
+    const issues = [
+      makeIssue({ id: 'beads-1', status: 'closed' }),
+      makeIssue({ id: 'beads-2', status: 'open' }),
+      makeIssue({ id: 'beads-3', status: 'in_progress' }),
+      makeIssue({ id: 'beads-4', status: 'deferred' }),
+      makeIssue({ id: 'beads-5', status: 'blocked' }),
+    ]
+    mockBdList.mockResolvedValue({ status: 'ok', data: issues })
+
+    const { IssueListView } = await importSut()
+    render(
+      <IssueListView cwd="/fake" onOpenIssue={vi.fn()} containerHeight={500} />
+    )
+
+    await waitFor(() => {
+      expect(screen.getAllByTestId('issue-row')).toHaveLength(5)
+    })
+
+    act(() => {
+      screen.getByTestId('sort-header-status').click()
+    })
+
+    const ids = screen
+      .getAllByTestId('issue-row')
+      .map(r => r.getAttribute('data-issue-id'))
+    expect(ids).toEqual([
+      'beads-2', // open
+      'beads-3', // in_progress
+      'beads-5', // blocked
+      'beads-4', // deferred
+      'beads-1', // closed
+    ])
+  })
+
+  it('sorts by id lexicographically (asc and desc)', async () => {
+    const issues = [
+      makeIssue({ id: 'beads-c' }),
+      makeIssue({ id: 'beads-a' }),
+      makeIssue({ id: 'beads-b' }),
+    ]
+    mockBdList.mockResolvedValue({ status: 'ok', data: issues })
+
+    const { IssueListView } = await importSut()
+    render(
+      <IssueListView cwd="/fake" onOpenIssue={vi.fn()} containerHeight={400} />
+    )
+
+    await waitFor(() => {
+      expect(screen.getAllByTestId('issue-row')).toHaveLength(3)
+    })
+
+    const header = screen.getByTestId('sort-header-id')
+    act(() => {
+      header.click()
+    })
+    expect(
+      screen
+        .getAllByTestId('issue-row')
+        .map(r => r.getAttribute('data-issue-id'))
+    ).toEqual(['beads-a', 'beads-b', 'beads-c'])
+
+    act(() => {
+      header.click()
+    })
+    expect(
+      screen
+        .getAllByTestId('issue-row')
+        .map(r => r.getAttribute('data-issue-id'))
+    ).toEqual(['beads-c', 'beads-b', 'beads-a'])
+  })
+
+  it('sorts assignees alphabetically and sinks nulls to the bottom of asc', async () => {
+    const issues = [
+      makeIssue({ id: 'beads-1', owner: 'charlie' }),
+      makeIssue({ id: 'beads-2', owner: null }),
+      makeIssue({ id: 'beads-3', owner: 'alice' }),
+      makeIssue({ id: 'beads-4', owner: 'bob' }),
+    ]
+    mockBdList.mockResolvedValue({ status: 'ok', data: issues })
+
+    const { IssueListView } = await importSut()
+    render(
+      <IssueListView cwd="/fake" onOpenIssue={vi.fn()} containerHeight={500} />
+    )
+
+    await waitFor(() => {
+      expect(screen.getAllByTestId('issue-row')).toHaveLength(4)
+    })
+
+    const header = screen.getByTestId('sort-header-assignee')
+    act(() => {
+      header.click()
+    })
+    const ascIds = screen
+      .getAllByTestId('issue-row')
+      .map(r => r.getAttribute('data-issue-id'))
+    // Asc: alice, bob, charlie, then unassigned at the bottom.
+    expect(ascIds).toEqual(['beads-3', 'beads-4', 'beads-1', 'beads-2'])
+
+    act(() => {
+      header.click()
+    })
+    const descIds = screen
+      .getAllByTestId('issue-row')
+      .map(r => r.getAttribute('data-issue-id'))
+    // Desc: unassigned at the top, then charlie, bob, alice.
+    expect(descIds).toEqual(['beads-2', 'beads-1', 'beads-4', 'beads-3'])
+  })
+
+  it('does not mutate the TanStack Query cache when sorting', async () => {
+    // ponytail: the sort useMemo must copy the array before sorting.
+    // If it sorts in place, the next invalidation would observe a
+    // mutated cache and the entire app would re-render in a different
+    // order than the user expects. We assert by snapshotting the
+    // input array reference and confirming it survives the sort.
+    const issues = [
+      makeIssue({ id: 'beads-1', priority: 'P3' }),
+      makeIssue({ id: 'beads-2', priority: 'P0' }),
+    ]
+    const snapshot = [...issues]
+    mockBdList.mockResolvedValue({ status: 'ok', data: issues })
+
+    const { IssueListView } = await importSut()
+    render(
+      <IssueListView cwd="/fake" onOpenIssue={vi.fn()} containerHeight={400} />
+    )
+
+    await waitFor(() => {
+      expect(screen.getAllByTestId('issue-row')).toHaveLength(2)
+    })
+
+    act(() => {
+      screen.getByTestId('sort-header-priority').click()
+    })
+
+    // Original input array is untouched (same order, same objects).
+    expect(issues.map(i => i.id)).toEqual(snapshot.map(i => i.id))
   })
 
   it('does not use the brand colour anywhere in the rendered output', async () => {

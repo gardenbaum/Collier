@@ -206,7 +206,8 @@
     "sections": {
       "views": "Views",
       "filters": "Filters",
-      "labels": "Labels"
+      "labels": "Labels",
+      "assignees": "Assignees"
     },
     "newIssue": "New issue",
     "sort": "Sort",

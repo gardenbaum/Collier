@@ -135,6 +135,14 @@ add_blocker "$TASK_LOGIN" "$TASK_OAUTH"
 set_status "$TASK_OPT" blocked
 set_status "$TASK_REFAC" blocked
 
+# Descriptions (M1 R4). A couple of issues get real prose so the
+# E2E spec for the detail panel can assert on deterministic text.
+# TASK_LOGIN also has 2 deps (REFAC + OAUTH), so the same issue
+# covers description + dependencies + metadata in one drawer open.
+# TASK_BUG1 also has 1 dep (INV) for a second deterministic pick.
+bd update --quiet --description "Replace the legacy login form with the new email-first flow. Includes captcha fallback and audit-log wiring." "$TASK_LOGIN" >/dev/null
+bd update --quiet --description "Reproduce the cache-invalidation bug on rapid refresh; document steps in the linked ticket." "$TASK_BUG1" >/dev/null
+
 # Persist ID mapping for downstream consumers.
 cat >"$TARGET_DIR/.fixture-ids.json" <<JSON
 {
@@ -170,4 +178,5 @@ echo "Fixture created at $TARGET_DIR"
 echo "  issues:    25 (2 epics + 5 epic children + 18 standalone)"
 echo "  statuses:  open(10) in_progress(3) blocked(2) deferred(2) closed(8)"
 echo "  edges:     5 dependency edges incl. 2-hop blocked chain (MIGRATE -> OPT -> CACHE)"
+echo "  desc:      TASK_LOGIN + TASK_BUG1 carry deterministic prose for R4 E2E"
 echo "  ids:       $TARGET_DIR/.fixture-ids.json"

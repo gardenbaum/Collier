@@ -51,6 +51,7 @@ pub fn generate_bindings() -> Builder<tauri::Wry> {
         mutations::bd_label_remove,
         mutations::bd_label_propagate,
         mutations::bd_label_list_all,
+        mutations::bd_assignee_list_all,
         mutations::bd_notify,
         show_history::bd_show,
         show_history::bd_history,

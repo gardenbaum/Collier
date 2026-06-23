@@ -61,8 +61,12 @@ export const config: WebdriverIO.Config = {
   // not a Selenium/Appium grid.
   services: [],
 
-  // Look for specs next to this config file.
-  specs: [path.join(__dirname, 'smoke.spec.ts')],
+  // Look for specs next to this config file. The M0 smoke stays
+  // first (alphabetically) as the canonical "app launches and the
+  // list renders" gate; M1+ specs follow. Adding a new spec means
+  // dropping a `*.spec.ts` file in this directory — no config
+  // edit required.
+  specs: [path.join(__dirname, '*.spec.ts')],
   // Strict, deterministic spec execution — one spec file, one file.
   specFileRetries: 0,
   specFileRetriesDelay: 0,

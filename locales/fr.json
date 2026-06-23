@@ -206,7 +206,8 @@
     "sections": {
       "views": "Vues",
       "filters": "Filtres",
-      "labels": "Étiquettes"
+      "labels": "Étiquettes",
+      "assignees": "Assignés"
     },
     "newIssue": "Nouveau ticket",
     "sort": "Trier",
