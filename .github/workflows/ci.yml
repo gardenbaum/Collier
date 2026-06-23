@@ -135,6 +135,43 @@ jobs:
           # Sanity: fixture must expose a non-empty issue list.
           (cd /tmp/e2e-workspace && bd list --json | head -c 200 && echo)
 
+      # Pre-warm the OS file cache for the Collier binary and its
+      # shared libraries. The debug binary is 382 MB and the cold
+      # load (mmap + dynamic linker + GTK / webkit2gtk init) on a
+      # fresh runner takes 30-90s; WebKitWebDriver's session
+      # creation handler waits for the spawned app to be fully
+      # booted before returning, and a cold binary dominates that
+      # wall. Boot the app under xvfb-run for a few seconds so the
+      # file cache is warm by the time tauri-driver + WebKitWebDriver
+      # actually need to spawn it; the warm spawn is ~5-10s instead.
+      # CWD matters: the app reads .beads/ from current_dir(), so we
+      # boot it from the fixture directory.
+      - name: Pre-warm Collier OS file cache
+        run: |
+          set -euo pipefail
+          export WEBKIT_DISABLE_SANDBOX_THIS_PROCESS=1
+          export WEBKIT_DISABLE_DMABUF_RENDERER=1
+          export GIO_USE_VFS=local
+          export NO_AT_BRIDGE=1
+          (
+            cd /tmp/e2e-workspace
+            xvfb-run -a \
+              "$GITHUB_WORKSPACE/src-tauri/target/debug/collier" \
+              > /tmp/collier-prewarm.log 2>&1 &
+            echo $! > /tmp/collier-prewarm.pid
+          )
+          # Give the app time to load libs + open the webview; we
+          # don't need the fixture data to load -- the next step
+          # kills the process before it matters.
+          sleep 15
+          if [ -f /tmp/collier-prewarm.pid ]; then
+            kill "$(cat /tmp/collier-prewarm.pid)" 2>/dev/null || true
+          fi
+          # Best-effort cleanup of any orphan webview children
+          pkill -f target/debug/collier 2>/dev/null || true
+          sleep 1
+          echo "Pre-warm complete (binary loaded into OS file cache)"
+
       # tauri-driver launches the app as a child process, so the
       # child inherits the driver's cwd. The Tauri app reads
       # .beads/ from `current_dir()` (see
@@ -188,7 +225,7 @@ jobs:
       # native WebKitWebDriver is ready. If wdio races ahead and posts
       # /session before WebKitWebDriver has booted, the relay will
       # forward and the request will hang until the wdio
-      # connectionRetryTimeout (180s, see tests/e2e/wdio.conf.ts)
+      # connectionRetryTimeout (600s, see tests/e2e/wdio.conf.ts)
       # aborts. Polling the native port here lets us warm the path
       # synchronously instead of paying the cold-start inside the
       # timeout budget.
@@ -226,6 +263,9 @@ jobs:
           if [ -f /tmp/tauri-driver.pid ]; then
             kill "$(cat /tmp/tauri-driver.pid)" 2>/dev/null || true
           fi
+          # Clean up any orphan Collier pre-warm or webview children
+          pkill -f target/debug/collier 2>/dev/null || true
+          pkill -f WebKitWebProcess 2>/dev/null || true
           if [ -f /tmp/tauri-driver.log ]; then
             echo "----- tauri-driver.log (last 100 lines) -----"
             tail -100 /tmp/tauri-driver.log || true

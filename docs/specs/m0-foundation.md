@@ -66,9 +66,25 @@ budget for the whole handshake is `connectionRetryTimeout` in
   in CI).
 - `NO_AT_BRIDGE=1` — skip the accessibility bridge init that's slow on
   first boot.
-- `connectionRetryTimeout: 180_000` — wdio 9 budget for each WebDriver
-  request. The wdio 9 default is 120_000; we use 180_000 for headroom.
-- `mochaOpts.timeout: 180_000` — matches the above for the smoke test.
+- `connectionRetryTimeout: 600_000` — wdio 9 budget for each WebDriver
+  request. The wdio 9 default is 120_000; we use 600_000 for the first
+  POST /session because it pays the tauri-driver -> WebKitWebDriver ->
+  Tauri app -> Dolt (Beads) cold start on a fresh runner (~3-5 min
+  end-to-end). The Tauri app pre-warm step (below) cuts this to ~10-20s
+  in steady state; the budget stays generous as a safety net.
+- `mochaOpts.timeout: 180_000` — the smoke test itself only needs a few
+  seconds once the session is alive (it's just `waitForDisplayed` +
+  a click + a count), but the 3 min budget covers the fixture load.
+
+### Pre-warm step (already in `.github/workflows/ci.yml`)
+
+The "Pre-warm Collier OS file cache" step boots the app under
+`xvfb-run` for 15 s and kills it before the tauri-driver step starts.
+That warms the OS file cache for the 382 MB debug binary and its
+shared libraries (libwebkit2gtk, libgtk-3, libgdk, etc.) so when
+WebKitWebDriver actually spawns the app inside the session-creation
+handshake, the cold-load wall disappears. On a cold runner this
+shaves ~30-60s off the session-creation wall.
 
 ### Where the logs go
 
@@ -79,6 +95,12 @@ budget for the whole handshake is `connectionRetryTimeout` in
   WebKitWebDriver's `stdout` is set to `Stdio::null()` by tauri-driver
   to keep the relay's own stdout clean. Anything you see in the log is
   from the WebKitWebDriver's `stderr`.
+- `collier-prewarm.log` is captured by the pre-warm step (also via
+  `> /tmp/collier-prewarm.log 2>&1`). It contains whatever the Tauri
+  app printed to stdout / stderr during its 15 s warm-boot. Useful
+  when the pre-warm step itself fails (most commonly: the app crashes
+  on missing X / display, in which case nothing appears here and the
+  issue is the xvfb-run setup, not the binary).
 - The wdio worker prints the session-handshake start time via the
   `onWorkerStart` hook (see `tests/e2e/wdio.conf.ts`). The wdio "RUNNING
   in wry" / "FAILED in wry" lines bracket the whole handshake.
@@ -88,12 +110,13 @@ budget for the whole handshake is `connectionRetryTimeout` in
 
 ### Common failure shapes
 
-- **"aborted due to timeout" on `POST /session` after 60 s wall** — the
-  wdio `connectionRetryTimeout` is too tight. Raise it (the
-  `tests/e2e/wdio.conf.ts` comment cites the relevant wdio 9 source).
-  The "Pre-warm WebKitWebDriver" step in the workflow should normally
-  prevent this by paying the cold start synchronously, but the timeout
-  is the last line of defence.
+- **"aborted due to timeout" on `POST /session` after a few minutes wall**
+  — the wdio `connectionRetryTimeout` is still too tight for a cold
+  runner (3-5 min handshake is the worst case observed). Raise it
+  further, or rely on the pre-warm + the tauri-driver +
+  WebKitWebDriver /status polling in the workflow to keep the path
+  warm. The `tests/e2e/wdio.conf.ts` comment cites the relevant wdio 9
+  source. Most sessions complete in 10-30 s on a warm runner.
 - **`tests/e2e/.artifacts` is empty** — the test never reached
   `afterTest`. The session handshake itself failed. Check the
   `tauri-driver.log` and the wdio worker output (look for the
@@ -102,6 +125,13 @@ budget for the whole handshake is `connectionRetryTimeout` in
   tauri-driver's port is already taken. The healthcheck polls
   `:4444/status`; failure is reported with the last 50 lines of
   `tauri-driver.log`.
+- **"WebKitWebDriver is up" never appears** — WebKitWebDriver failed
+  to boot under tauri-driver. The most common cause on a fresh runner
+  is a missing font or D-Bus setup; the WEBKIT\_\* env vars above are
+  the current best-effort workaround. The pre-warm step makes the
+  COLD wall much smaller; if WebKitWebDriver still doesn't reach
+  /status within 120 s the env vars are probably wrong for the new
+  webkit2gtk version on the runner image.
 
 ## Cards (bounded, dependency-ordered)
 
