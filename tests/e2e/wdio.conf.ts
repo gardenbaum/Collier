@@ -39,7 +39,21 @@ export const config: WebdriverIO.Config = {
   port: Number.parseInt(process.env.E2E_WDIO_PORT ?? '4444', 10),
   path: '/',
   // tauri-driver is a long-lived server; just retry until it's up.
-  connectionRetryTimeout: 60_000,
+  //
+  // NOTE: in wdio 9, `connectionRetryTimeout` is NOT just the initial
+  // connection timeout -- it is also passed to undici as
+  // `connectTimeout` / `headersTimeout` / `bodyTimeout` AND used as
+  // an `AbortSignal.timeout(...)` for the whole request (see
+  // `webdriver/build/node.js`). That makes it the wall-clock budget
+  // for EVERY WebDriver request, including the first POST /session
+  // -- and that request must wait for tauri-driver to spawn
+  // WebKitWebDriver, for WebKitWebDriver to boot, and for the Tauri
+  // app to start. On a fresh CI runner the cold start is ~30-60s, so
+  // 60s is too tight (observed failure: 60s wall -> "aborted due to
+  // timeout" with WebKitWebDriver orphaned on cleanup). The wdio 9
+  // default is 120_000; we use 180_000 to leave headroom for a
+  // worst-case cold start.
+  connectionRetryTimeout: 180_000,
   connectionRetryCount: 30,
 
   // No extra services — tauri-driver is a plain WebDriver server,
@@ -56,7 +70,12 @@ export const config: WebdriverIO.Config = {
   framework: 'mocha',
   mochaOpts: {
     ui: 'bdd',
-    timeout: 60_000,
+    // Match connectionRetryTimeout: the smoke test waits for the
+    // bootstrap screen, the "Use CWD" click, and the first issue
+    // row to render -- all of which depend on the Beads fixture
+    // loading through the Tauri app. 3 min leaves headroom for
+    // cold-start Dolt + WebKitWebDriver on a fresh CI runner.
+    timeout: 180_000,
   },
 
   reporters: ['spec'],
@@ -98,6 +117,21 @@ export const config: WebdriverIO.Config = {
   // wdio 9 renamed the per-worker env from `env` to `runnerEnv`.
   runnerEnv: {
     E2E: '1',
+  },
+
+  // Hook the worker lifecycle so CI logs have timestamps around
+  // the WebKitWebDriver cold start. `onWorkerStart` fires after
+  // the worker process is spawned but BEFORE the WebDriver
+  // session is created (which is where the 60s timeout fires);
+  // `onWorkerEnd` fires after the worker exits. Pair these with
+  // the "Execution of N workers started" line wdio already prints
+  // to triangulate whether the next failure is wdio's request
+  // budget or an actual tauri-driver hang.
+  onWorkerStart: (_cid, _caps, _specs) => {
+    console.log(`[e2e] onWorkerStart at ${new Date().toISOString()}`)
+  },
+  onWorkerEnd: (_cid, _exitCode) => {
+    console.log(`[e2e] onWorkerEnd at ${new Date().toISOString()}`)
   },
 
   // Capture a screenshot on any failed test, plus the wdio log
