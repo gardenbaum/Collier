@@ -88,6 +88,32 @@ export function IssueListView({
     },
   })
 
+  // Extract a useful human-readable message from the error object.
+  // The Tauri command returns `Result<T, E>` from Rust, which specta
+  // serialises as `{ status: 'error', error: <object> }` where
+  // `<object>` is a discriminated union of the `BdError` variants
+  // (e.g. `{ kind: 'Timeout', seconds: 120 }`). Stringifying that
+  // directly gives "[object Object]" -- useless for debugging. The
+  // helper below handles both shapes: a plain string (e.g. from a
+  // thrown JS error) and the variant-object shape, falling back to
+  // JSON for anything we don't recognise.
+  const errorMessage = (() => {
+    const err = query.error as unknown
+    if (err == null) return ''
+    if (typeof err === 'string') return err
+    if (typeof err === 'object') {
+      const obj = err as Record<string, unknown>
+      if (typeof obj.message === 'string') return obj.message
+      if (typeof obj.error === 'string') return obj.error
+      try {
+        return JSON.stringify(err)
+      } catch {
+        return String(err)
+      }
+    }
+    return String(err)
+  })()
+
   // ponytail: react-virtual — the scrollable container is the only
   // source of truth for scroll position. The virtualizer measures it,
   // subscribes to scroll/resize, and computes which indices are in
@@ -150,7 +176,7 @@ export function IssueListView({
         ) : null}
         {query.isError ? (
           <div data-testid="list-error" style={statusStyle}>
-            Failed to load: {String(query.error)}
+            Failed to load: {errorMessage}
           </div>
         ) : null}
         {!query.isLoading && !query.isError && total === 0 ? (
