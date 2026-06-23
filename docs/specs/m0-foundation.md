@@ -39,6 +39,70 @@ installed in the container only for **Rust integration tests + fixture generatio
 - CI shows a **green E2E job** (Xvfb) with the smoke test passing on the PR.
 - Fixture script reproducible; virtualization assertion test passing.
 
+## Debugging E2E
+
+The E2E job runs `tauri-driver` under `xvfb-run` against the built Collier binary,
+then drives it with WebdriverIO 9 (`tests/e2e/smoke.spec.ts`). The harness is
+intentionally minimal but has three cold-start costs that are easy to miss:
+
+1. **Xvfb** (~$0.1s) — virtual display.
+2. **tauri-driver** (~$2-5s) — the Rust WebDriver relay, listens on `:4444`.
+3. **WebKitWebDriver** (~$10-60s on a fresh runner) — the native W3C driver
+   that tauri-driver spawns, listens on `:4445`. This is the slow one.
+
+The "Run E2E smoke test" step runs `bun run test:e2e`, which posts `/session`
+to `:4444`. tauri-driver forwards the request to `:4445`. The wall-clock
+budget for the whole handshake is `connectionRetryTimeout` in
+`tests/e2e/wdio.conf.ts` (currently 180 s, see the in-file comment for why
+60 s is too tight).
+
+### Useful env vars and timeouts (already set in `.github/workflows/ci.yml`)
+
+- `WEBKIT_DISABLE_SANDBOX_THIS_PROCESS=1` — skip the per-process sandbox
+  setup that needs `CAP_SYS_ADMIN` (not available to the runner user).
+- `WEBKIT_DISABLE_DMABUF_RENDERER=1` — skip the GPU DMA-BUF path on a
+  headless runner.
+- `GIO_USE_VFS=local` — use the local GIO VFS instead of Gvfsd (no GVFS
+  in CI).
+- `NO_AT_BRIDGE=1` — skip the accessibility bridge init that's slow on
+  first boot.
+- `connectionRetryTimeout: 180_000` — wdio 9 budget for each WebDriver
+  request. The wdio 9 default is 120_000; we use 180_000 for headroom.
+- `mochaOpts.timeout: 180_000` — matches the above for the smoke test.
+
+### Where the logs go
+
+- `tauri-driver.log` is captured by the workflow's `nohup ... > /tmp/tauri-driver.log 2>&1`
+  but is **empty on a healthy start**: tauri-driver (v2.0.6) does no
+  logging (its source has zero log calls, see
+  `crates/tauri-driver/src/{server,webdriver,main}.rs`), and the native
+  WebKitWebDriver's `stdout` is set to `Stdio::null()` by tauri-driver
+  to keep the relay's own stdout clean. Anything you see in the log is
+  from the WebKitWebDriver's `stderr`.
+- The wdio worker prints the session-handshake start time via the
+  `onWorkerStart` hook (see `tests/e2e/wdio.conf.ts`). The wdio "RUNNING
+  in wry" / "FAILED in wry" lines bracket the whole handshake.
+- On a test failure, the `afterTest` hook drops a screenshot into
+  `tests/e2e/.artifacts/`, and the workflow uploads that directory as
+  the `e2e-screenshots` artifact.
+
+### Common failure shapes
+
+- **"aborted due to timeout" on `POST /session` after 60 s wall** — the
+  wdio `connectionRetryTimeout` is too tight. Raise it (the
+  `tests/e2e/wdio.conf.ts` comment cites the relevant wdio 9 source).
+  The "Pre-warm WebKitWebDriver" step in the workflow should normally
+  prevent this by paying the cold start synchronously, but the timeout
+  is the last line of defence.
+- **`tests/e2e/.artifacts` is empty** — the test never reached
+  `afterTest`. The session handshake itself failed. Check the
+  `tauri-driver.log` and the wdio worker output (look for the
+  `onWorkerStart` timestamp).
+- **"tauri-driver is up" never appears** — Xvfb can't start, or
+  tauri-driver's port is already taken. The healthcheck polls
+  `:4444/status`; failure is reported with the last 50 lines of
+  `tauri-driver.log`.
+
 ## Cards (bounded, dependency-ordered)
 
 1. **t-m0-fixture** (R2) — fixture script + a Rust integration test that loads it via the bd-runner. _(needs bd installed)_
