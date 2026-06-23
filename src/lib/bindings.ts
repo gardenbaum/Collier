@@ -628,6 +628,36 @@ async bdLabelListAll(cwd: string) : Promise<Result<LabelWithCount[], BdError>> {
 }
 },
 /**
+ * Run `bd list --json` (no filters) in `cwd` and return the sorted
+ * list of distinct `(assignee, count)` rows.
+ * 
+ * The Beads CLI (1.0.5, 2026-06-17) does NOT expose an
+ * `assignee list-all` subcommand, so we derive the distinct
+ * `(owner, count)` pairs from a full `bd list --json` pass on
+ * the Rust side. This is a small bounded concern: we do not
+ * read `.beads/issues.jsonl` directly (per the constitution
+ * rule — `bd` is the single source of truth), we shell out to
+ * `bd list --json` once and aggregate in-memory.
+ * 
+ * Unassigned issues (`owner = None`) are intentionally excluded
+ * from the returned rows. The frontend renders an explicit
+ * "Unassigned" toggle only when the user opts in (separate
+ * from this list) — surfacing a synthetic "" (empty string)
+ * row would clutter the sidebar.
+ * 
+ * The rows are sorted by `assignee` on the Rust side so the
+ * frontend renders in a stable order without re-sorting
+ * (same convention as `bd_label_list_all`).
+ */
+async bdAssigneeListAll(cwd: string) : Promise<Result<AssigneeWithCount[], BdError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("bd_assignee_list_all", { cwd }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
  * Send a desktop notification (uses `tauri-plugin-notification`).
  * 
  * ponytail: thin no-op stub. v1 callers (the `useNotifications` hook
@@ -777,6 +807,31 @@ bd_path?: string | null;
  */
 default_timeout_secs?: number | null }
 /**
+ * One row of `bd_assignee_list_all` — distinct owner (assignee)
+ * across the whole `.beads/` database, with the count of issues
+ * they own.
+ * 
+ * Mirror of `LabelWithCount`: the Beads CLI (v1.0.5) does not
+ * expose an `assignee list-all` subcommand, so we derive the
+ * distinct `(owner, count)` pairs from a full `bd list --json`
+ * pass on the Rust side. Sorted by name so the frontend renders
+ * in a stable order without re-sorting.
+ * 
+ * `count` is the number of issues currently owned by that user.
+ * Unassigned issues (`owner = None`) are NOT included — the
+ * frontend renders an explicit "Unassigned" affordance only when
+ * the user actively opts in (separate from this list).
+ * 
+ * ponytail: the struct shape is intentionally identical to
+ * `LabelWithCount { label, count }` rather than a richer
+ * `Assignee { name, email, ... }`. Beads' owner model in v1 is
+ * just a string with no metadata; a richer struct would force
+ * `Option::None`s everywhere today and constrain a v2 metadata
+ * shape prematurely. Reuse the flat shape; expand when a real
+ * metadata field lands.
+ */
+export type AssigneeWithCount = { assignee: string; count: number }
+/**
  * Which on-disk store the workspace uses. `Unknown` means we found
  * `.beads/` (or its directory is missing) but couldn't classify it
  * — the modal layer (T10) treats this the same as "no compatible
@@ -878,8 +933,40 @@ labels?: string[] | null;
  * `bd create --external-ref`. Empty string is treated as "not set".
  */
 externalRef?: string | null }
-export type Dependency = { dependency_id: string; dependency_type: DependencyType; blocked_by: boolean | null }
-export type DependencyType = "blocks" | "parent_child" | "conditional_blocks" | "waits_for" | "related" | "tracks" | "discovered_from" | "caused_by" | "validates" | "supersedes"
+export type Dependency = { 
+/**
+ * The target issue id (the issue being depended on, i.e. the
+ * "to" side of the relationship). The field is named
+ * `dependency_id` in the Rust→TS contract (see
+ * `DependencyTreeView.tsx`) but bd's `bd list --json` emits it
+ * as `depends_on_id`. The alias keeps both shapes deserialisable;
+ * serialization stays `dependency_id` so the frontend contract
+ * is unchanged. The `issue_id` bd also emits is the source side
+ * — that's already on the enclosing `Issue`, so we just ignore
+ * it on deserialize (serde_json drops unknown fields).
+ */
+dependency_id: string; 
+/**
+ * bd emits this as `type` (a reserved Rust keyword, hence the
+ * Rust field rename). Alias keeps bd's output deserialisable;
+ * serialization stays `dependency_type`.
+ */
+dependency_type: DependencyType; 
+/**
+ * `#[serde(default)]` because bd v1.0.4 does NOT emit a
+ * `blocked_by` flag in `bd list --json` — that direction is
+ * implicit from `type` (a `blocks` edge on a non-closed issue
+ * means the source is blocked). Default = `None`.
+ */
+blocked_by?: boolean | null }
+export type DependencyType = "blocks" | 
+/**
+ * bd v1.0.4 emits this as `parent-child` (kebab-case) instead of
+ * the snake_case the enum's `rename_all` would produce. The
+ * alias keeps bd's output deserialisable; serialization stays
+ * `parent_child` so the existing TS contract is unchanged.
+ */
+"parent_child" | "conditional_blocks" | "waits_for" | "related" | "tracks" | "discovered_from" | "caused_by" | "validates" | "supersedes"
 /**
  * One entry from an issue's version history.
  * 
