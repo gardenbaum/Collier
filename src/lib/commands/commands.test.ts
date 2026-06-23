@@ -145,5 +145,24 @@ describe('Simplified Command System', () => {
       expect(result.success).toBe(false)
       expect(result.error).toContain('Test error')
     })
+
+    it('executes open-preferences and forwards the call to the context', async () => {
+      const result = await executeCommand('open-preferences', mockContext)
+
+      expect(result.success).toBe(true)
+      expect(mockContext.openPreferences).toHaveBeenCalledTimes(1)
+    })
+
+    it('executes hide-sidebar to collapse the left sidebar', async () => {
+      mockUIStore.getState.mockReturnValue({
+        sidebarVisible: true,
+        commandPaletteOpen: false,
+        setSidebarVisible: vi.fn(),
+      })
+
+      const result = await executeCommand('hide-sidebar', mockContext)
+
+      expect(result.success).toBe(true)
+    })
   })
 })

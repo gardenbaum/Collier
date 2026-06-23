@@ -75,9 +75,7 @@ describe('formatShortcut', () => {
     })
 
     it('formats all three modifiers in Mac order: shift, alt, mod, key', () => {
-      expect(
-        formatShortcut('macos', 'K', ['shift', 'alt', 'mod'])
-      ).toBe('⇧⌥⌘K')
+      expect(formatShortcut('macos', 'K', ['shift', 'alt', 'mod'])).toBe('⇧⌥⌘K')
     })
 
     it('uses the literal key when no modifiers are provided', () => {

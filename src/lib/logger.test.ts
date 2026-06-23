@@ -9,11 +9,14 @@ const mockSetDiagnosticLogging = vi.fn()
 vi.mock('@/lib/tauri-bindings', () => ({
   commands: {
     writeLogLine: (...args: unknown[]) => mockWriteLogLine(...args),
-    setDiagnosticLogging: (...args: unknown[]) => mockSetDiagnosticLogging(...args),
+    setDiagnosticLogging: (...args: unknown[]) =>
+      mockSetDiagnosticLogging(...args),
   },
 }))
 
-type ImportResult = typeof import('./logger')
+import type * as LoggerModule from './logger'
+
+type ImportResult = typeof LoggerModule
 
 async function loadLogger(dev: boolean): Promise<ImportResult> {
   vi.resetModules()
@@ -33,10 +36,18 @@ describe('logger', () => {
     mockWriteLogLine.mockResolvedValue({ status: 'ok', data: null })
     mockSetDiagnosticLogging.mockResolvedValue({ status: 'ok', data: null })
 
-    consoleDebugSpy = vi.spyOn(console, 'debug').mockImplementation(() => {})
-    consoleInfoSpy = vi.spyOn(console, 'info').mockImplementation(() => {})
-    consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    consoleDebugSpy = vi
+      .spyOn(console, 'debug')
+      .mockImplementation(() => undefined)
+    consoleInfoSpy = vi
+      .spyOn(console, 'info')
+      .mockImplementation(() => undefined)
+    consoleWarnSpy = vi
+      .spyOn(console, 'warn')
+      .mockImplementation(() => undefined)
+    consoleErrorSpy = vi
+      .spyOn(console, 'error')
+      .mockImplementation(() => undefined)
   })
 
   afterEach(() => {
@@ -74,7 +85,13 @@ describe('logger', () => {
       const { logger } = await loadLogger(true)
       logger.trace('hello', { foo: 1 })
       expect(consoleDebugSpy).toHaveBeenCalledTimes(1)
-      const [firstArg, msg, ctx] = consoleDebugSpy.mock.calls[0]!
+      const debugCall = consoleDebugSpy.mock.calls[0] as [
+        string,
+        string,
+        { foo: number },
+      ]
+      expect(debugCall).toBeDefined()
+      const [firstArg, msg, ctx] = debugCall
       expect(firstArg).toMatch(/^\[\d{4}-\d{2}-\d{2}T/) // ISO timestamp
       expect(firstArg).toContain('TRACE')
       expect(msg).toBe('hello')
@@ -108,7 +125,8 @@ describe('logger', () => {
     it('omits the context arg when no context is provided', async () => {
       const { logger } = await loadLogger(true)
       logger.info('no-ctx')
-      const call = consoleInfoSpy.mock.calls[0]!
+      const call = consoleInfoSpy.mock.calls[0] as unknown[]
+      expect(call).toBeDefined()
       expect(call).toHaveLength(2) // [prefix, message]
     })
   })
@@ -140,7 +158,19 @@ describe('logger', () => {
       logger.warn('disk', { trace: 'x' })
       await new Promise(r => setTimeout(r, 0))
       expect(mockWriteLogLine).toHaveBeenCalledTimes(1)
-      const line = mockWriteLogLine.mock.calls[0]![0]
+      const writeCalls = mockWriteLogLine.mock.calls[0] as {
+        level: string
+        message: string
+        source: string
+        context: unknown
+      }[]
+      expect(writeCalls).toBeDefined()
+      const line = writeCalls[0] as unknown as {
+        level: string
+        message: string
+        source: string
+        context: unknown
+      }
       expect(line.level).toBe('warn')
       expect(line.message).toBe('disk')
       expect(line.source).toBe('frontend')
@@ -153,7 +183,12 @@ describe('logger', () => {
       logger.error('boom')
       await new Promise(r => setTimeout(r, 0))
       expect(mockWriteLogLine).toHaveBeenCalledTimes(1)
-      expect(mockWriteLogLine.mock.calls[0]![0].level).toBe('error')
+      const errWriteCalls = mockWriteLogLine.mock.calls[0] as {
+        level: string
+      }[]
+      expect(errWriteCalls).toBeDefined()
+      const errLine = errWriteCalls[0] as unknown as { level: string }
+      expect(errLine.level).toBe('error')
     })
 
     it('does not mirror info / debug to the backend even with the flag on', async () => {

@@ -28,7 +28,14 @@ vi.mock('sonner', () => ({
   toast: mockToast,
 }))
 
-import { notify, notifications, success, error, info, warning } from './notifications'
+import {
+  notify,
+  notifications,
+  success,
+  error,
+  info,
+  warning,
+} from './notifications'
 
 describe('notify — toast path', () => {
   beforeEach(() => {
@@ -58,10 +65,7 @@ describe('notify — toast path', () => {
 
   it('routes to toast.info by default (no type provided)', async () => {
     await notify('FYI', 'just so you know')
-    expect(mockToast.info).toHaveBeenCalledWith(
-      'FYI: just so you know',
-      {}
-    )
+    expect(mockToast.info).toHaveBeenCalledWith('FYI: just so you know', {})
   })
 
   it('omits the message when none is provided', async () => {
@@ -71,7 +75,9 @@ describe('notify — toast path', () => {
 
   it('passes a custom duration through to the toast options', async () => {
     await notify('Stays', 'a while', { duration: 0 })
-    expect(mockToast.info).toHaveBeenCalledWith('Stays: a while', { duration: 0 })
+    expect(mockToast.info).toHaveBeenCalledWith('Stays: a while', {
+      duration: 0,
+    })
   })
 
   it('does not call the Tauri command on the toast path', async () => {
@@ -130,9 +136,7 @@ describe('notify — native path', () => {
   })
 
   it('falls back to a toast.error if the IPC throws', async () => {
-    mockCommands.sendNativeNotification.mockRejectedValue(
-      new Error('crash')
-    )
+    mockCommands.sendNativeNotification.mockRejectedValue(new Error('crash'))
     await notify('boom', 'hard', { native: true })
     expect(mockToast.error).toHaveBeenCalledWith('boom: hard')
   })
@@ -173,10 +177,7 @@ describe('notifications convenience object', () => {
 
   it('warning() picks the warning type', async () => {
     await notifications.warning('Careful', 'slow down')
-    expect(mockToast.warning).toHaveBeenCalledWith(
-      'Careful: slow down',
-      {}
-    )
+    expect(mockToast.warning).toHaveBeenCalledWith('Careful: slow down', {})
   })
 
   it('routes through native when the native flag is true', async () => {

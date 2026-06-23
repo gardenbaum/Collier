@@ -92,7 +92,7 @@ describe('recovery — saveEmergencyData', () => {
   })
 
   it('formats every BdError variant with a useful message', async () => {
-    const cases: Array<{ error: unknown; expected: RegExp }> = [
+    const cases: { error: unknown; expected: RegExp }[] = [
       { error: makeError('NotFound', { id: 'x' }), expected: /File not found/ },
       {
         error: makeError('PermissionDenied', { path: '/etc' }),
@@ -137,9 +137,7 @@ describe('recovery — saveEmergencyData', () => {
         status: 'error',
         error,
       })
-      await expect(
-        saveEmergencyData('snap.json', {})
-      ).rejects.toThrow(expected)
+      await expect(saveEmergencyData('snap.json', {})).rejects.toThrow(expected)
     }
   })
 })
@@ -268,7 +266,12 @@ describe('recovery — saveCrashState', () => {
     })
     await saveCrashState({ state: 'broken' }, { error: 'err' })
     expect(mockCommands.saveEmergencyData).toHaveBeenCalledTimes(1)
-    const [filename, payload] = mockCommands.saveEmergencyData.mock.calls[0]!
+    const saveCall = mockCommands.saveEmergencyData.mock.calls[0] as [
+      string,
+      { crashInfo: unknown },
+    ]
+    expect(saveCall).toBeDefined()
+    const [filename, payload] = saveCall
     expect(filename).toMatch(/^crash-\d+-aaaaaaaa$/)
     expect(payload).toMatchObject({
       state: { state: 'broken' },
@@ -276,7 +279,9 @@ describe('recovery — saveCrashState', () => {
     })
     expect(payload).toHaveProperty('userAgent')
     expect(payload).toHaveProperty('url')
-    expect(typeof (payload as { timestamp: number }).timestamp).toBe('number')
+    expect(typeof (payload as unknown as { timestamp: number }).timestamp).toBe(
+      'number'
+    )
     expect(mockLogger.info).toHaveBeenCalled()
   })
 
@@ -286,9 +291,12 @@ describe('recovery — saveCrashState', () => {
       data: null,
     })
     await saveCrashState({ x: 1 })
-    const payload = mockCommands.saveEmergencyData.mock.calls[0]![1] as {
-      crashInfo: unknown
-    }
+    const saveCalls = mockCommands.saveEmergencyData.mock.calls[0] as [
+      string,
+      { crashInfo: unknown },
+    ]
+    expect(saveCalls).toBeDefined()
+    const payload = saveCalls[1]
     expect(payload.crashInfo).toBeNull()
   })
 
@@ -321,8 +329,11 @@ describe('recovery — saveCrashState', () => {
       throw new Error('synthetic explosion')
     })
     await expect(saveCrashState({ x: 1 })).resolves.toBeUndefined()
-    expect(mockLogger.error).toHaveBeenCalledWith('Failed to save crash state', {
-      error: expect.any(Error),
-    })
+    expect(mockLogger.error).toHaveBeenCalledWith(
+      'Failed to save crash state',
+      {
+        error: expect.any(Error),
+      }
+    )
   })
 })
