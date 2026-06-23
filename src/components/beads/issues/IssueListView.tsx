@@ -1,5 +1,6 @@
 /**
- * IssueListView — virtualized list of issues backed by `bd list --json`.
+ * IssueListView — virtualized, sortable, columnar table of issues
+ * backed by `bd list --json`.
  *
  * ponytail: pulls the active filter selection from `useIssueFilterStore`
  * (T17), turns it into a `ListFilters` payload, and hands both to a
@@ -15,6 +16,15 @@
  * that re-fetches the query only re-renders the windowed slice — never
  * the full list.
  *
+ * Spec R1 (M1 issue-core) — the rows are rendered as a CSS-grid table
+ * with explicit columns (id, title, status, priority, type, assignee)
+ * and the existing badges/icons. Headers for status / priority / type
+ * / assignee / id are sortable; clicking a header flips the sort
+ * direction; clicking a different header resets to `asc`. Virtualization
+ * is preserved because the row layout (CSS grid template) is purely
+ * visual — the virtualizer's `translateY` is the only positioning, and
+ * it works on a grid row the same way it worked on the old flex row.
+ *
  * Hard-edged Bauhaus: mono scale only, hard edges (radius 0), inline
  * `style` with design tokens. No animations, no transitions. The brand
  * colour is reserved for destructive + P0 per AC-14; this component
@@ -23,6 +33,7 @@
 import { useMemo, useRef, useState, type CSSProperties } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { useQuery } from '@tanstack/react-query'
+import { ArrowDown, ArrowUp, ArrowUpDown } from 'lucide-react'
 import { commands } from '@/lib/tauri-bindings'
 import type { Issue, ListFilters } from '@/lib/bindings'
 import { useIssueFilterStore } from '@/store/issue-filter-store'
@@ -33,10 +44,18 @@ import { TypeIcon } from './badges/TypeIcon'
 import { LabelChip } from './badges/LabelChip'
 
 const ROW_HEIGHT = 40
+const HEADER_HEIGHT = 32
 // 5 overscan rows on each side of the viewport. Matches the previous
 // manual-windowing constant so the existing test's `< 20` assertion
 // still holds.
 const OVERSCAN = 5
+
+// ponytail: the column order is the spec R1 contract — id, title,
+// status, priority, type, assignee. The same template is used by the
+// header row and every body row so the columns align by construction.
+// Widths are tuned for a 1200px viewport: id + the 4 narrow columns
+// sum to ~470px, leaving ~730px for the title column.
+const GRID_TEMPLATE = '100px minmax(0, 1fr) 130px 64px 96px 140px'
 
 export interface IssueListViewProps {
   /** Repository root passed to `bd list`. */
@@ -45,6 +64,68 @@ export interface IssueListViewProps {
   onOpenIssue: (id: string) => void
   /** Optional override for the default windowing container height. */
   containerHeight?: number
+}
+
+// ponytail: SortKey is the closed set of sortable columns. Title is
+// intentionally absent — the spec only requires sort for the 5
+// categorical / identifier columns. `SortDirection` is `asc | desc`
+// and is toggled by clicking the active header or flipped on a fresh
+// header click.
+export type SortKey = 'id' | 'status' | 'priority' | 'type' | 'assignee'
+export type SortDirection = 'asc' | 'desc'
+
+interface SortState {
+  key: SortKey
+  direction: SortDirection
+}
+
+// ponytail: each SortKey has a stable rank function so ascending
+// sorts put the most natural value first. Status uses the lifecycle
+// order (open → in_progress → blocked → deferred → closed) rather
+// than alphabetical; priority puts P0 (highest urgency) first. Null
+// assignees sink to the bottom of `asc` so unassigned issues never
+// crowd out assigned ones when the user is looking for "what's
+// mine".
+const statusRank: Record<Issue['status'], number> = {
+  open: 0,
+  in_progress: 1,
+  blocked: 2,
+  deferred: 3,
+  closed: 4,
+}
+
+const priorityRank: Record<Issue['priority'], number> = {
+  P0: 0,
+  P1: 1,
+  P2: 2,
+  P3: 3,
+  P4: 4,
+}
+
+function compareIssues(a: Issue, b: Issue, sort: SortState): number {
+  const sign = sort.direction === 'asc' ? 1 : -1
+  switch (sort.key) {
+    case 'id':
+      return a.id.localeCompare(b.id) * sign
+    case 'status':
+      return (statusRank[a.status] - statusRank[b.status]) * sign
+    case 'priority':
+      return (priorityRank[a.priority] - priorityRank[b.priority]) * sign
+    case 'type':
+      return a.issue_type.localeCompare(b.issue_type) * sign
+    case 'assignee': {
+      // ponytail: unassigned issues sort consistently — sink to the
+      // bottom of `asc`, top of `desc`. Achieved by giving `null`
+      // a rank of `+Infinity` and inverting the comparison for the
+      // null-on-both-sides case.
+      const aOwner = a.owner ?? null
+      const bOwner = b.owner ?? null
+      if (aOwner === null && bOwner === null) return 0
+      if (aOwner === null) return sign
+      if (bOwner === null) return -sign
+      return aOwner.localeCompare(bOwner) * sign
+    }
+  }
 }
 
 export function IssueListView({
@@ -119,8 +200,43 @@ export function IssueListView({
   // subscribes to scroll/resize, and computes which indices are in
   // (or just outside) the viewport. We render only those.
   const scrollRef = useRef<HTMLDivElement>(null)
-  const issues = query.data ?? []
-  const total = issues.length
+  // ponytail: wrap in useMemo so the `sort` useMemo's dependency
+  // array stays referentially stable. `query.data ?? []` creates a
+  // new `[]` on every render when the query is loading — that would
+  // invalidate the sort's dep array on each render and run the sort
+  // comparison for every store update. Memoizing on `query.data`
+  // alone keeps the reference stable for the lifetime of the data.
+  const rawIssues = useMemo<Issue[]>(() => query.data ?? [], [query.data])
+  const total = rawIssues.length
+
+  // ponytail: sort state lives in component state (not Zustand) because
+  // it's pure view state — nothing else in the app needs to react to
+  // it, and the active sort shouldn't survive a reload. Clicking the
+  // active header toggles asc/desc; clicking a different header
+  // resets to `asc` so the user gets a predictable first read.
+  const [sort, setSort] = useState<SortState | null>(null)
+  const onSortClick = (key: SortKey) => {
+    setSort(prev =>
+      prev && prev.key === key
+        ? { key, direction: prev.direction === 'asc' ? 'desc' : 'asc' }
+        : { key, direction: 'asc' }
+    )
+  }
+
+  // ponytail: sort the windowed slice's source array in a useMemo.
+  // When `sort` is null, the array keeps bd's native order so the
+  // user can fall back to "as loaded" with one click on a different
+  // column (clear-sort would be a follow-up card).
+  const issues = useMemo(() => {
+    if (sort === null) return rawIssues
+    // ponytail: copy before sort — `Array.prototype.sort` mutates in
+    // place and `rawIssues` is the TanStack Query cache value. We
+    // MUST NOT mutate the cache; doing so would re-render the whole
+    // app on the next query invalidation (the cache reference stays
+    // the same but its contents are now sorted differently than any
+    // other consumer expects).
+    return [...rawIssues].sort((a, b) => compareIssues(a, b, sort))
+  }, [rawIssues, sort])
 
   // ponytail: `useVirtualizer` returns a non-memoizable object (it
   // re-creates internal callbacks on every render). React Compiler
@@ -163,6 +279,8 @@ export function IssueListView({
           ))}
         </div>
       )}
+
+      <ColumnHeaders sort={sort} onSortClick={onSortClick} />
 
       <div
         ref={scrollRef}
@@ -227,6 +345,152 @@ export function IssueListView({
   )
 }
 
+interface ColumnHeadersProps {
+  sort: SortState | null
+  onSortClick: (key: SortKey) => void
+}
+
+/**
+ * Column header row. Six columns in spec R1 order: id, title, status,
+ * priority, type, assignee. Five are sortable (id, status, priority,
+ * type, assignee); the title column has no header affordance because
+ * it's intentionally not sortable.
+ *
+ * The header row uses the same CSS-grid template as the body rows so
+ * columns line up by construction. Each sortable header is a real
+ * `<button>` for keyboard activation (Enter/Space), with
+ * `aria-sort` reflecting the current sort state for screen readers.
+ */
+function ColumnHeaders({ sort, onSortClick }: ColumnHeadersProps) {
+  const cellBase: CSSProperties = {
+    fontFamily: type.fontFamily.sans,
+    fontSize: type.fontSize.xs,
+    color: colors.mono5,
+    fontWeight: type.fontWeight.medium,
+    textTransform: 'uppercase',
+    letterSpacing: type.letterSpacing.wide,
+    paddingInline: space[2],
+    display: 'flex',
+    alignItems: 'center',
+    height: '100%',
+  }
+
+  return (
+    <div data-testid="issue-list-headers" role="row" style={headerRowStyle}>
+      <SortableHeader
+        label="ID"
+        sortKey="id"
+        sort={sort}
+        onClick={onSortClick}
+        style={cellBase}
+        align="left"
+      />
+      <div role="columnheader" style={{ ...cellBase, cursor: 'default' }}>
+        Title
+      </div>
+      <SortableHeader
+        label="Status"
+        sortKey="status"
+        sort={sort}
+        onClick={onSortClick}
+        style={cellBase}
+        align="left"
+      />
+      <SortableHeader
+        label="Priority"
+        sortKey="priority"
+        sort={sort}
+        onClick={onSortClick}
+        style={cellBase}
+        align="left"
+      />
+      <SortableHeader
+        label="Type"
+        sortKey="type"
+        sort={sort}
+        onClick={onSortClick}
+        style={cellBase}
+        align="left"
+      />
+      <SortableHeader
+        label="Assignee"
+        sortKey="assignee"
+        sort={sort}
+        onClick={onSortClick}
+        style={cellBase}
+        align="left"
+      />
+    </div>
+  )
+}
+
+interface SortableHeaderProps {
+  label: string
+  sortKey: SortKey
+  sort: SortState | null
+  onClick: (key: SortKey) => void
+  style: CSSProperties
+  align: 'left' | 'right'
+}
+
+/**
+ * Single sortable header cell. Renders a real `<button>` for keyboard
+ * activation, with the current sort state encoded as `aria-sort` and
+ * a small arrow icon next to the label. Inactive headers show a
+ * neutral up/down indicator so the column advertises its sortability
+ * without visual noise.
+ */
+function SortableHeader({
+  label,
+  sortKey,
+  sort,
+  onClick,
+  style,
+  align,
+}: SortableHeaderProps) {
+  const isActive = sort?.key === sortKey
+  const direction: SortDirection | null = isActive ? sort.direction : null
+  const ariaSort: 'ascending' | 'descending' | 'none' = direction
+    ? direction === 'asc'
+      ? 'ascending'
+      : 'descending'
+    : 'none'
+
+  const Icon =
+    direction === 'asc'
+      ? ArrowUp
+      : direction === 'desc'
+        ? ArrowDown
+        : ArrowUpDown
+
+  return (
+    <div
+      role="columnheader"
+      aria-sort={ariaSort}
+      style={{
+        ...style,
+        justifyContent: align === 'right' ? 'flex-end' : 'flex-start',
+      }}
+    >
+      <button
+        type="button"
+        data-testid={`sort-header-${sortKey}`}
+        data-sort-key={sortKey}
+        data-sort-direction={direction ?? 'none'}
+        onClick={() => onClick(sortKey)}
+        style={headerButtonStyle}
+      >
+        <span>{label}</span>
+        <Icon
+          size={11}
+          aria-hidden="true"
+          color={isActive ? colors.mono0 : colors.mono5}
+        />
+      </button>
+    </div>
+  )
+}
+
 interface IssueRowProps {
   issue: Issue
   onClick: () => void
@@ -256,22 +520,41 @@ function IssueRow({ issue, onClick, positionStyle }: IssueRowProps) {
       onMouseLeave={() => setHovered(false)}
       data-testid="issue-row"
       data-issue-id={issue.id}
+      data-issue-status={issue.status}
+      data-issue-priority={issue.priority}
+      data-issue-type={issue.issue_type}
+      data-issue-assignee={issue.owner ?? ''}
       style={{
         ...rowStyle,
         ...(hovered ? rowHoverStyle : null),
         ...positionStyle,
       }}
     >
-      <PriorityDot priority={issue.priority} />
-      <TypeIcon type={issue.issue_type} />
-      <StatusPill status={issue.status} />
-      <span style={titleStyle}>{issue.title}</span>
-      <span style={idStyle}>{issue.id}</span>
-      <div style={labelsStyle}>
-        {issue.labels.map(l => (
-          <LabelChip key={l.name} label={l.name} />
-        ))}
-      </div>
+      <span data-column="id" style={idCellStyle}>
+        {issue.id}
+      </span>
+      <span data-column="title" style={titleCellStyle}>
+        <span style={titleTextStyle}>{issue.title}</span>
+        {issue.labels.length > 0 ? (
+          <span style={labelsStyle}>
+            {issue.labels.map(l => (
+              <LabelChip key={l.name} label={l.name} />
+            ))}
+          </span>
+        ) : null}
+      </span>
+      <span data-column="status" style={badgeCellStyle}>
+        <StatusPill status={issue.status} />
+      </span>
+      <span data-column="priority" style={badgeCellStyle}>
+        <PriorityDot priority={issue.priority} />
+      </span>
+      <span data-column="type" style={badgeCellStyle}>
+        <TypeIcon type={issue.issue_type} />
+      </span>
+      <span data-column="assignee" style={assigneeCellStyle}>
+        {issue.owner ?? <span style={unassignedStyle}>—</span>}
+      </span>
     </div>
   )
 }
@@ -303,6 +586,39 @@ const chipStyle: CSSProperties = {
   borderRadius: radius.sm,
 }
 
+// ponytail: the header row is a separate flex child, NOT a sticky
+// overlay over the scroll container. The body uses a translateY-
+// positioned absolute child for virtualization, and a sticky
+// inside-the-scroll-container header would fight react-virtual's
+// measurement. Putting the header above the scroll container (a
+// sibling, not a child) keeps both simple — the cost is that the
+// header scrolls out of view with the body, which matches every
+// other data-table convention the user has ever seen.
+const headerRowStyle: CSSProperties = {
+  display: 'grid',
+  gridTemplateColumns: GRID_TEMPLATE,
+  height: HEADER_HEIGHT,
+  borderTop: `1px solid ${colors.mono7}`,
+  borderBottom: `1px solid ${colors.mono7}`,
+  backgroundColor: colors.mono8,
+  borderRadius: radius.sm,
+}
+
+const headerButtonStyle: CSSProperties = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: space[1],
+  background: 'transparent',
+  border: 0,
+  padding: 0,
+  margin: 0,
+  font: 'inherit',
+  color: 'inherit',
+  textTransform: 'inherit',
+  letterSpacing: 'inherit',
+  cursor: 'pointer',
+}
+
 const scrollContainerStyle: CSSProperties = {
   overflowY: 'auto',
   border: `1px solid ${colors.mono7}`,
@@ -323,14 +639,12 @@ const footerStyle: CSSProperties = {
 }
 
 const rowStyle: CSSProperties = {
-  display: 'flex',
+  display: 'grid',
+  gridTemplateColumns: GRID_TEMPLATE,
   alignItems: 'center',
-  gap: space[2],
   height: ROW_HEIGHT,
-  paddingInline: 12,
-  borderRadius: 6,
+  paddingInline: space[3],
   backgroundColor: 'transparent',
-  transition: 'background-color 120ms cubic-bezier(0.2, 0, 0, 1)',
   cursor: 'pointer',
 }
 
@@ -338,25 +652,68 @@ const rowHoverStyle: CSSProperties = {
   backgroundColor: 'rgba(94, 106, 210, 0.08)',
 }
 
-const titleStyle: CSSProperties = {
-  flex: 1,
+// ponytail: each cell uses the grid's column alignment but constrains
+// its inner content so longer values (titles, ids) clip or ellipsize
+// instead of pushing the grid out of shape. Title is the only
+// `minmax(0, 1fr)` column so it can absorb any extra horizontal
+// space.
+const idCellStyle: CSSProperties = {
+  fontFamily: 'ui-monospace, SFMono-Regular, monospace',
+  fontSize: type.fontSize.xs,
+  color: colors.mono5,
+  paddingInline: space[2],
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+  whiteSpace: 'nowrap',
+}
+
+const titleCellStyle: CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: space[2],
+  paddingInline: space[2],
+  minWidth: 0,
+}
+
+const titleTextStyle: CSSProperties = {
   fontFamily: type.fontFamily.sans,
   fontSize: type.fontSize.sm,
   color: colors.mono0,
   overflow: 'hidden',
   textOverflow: 'ellipsis',
   whiteSpace: 'nowrap',
-}
-
-const idStyle: CSSProperties = {
-  fontFamily: 'ui-monospace, SFMono-Regular, monospace',
-  fontSize: type.fontSize.xs,
-  color: colors.mono5,
+  flex: 1,
+  minWidth: 0,
 }
 
 const labelsStyle: CSSProperties = {
   display: 'flex',
   gap: space[1],
+  flexShrink: 0,
+}
+
+const badgeCellStyle: CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  paddingInline: space[2],
+  minWidth: 0,
+  overflow: 'hidden',
+}
+
+const assigneeCellStyle: CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  paddingInline: space[2],
+  fontFamily: type.fontFamily.sans,
+  fontSize: type.fontSize.xs,
+  color: colors.mono2,
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+  whiteSpace: 'nowrap',
+}
+
+const unassignedStyle: CSSProperties = {
+  color: colors.mono4,
 }
 
 export default IssueListView
