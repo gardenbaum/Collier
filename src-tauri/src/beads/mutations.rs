@@ -37,11 +37,11 @@
 use std::path::PathBuf;
 
 use serde_json::Value;
-
+use crate::bindings::types::{CreateInput, ListFilters, UpdateInput};
 use crate::beads::{
-    runner, BdError, BdResult, Dependency, DependencyType, Issue, LabelWithCount, PropagationReport,
+    runner, search_query, AssigneeWithCount, BdError, BdResult, Dependency, DependencyType,
+    Issue, LabelWithCount, PropagationReport,
 };
-use crate::bindings::types::{CreateInput, UpdateInput};
 
 /// Run `bd create <flags> --json` in `cwd` and return the new issue.
 ///
@@ -435,6 +435,86 @@ fn parse_label_list_all(value: serde_json::Value) -> BdResult<Vec<LabelWithCount
     serde_json::from_value(data.clone()).map_err(|e| BdError::ParseError {
         message: format!("bd label list-all failed to parse rows: {e}"),
     })
+}
+
+/// Run `bd list --json` (no filters) in `cwd` and return the sorted
+/// list of distinct `(assignee, count)` rows.
+///
+/// The Beads CLI (1.0.5, 2026-06-17) does NOT expose an
+/// `assignee list-all` subcommand, so we derive the distinct
+/// `(owner, count)` pairs from a full `bd list --json` pass on
+/// the Rust side. This is a small bounded concern: we do not
+/// read `.beads/issues.jsonl` directly (per the constitution
+/// rule — `bd` is the single source of truth), we shell out to
+/// `bd list --json` once and aggregate in-memory.
+///
+/// Unassigned issues (`owner = None`) are intentionally excluded
+/// from the returned rows. The frontend renders an explicit
+/// "Unassigned" toggle only when the user opts in (separate
+/// from this list) — surfacing a synthetic "" (empty string)
+/// row would clutter the sidebar.
+///
+/// The rows are sorted by `assignee` on the Rust side so the
+/// frontend renders in a stable order without re-sorting
+/// (same convention as `bd_label_list_all`).
+#[tauri::command]
+#[specta::specta]
+pub async fn bd_assignee_list_all(cwd: String) -> BdResult<Vec<AssigneeWithCount>> {
+    let path = PathBuf::from(&cwd);
+    // Empty filters -> no extra flags between `list` and `--json`.
+    // Reusing `ListFilters::default()` + the same `to_args()`
+    // contract as `bd_list` guarantees we don't accidentally
+    // emit a stray `--search ""` or similar no-op flag.
+    let mut argv: Vec<String> = Vec::with_capacity(ListFilters::default().to_args().len() + 2);
+    argv.push("list".to_string());
+    argv.extend(ListFilters::default().to_args());
+    argv.push("--json".to_string());
+    let arg_refs: Vec<&str> = argv.iter().map(String::as_str).collect();
+    let output = runner::run_bd(&arg_refs, &path).await?;
+    let value = match output {
+        runner::BdOutput::Json { value } => value,
+        runner::BdOutput::Text { value } => {
+            return Err(BdError::ParseError {
+                message: format!("expected JSON envelope, got text: {value}"),
+            });
+        }
+    };
+    // Same envelope contract as `bd_list`: `BD_JSON_ENVELOPE=1`
+    // wraps the issue array in `{ data, schema_version }`. We
+    // delegate the unwrap to the shared helper so the failure
+    // path is identical to the existing `bd_list` command.
+    let issues = search_query::extract_data(value)?;
+    Ok(aggregate_assignees(&issues))
+}
+
+/// Aggregate a list of issues into distinct `(assignee, count)`
+/// rows, sorted by `assignee` lexicographically.
+///
+/// Pure helper — the `Issue` slice is iterated once and the
+/// results are kept in a `BTreeMap` so insertion + final sort
+/// collapse to O(n log n). At realistic sizes (≤10k issues,
+/// dozens of distinct owners) this is well under a millisecond
+/// and dwarfed by the `bd list --json` shell-out.
+fn aggregate_assignees(issues: &[Issue]) -> Vec<AssigneeWithCount> {
+    use std::collections::BTreeMap;
+    let mut counts: BTreeMap<String, u32> = BTreeMap::new();
+    for issue in issues {
+        // Owner is `Option<String>` per the bd v1.0.4 schema
+        // (see `Issue.owner` in types.rs). Skip unassigned
+        // issues — they are not addressable via `bd list
+        // --assignee ""` because Beads treats empty string as
+        // "not set". Surfacing them in the sidebar would be a
+        // UX trap.
+        if let Some(owner) = issue.owner.as_ref() {
+            if !owner.is_empty() {
+                *counts.entry(owner.clone()).or_insert(0) += 1;
+            }
+        }
+    }
+    counts
+        .into_iter()
+        .map(|(assignee, count)| AssigneeWithCount { assignee, count })
+        .collect()
 }
 
 /// Run `bd label propagate <parent> <label> --json` in `cwd` and
@@ -1706,5 +1786,118 @@ mod tests {
         assert_eq!(report.added, 1);
         assert_eq!(report.skipped, 0);
         assert_eq!(report.errors, vec!["weird-new-status".to_string()]);
+    }
+
+    // ========================================================================
+    // bd_assignee_list_all tests (M1 R2)
+    // ========================================================================
+
+    /// Helper: build a minimal `Issue` with the fields
+    /// `aggregate_assignees` reads. The other fields are defaulted
+    /// because the helper only touches `owner`. Keeping the
+    /// builder centralised prevents drift across the test cases.
+    fn make_issue_with_owner(owner: Option<&str>) -> Issue {
+        use crate::beads::{IssuePriority, IssueStatus, IssueType};
+        Issue {
+            id: "beads-test".to_string(),
+            title: "x".to_string(),
+            status: IssueStatus::Open,
+            priority: IssuePriority::P2,
+            issue_type: IssueType::Task,
+            created_at: chrono::Utc::now(),
+            updated_at: None,
+            closed_at: None,
+            description: None,
+            owner: owner.map(|s| s.to_string()),
+            labels: vec![],
+            dependencies: vec![],
+            dependency_count: 0,
+            dependent_count: 0,
+            comment_count: 0,
+            parent: None,
+            acceptance_criteria: None,
+            external_ref: None,
+        }
+    }
+
+    /// Happy path: distinct owners collapse to one row each with
+    /// the correct count, and the rows are sorted by name on the
+    /// Rust side so the frontend renders in a stable order.
+    #[test]
+    fn test_aggregate_assignees_counts_and_sorts() {
+        let issues = vec![
+            make_issue_with_owner(Some("alice")),
+            make_issue_with_owner(Some("bob")),
+            make_issue_with_owner(Some("alice")),
+            make_issue_with_owner(Some("alice")),
+            make_issue_with_owner(Some("carol")),
+        ];
+        let rows = aggregate_assignees(&issues);
+        // BTreeMap yields ascending key order: alice, bob, carol.
+        assert_eq!(rows.len(), 3);
+        assert_eq!(rows[0].assignee, "alice");
+        assert_eq!(rows[0].count, 3);
+        assert_eq!(rows[1].assignee, "bob");
+        assert_eq!(rows[1].count, 1);
+        assert_eq!(rows[2].assignee, "carol");
+        assert_eq!(rows[2].count, 1);
+    }
+
+    /// Unassigned issues (`owner = None`) are intentionally
+    /// excluded from the sidebar's assignee filter list — the
+    /// frontend never offers a "filter by unassigned" toggle, and
+    /// Beads treats empty owner as "not set" anyway.
+    #[test]
+    fn test_aggregate_assignees_skips_unassigned() {
+        let issues = vec![
+            make_issue_with_owner(None),
+            make_issue_with_owner(Some("alice")),
+            make_issue_with_owner(None),
+        ];
+        let rows = aggregate_assignees(&issues);
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].assignee, "alice");
+        assert_eq!(rows[0].count, 1);
+    }
+
+    /// Defensive: a `Some("")` owner is treated like `None`. The
+    /// bd v1.0.4 schema is `Option<String>` and an empty string
+    /// would otherwise sneak past the `Option` filter and pollute
+    /// the list with a synthetic "" row.
+    #[test]
+    fn test_aggregate_assignees_skips_empty_string() {
+        let issues = vec![
+            make_issue_with_owner(Some("")),
+            make_issue_with_owner(Some("alice")),
+            make_issue_with_owner(Some("")),
+        ];
+        let rows = aggregate_assignees(&issues);
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].assignee, "alice");
+    }
+
+    /// Empty database: no issues -> no rows. The frontend renders
+    /// the "no assignees" placeholder on `Vec::is_empty()`.
+    #[test]
+    fn test_aggregate_assignees_empty_input() {
+        let rows = aggregate_assignees(&[]);
+        assert!(rows.is_empty());
+    }
+
+    /// `bd_assignee_list_all` argv shape: empty `ListFilters`
+    /// means only `list` + `--json` — no filter flags slip into
+    /// the call. Mirrors the `bd_list` empty-filters test.
+    #[test]
+    fn test_bd_assignee_list_all_argv_shape() {
+        // Reconstruct the same argv the command builds. We can't
+        // easily capture `run_bd`'s argv without a real bd
+        // binary, so we assert against the `ListFilters::default()`
+        // `to_args()` contract directly: empty filters must
+        // produce zero extra args.
+        let extra_args = ListFilters::default().to_args();
+        assert!(
+            extra_args.is_empty(),
+            "empty ListFilters must produce no CLI args"
+        );
     }
 }

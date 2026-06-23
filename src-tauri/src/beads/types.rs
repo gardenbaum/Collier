@@ -199,6 +199,35 @@ pub struct LabelWithCount {
     pub count: u32,
 }
 
+/// One row of `bd_assignee_list_all` — distinct owner (assignee)
+/// across the whole `.beads/` database, with the count of issues
+/// they own.
+///
+/// Mirror of `LabelWithCount`: the Beads CLI (v1.0.5) does not
+/// expose an `assignee list-all` subcommand, so we derive the
+/// distinct `(owner, count)` pairs from a full `bd list --json`
+/// pass on the Rust side. Sorted by name so the frontend renders
+/// in a stable order without re-sorting.
+///
+/// `count` is the number of issues currently owned by that user.
+/// Unassigned issues (`owner = None`) are NOT included — the
+/// frontend renders an explicit "Unassigned" affordance only when
+/// the user actively opts in (separate from this list).
+///
+/// ponytail: the struct shape is intentionally identical to
+/// `LabelWithCount { label, count }` rather than a richer
+/// `Assignee { name, email, ... }`. Beads' owner model in v1 is
+/// just a string with no metadata; a richer struct would force
+/// `Option::None`s everywhere today and constrain a v2 metadata
+/// shape prematurely. Reuse the flat shape; expand when a real
+/// metadata field lands.
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct AssigneeWithCount {
+    pub assignee: String,
+    pub count: u32,
+}
+
 /// Result of `bd label propagate <parent> <label> --json`.
 ///
 /// The real CLI (1.0.5, 2026-06-17) returns a flat array of
