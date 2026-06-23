@@ -19,19 +19,22 @@ import { render } from '@/test/test-utils'
 // ponytail: hoisted so the vi.mock factory can reference the mock fn.
 // `bdShow` is the only command that fires on mount; `bdComments` and
 // `bdHistory` are gated by the active tab, and `bdAddComment` is only
-// invoked by the form's submit handler.
+// invoked by the form's submit handler. `bdUpdate` is the R4
+// description-edit command — also invoked from the description tab.
 const {
   mockBdShow,
   mockBdComments,
   mockBdHistory,
   mockBdAddComment,
   mockBdDepList,
+  mockBdUpdate,
 } = vi.hoisted(() => ({
   mockBdShow: vi.fn(),
   mockBdComments: vi.fn(),
   mockBdHistory: vi.fn(),
   mockBdAddComment: vi.fn(),
   mockBdDepList: vi.fn(),
+  mockBdUpdate: vi.fn(),
 }))
 
 vi.mock('@/lib/tauri-bindings', () => ({
@@ -41,6 +44,7 @@ vi.mock('@/lib/tauri-bindings', () => ({
     bdHistory: mockBdHistory,
     bdAddComment: mockBdAddComment,
     bdDepList: mockBdDepList,
+    bdUpdate: mockBdUpdate,
   },
 }))
 
@@ -50,6 +54,19 @@ vi.mock('@/lib/logger', () => ({
     info: vi.fn(),
     warn: vi.fn(),
     error: vi.fn(),
+  },
+}))
+
+// ponytail: sonner renders toasts into a portal — the test env
+// doesn't mount <Toaster />, so toast text never lands in the DOM.
+// Mock the toast API for InlineDescriptionEdit's success/error toasts
+// (same pattern as InlineIssueEdit.test.tsx).
+vi.mock('sonner', () => ({
+  toast: {
+    info: vi.fn(),
+    success: vi.fn(),
+    error: vi.fn(),
+    warning: vi.fn(),
   },
 }))
 
@@ -291,5 +308,142 @@ describe('IssueDetailView', () => {
     // accent in this fixture at all).
     const html = container.innerHTML.toLowerCase()
     expect(html).not.toContain('c2410c')
+  })
+
+  // ponytail: R4 — description is editable from the detail view via
+  // InlineDescriptionEdit, which fires commands.bdUpdate with a
+  // minimal-diff UpdateInput. The header metadata (priority, type,
+  // status, assignee, dates, labels) is rendered by the existing
+  // header above the description tab, and the metadata <dl> is
+  // rendered inside the description-body wrapper. This block
+  // verifies the integration.
+  describe('description edit (R4)', () => {
+    it('exposes an Edit button next to the description text', async () => {
+      const { IssueDetailView } = await importSut()
+      render(<IssueDetailView cwd="/repo" issueId="beads-42" onClose={noop} />)
+
+      await waitFor(() => {
+        expect(screen.getByTestId('description-body')).toBeInTheDocument()
+      })
+      // ponytail: InlineDescriptionEdit renders the Edit affordance
+      // next to the description text. Its presence proves the
+      // editing surface is wired into the detail view.
+      expect(
+        screen.getByTestId('inline-description-edit-button')
+      ).toBeInTheDocument()
+    })
+
+    it('renders the metadata <dl> with type / priority / status / dates', async () => {
+      const { IssueDetailView } = await importSut()
+      render(<IssueDetailView cwd="/repo" issueId="beads-42" onClose={noop} />)
+
+      await waitFor(() => {
+        expect(screen.getByTestId('description-body')).toBeInTheDocument()
+      })
+
+      // ponytail: R4 acceptance — metadata is rendered. We assert
+      // on the field labels (Type, Priority, Status, Created) since
+      // the values come from the Issue shape and the existing
+      // Inline*Edit cells cover the badge rendering.
+      const body = screen.getByTestId('description-body').textContent ?? ''
+      expect(body).toContain('Type')
+      expect(body).toContain('Priority')
+      expect(body).toContain('Status')
+      expect(body).toContain('Created')
+      // Owner + Updated / Closed are conditional; the fixture has
+      // owner=alice and updated_at=null so Owner must render.
+      expect(body).toContain('Owner')
+    })
+
+    it('clicking Edit, typing, and Save fires bdUpdate with the new description', async () => {
+      mockBdUpdate.mockResolvedValue({
+        status: 'ok',
+        data: {
+          ...issueFixture,
+          description: 'A clearer description for the widget.',
+        },
+      })
+      const { IssueDetailView } = await importSut()
+      render(<IssueDetailView cwd="/repo" issueId="beads-42" onClose={noop} />)
+
+      await waitFor(() => {
+        expect(screen.getByTestId('description-body')).toBeInTheDocument()
+      })
+
+      fireEvent.click(screen.getByTestId('inline-description-edit-button'))
+
+      const textarea = screen.getByTestId(
+        'inline-description-textarea'
+      ) as HTMLTextAreaElement
+      fireEvent.change(textarea, {
+        target: { value: 'A clearer description for the widget.' },
+      })
+      fireEvent.click(screen.getByTestId('inline-description-save'))
+
+      await waitFor(() => {
+        expect(mockBdUpdate).toHaveBeenCalledWith('/repo', 'beads-42', {
+          description: 'A clearer description for the widget.',
+        })
+      })
+    })
+
+    it('clicking Cancel does not fire bdUpdate and dismisses the form', async () => {
+      const { IssueDetailView } = await importSut()
+      render(<IssueDetailView cwd="/repo" issueId="beads-42" onClose={noop} />)
+
+      await waitFor(() => {
+        expect(screen.getByTestId('description-body')).toBeInTheDocument()
+      })
+
+      fireEvent.click(screen.getByTestId('inline-description-edit-button'))
+      fireEvent.change(screen.getByTestId('inline-description-textarea'), {
+        target: { value: 'wont be saved' },
+      })
+      fireEvent.click(screen.getByTestId('inline-description-cancel'))
+
+      expect(mockBdUpdate).not.toHaveBeenCalled()
+      expect(
+        screen.queryByTestId('inline-description-edit-form')
+      ).not.toBeInTheDocument()
+    })
+  })
+
+  // ponytail: R4 — the Deps tab must render dependencies as
+  // navigable links. DependencyListView calls onOpenIssue on click;
+  // IssueDetailView forwards the prop or falls back to a no-op.
+  describe('dependencies (R4)', () => {
+    it('clicking a dep target id in the Deps tab fires onOpenIssue', async () => {
+      const { IssueDetailView } = await importSut()
+      mockBdDepList.mockResolvedValue({
+        status: 'ok',
+        data: [
+          {
+            id: 'dep-1',
+            from_id: 'beads-42',
+            from_issue_id: 'beads-42',
+            dependency_id: 'beads-99',
+            dependency_type: 'blocks',
+            created_at: '2026-06-17T00:00:00Z',
+          },
+        ],
+      })
+      const onOpenIssue = vi.fn()
+      render(
+        <IssueDetailView
+          cwd="/repo"
+          issueId="beads-42"
+          onClose={noop}
+          onOpenIssue={onOpenIssue}
+        />
+      )
+
+      fireEvent.click(screen.getByTestId('tab-deps'))
+      await waitFor(() => {
+        expect(screen.getByTestId('deps-section-blocks')).toBeInTheDocument()
+      })
+
+      fireEvent.click(screen.getByTestId('dep-target-id'))
+      expect(onOpenIssue).toHaveBeenCalledWith('beads-99')
+    })
   })
 })

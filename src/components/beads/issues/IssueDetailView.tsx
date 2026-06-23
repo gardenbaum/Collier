@@ -33,6 +33,7 @@ import {
   InlinePriorityEdit,
   InlineStatusEdit,
 } from './InlineIssueEdit'
+import { InlineDescriptionEdit } from './InlineDescriptionEdit'
 
 type Tab = 'description' | 'deps' | 'comments' | 'history'
 
@@ -197,7 +198,7 @@ export function IssueDetailView({
 
         <section style={tabBodyStyle}>
           {activeTab === 'description' ? (
-            <DescriptionTab issue={issue} showQuery={showQuery} />
+            <DescriptionTab cwd={cwd} issue={issue} showQuery={showQuery} />
           ) : null}
           {activeTab === 'deps' ? (
             <DependencyListView
@@ -222,9 +223,14 @@ export function IssueDetailView({
 }
 
 function DescriptionTab({
+  cwd,
   issue,
   showQuery,
 }: {
+  /** Repository root — forwarded to InlineDescriptionEdit so the
+   *  underlying `commands.bdUpdate` writes back into the right
+   *  Beads workspace. */
+  cwd: string
   issue: Issue | undefined
   showQuery: { isLoading: boolean; isError: boolean; error: unknown }
 }) {
@@ -249,16 +255,13 @@ function DescriptionTab({
       </div>
     )
   }
-  if (!issue.description) {
-    return (
-      <div data-testid="description-empty" style={messageStyle}>
-        No description.
-      </div>
-    )
-  }
+  // ponytail: render the editable description field via
+  // InlineDescriptionEdit (R4). The wrapper `description-body`
+  // testid still wraps everything so existing selectors keep
+  // matching.
   return (
     <div data-testid="description-body" style={descriptionBodyStyle}>
-      <p style={descriptionTextStyle}>{issue.description}</p>
+      <InlineDescriptionEdit cwd={cwd} issue={issue} />
       <dl style={descriptionMetaStyle}>
         <dt style={descriptionMetaLabelStyle}>Type</dt>
         <dd style={descriptionMetaValueStyle}>{issue.issue_type}</dd>
@@ -635,14 +638,10 @@ const descriptionBodyStyle: CSSProperties = {
   gap: space[4],
 }
 
-const descriptionTextStyle: CSSProperties = {
-  fontFamily: type.fontFamily.sans,
-  fontSize: type.fontSize.sm,
-  color: colors.mono0,
-  whiteSpace: 'pre-wrap',
-  margin: 0,
-  padding: 0,
-}
+// descriptionTextStyle used to live here; the actual styling for
+// the description paragraph moved into InlineDescriptionEdit.tsx
+// (R4 — the description became editable). Kept the dl layout below
+// unchanged.
 
 const descriptionMetaStyle: CSSProperties = {
   display: 'grid',
