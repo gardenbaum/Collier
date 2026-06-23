@@ -38,10 +38,13 @@ import { commands } from '@/lib/tauri-bindings'
 import type { Issue, ListFilters } from '@/lib/bindings'
 import { useIssueFilterStore } from '@/store/issue-filter-store'
 import { colors, radius, space, type } from '@/lib/design-tokens'
-import { PriorityDot } from './badges/PriorityDot'
-import { StatusPill } from './badges/StatusPill'
 import { TypeIcon } from './badges/TypeIcon'
 import { LabelChip } from './badges/LabelChip'
+import {
+  InlineAssigneeEdit,
+  InlinePriorityEdit,
+  InlineStatusEdit,
+} from './InlineIssueEdit'
 
 const ROW_HEIGHT = 40
 const HEADER_HEIGHT = 32
@@ -388,6 +391,7 @@ export function IssueListView({
                   key={issue.id}
                   issue={issue}
                   onClick={() => onOpenIssue(issue.id)}
+                  cwd={cwd}
                   positionStyle={{
                     position: 'absolute',
                     top: 0,
@@ -559,6 +563,9 @@ function SortableHeader({
 interface IssueRowProps {
   issue: Issue
   onClick: () => void
+  /** Repository root — passed to the inline-edit selects so
+   *  `bd update` resolves against the right cwd. */
+  cwd: string
   /**
    * Position+size style injected by the virtualizer (absolute,
    * translateY(start), explicit height). Merged after the row's own
@@ -567,7 +574,7 @@ interface IssueRowProps {
   positionStyle: CSSProperties
 }
 
-function IssueRow({ issue, onClick, positionStyle }: IssueRowProps) {
+function IssueRow({ issue, onClick, cwd, positionStyle }: IssueRowProps) {
   const [hovered, setHovered] = useState(false)
 
   return (
@@ -609,16 +616,16 @@ function IssueRow({ issue, onClick, positionStyle }: IssueRowProps) {
         ) : null}
       </span>
       <span data-column="status" style={badgeCellStyle}>
-        <StatusPill status={issue.status} />
+        <InlineStatusEdit cwd={cwd} issue={issue} swallowHostEvents />
       </span>
       <span data-column="priority" style={badgeCellStyle}>
-        <PriorityDot priority={issue.priority} />
+        <InlinePriorityEdit cwd={cwd} issue={issue} swallowHostEvents />
       </span>
       <span data-column="type" style={badgeCellStyle}>
         <TypeIcon type={issue.issue_type} />
       </span>
       <span data-column="assignee" style={assigneeCellStyle}>
-        {issue.owner ?? <span style={unassignedStyle}>—</span>}
+        <InlineAssigneeEdit cwd={cwd} issue={issue} swallowHostEvents />
       </span>
     </div>
   )
@@ -847,10 +854,6 @@ const assigneeCellStyle: CSSProperties = {
   overflow: 'hidden',
   textOverflow: 'ellipsis',
   whiteSpace: 'nowrap',
-}
-
-const unassignedStyle: CSSProperties = {
-  color: colors.mono4,
 }
 
 export default IssueListView

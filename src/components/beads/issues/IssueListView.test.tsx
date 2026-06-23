@@ -598,9 +598,18 @@ describe('IssueListView', () => {
     expect(row.querySelector('[data-column="status"]')).toBeTruthy()
     expect(row.querySelector('[data-column="priority"]')).toBeTruthy()
     expect(row.querySelector('[data-column="type"]')).toBeTruthy()
-    expect(row.querySelector('[data-column="assignee"]')?.textContent).toBe(
-      'alice'
-    )
+    // ponytail: the assignee cell now also embeds an inline-edit
+    // <select> with all assignees as options (for the R3 dropdown).
+    // The visible text is the first child <span>; assert against
+    // it directly so the test stays scoped to the user-visible
+    // owner rather than the full select option list.
+    expect(
+      row
+        .querySelector(
+          '[data-column="assignee"] [data-testid="inline-assignee-edit"]'
+        )
+        ?.querySelector('span')
+    ).toHaveTextContent('alice')
 
     // Spec R1 also bakes the column values onto the row for QA selectors
     // that don't have to traverse the DOM tree.
@@ -627,8 +636,17 @@ describe('IssueListView', () => {
     const row = screen.getByTestId('issue-row')
     // The data attribute is empty for unassigned, NOT the string "null".
     expect(row.getAttribute('data-issue-assignee')).toBe('')
-    // The cell carries the em-dash placeholder.
-    expect(row.querySelector('[data-column="assignee"]')?.textContent).toBe('—')
+    // The cell carries the em-dash placeholder. Same scope as the
+    // owner test above: read the visible span, not the whole cell
+    // (the inline-edit select adds option texts that are not part
+    // of the visible owner).
+    expect(
+      row
+        .querySelector(
+          '[data-column="assignee"] [data-testid="inline-assignee-edit"]'
+        )
+        ?.querySelector('span')
+    ).toHaveTextContent('—')
   })
 
   it('clicking a sort header reorders the rows by that key (asc)', async () => {

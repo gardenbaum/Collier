@@ -25,11 +25,14 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { commands } from '@/lib/tauri-bindings'
 import type { Comment, HistoryEntry, Issue } from '@/lib/bindings'
 import { colors, space, type } from '@/lib/design-tokens'
-import { PriorityDot } from './badges/PriorityDot'
-import { StatusPill } from './badges/StatusPill'
 import { TypeIcon } from './badges/TypeIcon'
 import { LabelChip } from './badges/LabelChip'
 import { DependencyListView } from '../dependencies/DependencyListView'
+import {
+  InlineAssigneeEdit,
+  InlinePriorityEdit,
+  InlineStatusEdit,
+} from './InlineIssueEdit'
 
 type Tab = 'description' | 'deps' | 'comments' | 'history'
 
@@ -144,12 +147,10 @@ export function IssueDetailView({
             <>
               <h1 style={titleStyle}>{issue.title}</h1>
               <div style={badgesRowStyle}>
-                <PriorityDot priority={issue.priority} />
+                <InlinePriorityEdit cwd={cwd} issue={issue} />
                 <TypeIcon type={issue.issue_type} />
-                <StatusPill status={issue.status} />
-                {issue.owner ? (
-                  <span style={metaStyle}>owner: {issue.owner}</span>
-                ) : null}
+                <InlineStatusEdit cwd={cwd} issue={issue} />
+                <InlineAssigneeEdit cwd={cwd} issue={issue} />
                 <span style={metaStyle}>
                   created: {formatDate(issue.created_at)}
                 </span>
