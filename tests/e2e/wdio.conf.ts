@@ -102,10 +102,18 @@ export const config: WebdriverIO.Config = {
 
   capabilities: [
     {
-      // Tauri's webview reports as a Chromium variant; tauri-driver
-      // matches on browserName + the tauri:options capability.
-      browserName: 'wry',
-      // tauri-driver recognises this capability group.
+      // No `browserName` here on purpose: WebKitWebDriver (the
+      // native driver tauri-driver spawns on Linux) doesn't
+      // recognise "wry" and returns "Failed to match capabilities"
+      // on POST /session if we set it. The official Tauri
+      // webdriverio example
+      // (github.com/tauri-apps/webdriver-example/v2/webdriver/webdriverio/wdio.conf.js)
+      // also omits browserName; Selenium's example does set
+      // "wry" but Selenium uses its own request serializer so
+      // the WebKitWebDriver matching path is different. The
+      // tauri:options capability below is the contract with
+      // tauri-driver; everything else is forwarded to the
+      // native driver as-is.
       'tauri:options': {
         // Path to the built Collier binary. Must be an absolute
         // path; tauri-driver does NOT search PATH.
