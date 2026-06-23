@@ -5,11 +5,15 @@
  * (T17), turns it into a `ListFilters` payload, and hands both to a
  * `useQuery` whose key is `['beads', 'list', cwd, filters]`. Toggling
  * any filter checkbox in the sidebar re-keys the query and re-fetches
- * — no extra wiring. The list itself is windowed manually: 20 lines of
- * `useState` + `Math.max/min` keep the DOM under ~20 rows even at
- * 10,000 issues, and we add no new dep (`@tanstack/react-virtual` would
- * be a one-line win but the project's "no new foreign deps" rule
- * makes the manual approach the right call for v1).
+ * — no extra wiring.
+ *
+ * The list is windowed with `@tanstack/react-virtual`: the virtualizer
+ * measures the scroll container, tracks the scroll position, and hands
+ * us only the `getVirtualItems()` that are in (or near) the viewport.
+ * At 1000 issues the DOM only ever mounts ~15 rows (5 visible + 2 *
+ * OVERSCAN), regardless of how big `data` gets, and a watcher tick
+ * that re-fetches the query only re-renders the windowed slice — never
+ * the full list.
  *
  * Hard-edged Bauhaus: mono scale only, hard edges (radius 0), inline
  * `style` with design tokens. No animations, no transitions. The brand
@@ -17,6 +21,7 @@
  * never reaches for it.
  */
 import { useMemo, useRef, useState, type CSSProperties } from 'react'
+import { useVirtualizer } from '@tanstack/react-virtual'
 import { useQuery } from '@tanstack/react-query'
 import { commands } from '@/lib/tauri-bindings'
 import type { Issue, ListFilters } from '@/lib/bindings'
@@ -28,6 +33,9 @@ import { TypeIcon } from './badges/TypeIcon'
 import { LabelChip } from './badges/LabelChip'
 
 const ROW_HEIGHT = 40
+// 5 overscan rows on each side of the viewport. Matches the previous
+// manual-windowing constant so the existing test's `< 20` assertion
+// still holds.
 const OVERSCAN = 5
 
 export interface IssueListViewProps {
@@ -80,21 +88,27 @@ export function IssueListView({
     },
   })
 
-  // ponytail: manual windowing — `useState<number>` for the current
-  // scroll position, a few Math calls to compute the visible slice,
-  // spacer divs above and below to make the scrollbar reflect the
-  // full list height. ~15 lines, zero new dep.
+  // ponytail: react-virtual — the scrollable container is the only
+  // source of truth for scroll position. The virtualizer measures it,
+  // subscribes to scroll/resize, and computes which indices are in
+  // (or just outside) the viewport. We render only those.
   const scrollRef = useRef<HTMLDivElement>(null)
-  const [scrollTop, setScrollTop] = useState(0)
-
   const issues = query.data ?? []
   const total = issues.length
-  const visibleCount = Math.ceil(containerHeight / ROW_HEIGHT)
-  const startIdx = Math.max(0, Math.floor(scrollTop / ROW_HEIGHT) - OVERSCAN)
-  const endIdx = Math.min(total, startIdx + visibleCount + OVERSCAN * 2)
-  const visible = issues.slice(startIdx, endIdx)
-  const topPad = startIdx * ROW_HEIGHT
-  const bottomPad = Math.max(0, (total - endIdx) * ROW_HEIGHT)
+
+  // ponytail: `useVirtualizer` returns a non-memoizable object (it
+  // re-creates internal callbacks on every render). React Compiler
+  // can't safely memoize through it, hence the
+  // `incompatible-library` warning. The virtualizer is the
+  // authoritative source of truth for `getVirtualItems()` / scroll
+  // metrics, so we accept the warning at this single call site.
+  // eslint-disable-next-line react-hooks/incompatible-library
+  const rowVirtualizer = useVirtualizer({
+    count: total,
+    getScrollElement: () => scrollRef.current,
+    estimateSize: () => ROW_HEIGHT,
+    overscan: OVERSCAN,
+  })
 
   // Active filter chips — one entry per non-empty dimension. Pure
   // projection over the store arrays; nothing persisted or mutated.
@@ -126,7 +140,6 @@ export function IssueListView({
 
       <div
         ref={scrollRef}
-        onScroll={e => setScrollTop((e.target as HTMLDivElement).scrollTop)}
         style={{ ...scrollContainerStyle, height: containerHeight }}
         data-testid="issue-list-scroll"
       >
@@ -145,15 +158,40 @@ export function IssueListView({
             No issues match.
           </div>
         ) : null}
-        {total > 0 ? <div style={{ height: topPad }} /> : null}
-        {visible.map(issue => (
-          <IssueRow
-            key={issue.id}
-            issue={issue}
-            onClick={() => onOpenIssue(issue.id)}
-          />
-        ))}
-        {total > 0 ? <div style={{ height: bottomPad }} /> : null}
+        {total > 0 ? (
+          // ponytail: the inner div's height is the *total* list
+          // height, so the scrollbar reflects the full list. Each
+          // virtual row is absolutely positioned at translateY(start)
+          // and only the visible ones (plus OVERSCAN) are mounted.
+          <div
+            data-testid="issue-list-inner"
+            style={{
+              height: rowVirtualizer.getTotalSize(),
+              position: 'relative',
+              width: '100%',
+            }}
+          >
+            {rowVirtualizer.getVirtualItems().map(virtualItem => {
+              const issue = issues[virtualItem.index]
+              if (!issue) return null
+              return (
+                <IssueRow
+                  key={issue.id}
+                  issue={issue}
+                  onClick={() => onOpenIssue(issue.id)}
+                  positionStyle={{
+                    position: 'absolute',
+                    top: 0,
+                    left: 0,
+                    width: '100%',
+                    height: virtualItem.size,
+                    transform: `translateY(${virtualItem.start}px)`,
+                  }}
+                />
+              )
+            })}
+          </div>
+        ) : null}
       </div>
 
       <footer data-testid="list-footer" style={footerStyle}>
@@ -163,7 +201,18 @@ export function IssueListView({
   )
 }
 
-function IssueRow({ issue, onClick }: { issue: Issue; onClick: () => void }) {
+interface IssueRowProps {
+  issue: Issue
+  onClick: () => void
+  /**
+   * Position+size style injected by the virtualizer (absolute,
+   * translateY(start), explicit height). Merged after the row's own
+   * styles so the virtualizer's positioning always wins.
+   */
+  positionStyle: CSSProperties
+}
+
+function IssueRow({ issue, onClick, positionStyle }: IssueRowProps) {
   const [hovered, setHovered] = useState(false)
 
   return (
@@ -181,7 +230,11 @@ function IssueRow({ issue, onClick }: { issue: Issue; onClick: () => void }) {
       onMouseLeave={() => setHovered(false)}
       data-testid="issue-row"
       data-issue-id={issue.id}
-      style={{ ...rowStyle, ...(hovered ? rowHoverStyle : null) }}
+      style={{
+        ...rowStyle,
+        ...(hovered ? rowHoverStyle : null),
+        ...positionStyle,
+      }}
     >
       <PriorityDot priority={issue.priority} />
       <TypeIcon type={issue.issue_type} />
@@ -247,7 +300,7 @@ const rowStyle: CSSProperties = {
   display: 'flex',
   alignItems: 'center',
   gap: space[2],
-  height: 36,
+  height: ROW_HEIGHT,
   paddingInline: 12,
   borderRadius: 6,
   backgroundColor: 'transparent',
