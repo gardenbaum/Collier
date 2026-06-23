@@ -47,13 +47,14 @@ export const config: WebdriverIO.Config = {
   // `webdriver/build/node.js`). That makes it the wall-clock budget
   // for EVERY WebDriver request, including the first POST /session
   // -- and that request must wait for tauri-driver to spawn
-  // WebKitWebDriver, for WebKitWebDriver to boot, and for the Tauri
-  // app to start. On a fresh CI runner the cold start is ~30-60s, so
-  // 60s is too tight (observed failure: 60s wall -> "aborted due to
-  // timeout" with WebKitWebDriver orphaned on cleanup). The wdio 9
-  // default is 120_000; we use 180_000 to leave headroom for a
-  // worst-case cold start.
-  connectionRetryTimeout: 180_000,
+  // WebKitWebDriver, for WebKitWebDriver to spawn the Tauri app,
+  // and for the app + Dolt (Beads) to finish their cold start. On a
+  // fresh GitHub runner that whole chain takes 3-5 min (observed on
+  // a follow-up CI run: 180s budget still timed out, WebKitWebDriver
+  // /status was ready in <1s, but session creation took >3 min).
+  // Bump the budget to 10 min to leave headroom; the CI job itself
+  // has a 30 min ceiling so a worst-case 10 min handshake is fine.
+  connectionRetryTimeout: 600_000,
   connectionRetryCount: 30,
 
   // No extra services — tauri-driver is a plain WebDriver server,
