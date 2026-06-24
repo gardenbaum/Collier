@@ -166,15 +166,12 @@ describe('Collier M2 R5 epic tree with progress bars', () => {
     expect(childId).toBeTruthy()
     await childRow.click()
 
-    // The IssueDetailDrawer mounts an element with role="dialog".
-    // We don't assert on its full contents here (that's R4's spec)
-    // — only that the click reached the drawer surface.
-    const dialog = await browser.execute(
-      () =>
-        document
-          .querySelector('[role="dialog"]')
-          ?.getAttribute('data-testid') ?? null
-    )
-    expect(typeof dialog === 'string' && dialog.length > 0).toBe(true)
+    // The IssueDetailDrawer mounts an element with data-testid
+    // "issue-detail-view" (R4 uses the same selector). Wait for it
+    // explicitly so the assertion doesn't race React's commit: the
+    // screenshot in the failure artifact showed the drawer was open
+    // moments later, but the query returned null on the first read.
+    const drawer = await $('[data-testid="issue-detail-view"]')
+    await drawer.waitForDisplayed({ timeout: 5_000 })
   })
 })
