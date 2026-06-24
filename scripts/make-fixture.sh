@@ -122,14 +122,27 @@ set_status "$TASK_UX" deferred
 
 # Dependencies (acceptance: >=3 edges, incl. one blocked chain).
 #   chain A: MIGRATE (open) -> OPT -> CACHE
-#   edge B:  LOGIN -> REFAC
-#   edge C:  BUG1 -> INV
-#   edge D:  LOGIN -> OAUTH
+#   edge B:  REFAC  -> LOGIN   (TASK_LOGIN's blocks deps: REFAC)
+#   edge C:  INV    -> BUG1    (TASK_BUG1's blocks dep: INV)
+#   edge D:  OAUTH  -> LOGIN   (TASK_LOGIN's blocks deps: OAUTH)
+#
+# ponytail: `add_blocker <blocker> <blocked>` mirrors `bd dep <from>
+# --blocks <to>` — the first arg is the blocker (the upstream task),
+# the second is the dependent (the downstream task). The R4
+# spec asserts that TASK_LOGIN's Deps tab renders rows pointing
+# at TASK_REFAC and TASK_OAUTH; for those rows to appear, TASK_LOGIN
+# must depend on REFAC and OAUTH, which means REFAC and OAUTH
+# must be the blockers. The previous fixture had the args swapped
+# (LOGIN blocking REFAC/OAUTH instead), so TASK_LOGIN's
+# `bd show --json` `dependencies` array contained only the
+# parent_child entry for EPIC_AUTH — the spec's
+# `deps-section-blocks` selector never appeared in the DOM and
+# `waitForDisplayed` timed out after 5 s.
 add_blocker "$TASK_MIGRATE" "$TASK_OPT"
 add_blocker "$TASK_OPT" "$TASK_CACHE"
-add_blocker "$TASK_LOGIN" "$TASK_REFAC"
-add_blocker "$TASK_BUG1" "$TASK_INV"
-add_blocker "$TASK_LOGIN" "$TASK_OAUTH"
+add_blocker "$TASK_REFAC" "$TASK_LOGIN"
+add_blocker "$TASK_INV" "$TASK_BUG1"
+add_blocker "$TASK_OAUTH" "$TASK_LOGIN"
 
 # Explicit status=blocked.
 set_status "$TASK_OPT" blocked
