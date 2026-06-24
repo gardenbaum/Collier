@@ -66,16 +66,14 @@ where
 /// Returns `ParseError` if the array is empty (should not happen for
 /// a valid id, but possible for a race with `bd delete`).
 ///
-/// **Known follow-up**: the real `bd show` JSON is sparser than the
-/// Rust `Issue` struct (it omits `closed_at`, `description`, `labels`,
-/// `dependencies`, `parent`, `acceptance_criteria`, `external_ref`).
-/// Until `Issue` gets `#[serde(default)]` on those fields, this
-/// command will return `ParseError` against the real CLI. The unit
-/// tests in this module use the synthetic full-shape envelope (same
-/// pattern as T6 / T7 / T15) so the contract is verified; the
-/// end-to-end fix is a follow-up that should also cover the list,
-///
-/// ready, blocked, search, and query commands.
+/// **bd show JSON is sparser than the list JSON** (verified against
+/// bd 1.0.4, 2026-06-24): it omits `dependency_count`,
+/// `dependent_count`, `comment_count`, and (for issues without
+/// those) `description`, `owner`, `closed_at`, `parent`,
+/// `acceptance_criteria`, `external_ref`, and the full
+/// `dependencies` list. The `Issue` struct has `#[serde(default)]`
+/// on every field `bd show` may omit, so the deserialiser fills
+/// them with the documented defaults and the command succeeds.
 #[tauri::command]
 #[specta::specta]
 pub async fn bd_show(cwd: String, id: String) -> BdResult<Issue> {

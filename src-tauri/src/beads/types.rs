@@ -439,8 +439,23 @@ pub struct Issue {
     /// label regression was fixed.
     #[serde(default)]
     pub dependencies: Vec<Dependency>,
+    /// `#[serde(default)]` because bd v1.0.4's `bd show --json`
+    /// output omits `dependency_count` — the field is only present
+    /// in `bd list --json`. Default = `0`. The R4 E2E spec needs
+    /// the drawer to mount (which fails on `bd show` ParseError
+    /// without this default); the count is reconciled from
+    /// `dependencies.len()` if a future patch wants to backfill.
+    #[serde(default)]
     pub dependency_count: u32,
+    /// `#[serde(default)]` because bd v1.0.4's `bd show --json`
+    /// output omits `dependent_count`. Default = `0`. Mirror of
+    /// `dependency_count` above.
+    #[serde(default)]
     pub dependent_count: u32,
+    /// `#[serde(default)]` because bd v1.0.4's `bd show --json`
+    /// output omits `comment_count`. Default = `0`. Mirror of
+    /// `dependency_count` above.
+    #[serde(default)]
     pub comment_count: u32,
     /// `#[serde(default)]` because bd v1.0.4's list output omits
     /// `parent` for issues that aren't children of an epic. Default
