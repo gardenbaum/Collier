@@ -115,8 +115,22 @@ describe('Collier M1 R3 inline editing', () => {
     if (r3OriginalPriority !== '') {
       await setField('inline-priority-select', r3OriginalPriority)
     }
-    // Give the watcher tick a beat to settle so the next spec
-    // re-keys its query against the reverted state.
+    // ponytail: the waitUntil below checks the React state, which
+    // is updated by the optimistic cache patch the moment the
+    // mutation fires — that's much sooner than the bd write +
+    // watcher tick + cache refetch that actually mutates the
+    // fixture on disk. The fixture is what the r6 spec reads via
+    // `bdList`; if we hand off to r6 while the bd write is still
+    // in flight, r6 sees the leaked-mutation counts (open=11,
+    // closed=7 instead of 10/8). Wait for the bd write + watcher
+    // tick to actually complete before returning: sleep for
+    // ~1.5s, which is well under the wdio spec timeout (180s) and
+    // ~3x the observed bd-write + file-watcher latency on the
+    // CI runner. The mutation's `onSuccess` patches every list
+    // cache variant with the returned issue, so by the time we
+    // return the rendered `data-issue-status` reflects the
+    // server's truth, not the optimistic guess.
+    await browser.pause(1500)
     await browser.waitUntil(
       async () => {
         const r = await $(
