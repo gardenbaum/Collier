@@ -97,12 +97,20 @@ const statusRank: Record<Issue['status'], number> = {
   closed: 4,
 }
 
-const priorityRank: Record<Issue['priority'], number> = {
-  P0: 0,
-  P1: 1,
-  P2: 2,
-  P3: 3,
-  P4: 4,
+// ponytail: `IssuePriority` is `#[repr(u8)] Serialize_repr` on the Rust
+// side, so `bd list --json` emits priority as the bare integer 0..4
+// at runtime even though the generated TS type advertises the
+// "P0"|"P1"|...|"P4" string union. The sort runs in the browser over
+// the live data, so the lookup keys MUST be numbers — string keys
+// resolve to `undefined`, `undefined - undefined === NaN`, and the
+// sort treats every pair as equal, silently leaving the list in bd's
+// native order. Mirrors the EpicView priorityRank.
+const priorityRank: Record<number, number> = {
+  0: 0, // P0
+  1: 1, // P1
+  2: 2, // P2
+  3: 3, // P3
+  4: 4, // P4,
 }
 
 function compareIssues(a: Issue, b: Issue, sort: SortState): number {
@@ -112,8 +120,14 @@ function compareIssues(a: Issue, b: Issue, sort: SortState): number {
       return a.id.localeCompare(b.id) * sign
     case 'status':
       return (statusRank[a.status] - statusRank[b.status]) * sign
-    case 'priority':
-      return (priorityRank[a.priority] - priorityRank[b.priority]) * sign
+    case 'priority': {
+      const pa = priorityRank[Number(a.priority)] ?? Number.MAX_SAFE_INTEGER
+      const pb = priorityRank[Number(b.priority)] ?? Number.MAX_SAFE_INTEGER
+      if (pa !== pb) return (pa - pb) * sign
+      // Stable tiebreaker: by id so the E2E spec can assert on the
+      // first row id when two rows share a priority bucket.
+      return a.id.localeCompare(b.id) * sign
+    }
     case 'type':
       return a.issue_type.localeCompare(b.issue_type) * sign
     case 'assignee': {
@@ -546,6 +560,7 @@ function SortableHeader({
         data-testid={`sort-header-${sortKey}`}
         data-sort-key={sortKey}
         data-sort-direction={direction ?? 'none'}
+        aria-sort={ariaSort}
         onClick={() => onClick(sortKey)}
         style={headerButtonStyle}
       >

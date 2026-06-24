@@ -35,6 +35,17 @@ import { browser, expect, $$, $ } from '@wdio/globals'
 import { openFixtureWorkspace } from './helpers'
 
 describe('Collier M1 R3 inline editing', () => {
+  // Captured during the status/priority tests and reverted in
+  // `after` so the next spec (r6-status-overview) sees the
+  // original fixture distribution. The wdio workers run in their
+  // own processes but the Tauri app's Beads fixture is a single
+  // file on disk under /tmp/e2e-workspace — every spec that
+  // mutates it leaks state into the next. r3 is the only spec
+  // that calls `bd update` via the UI, so it owns the cleanup.
+  let r3RowId = ''
+  let r3OriginalStatus = ''
+  let r3OriginalPriority = ''
+
   before(async () => {
     await openFixtureWorkspace('r3')
 
@@ -56,6 +67,74 @@ describe('Collier M1 R3 inline editing', () => {
     )
   })
 
+  after(async () => {
+    // ponytail: revert the row's status + priority through the
+    // same UI surface the spec exercises. We don't shell out to
+    // `bd update` — the test should depend only on the surface it
+    // covers. The inline select fires `commands.bdUpdate` and the
+    // watcher reconciles, same as the test itself.
+    if (r3RowId === '') return
+    const row = await $(`[data-testid="issue-row"][data-issue-id="${r3RowId}"]`)
+    if (!(await row.isExisting())) {
+      // Watcher tick may have already settled to a state where
+      // the row's `data-issue-status` no longer matches the
+      // captured r3OriginalStatus (e.g. r6 set it to a different
+      // value first). Best-effort skip in that case.
+      return
+    }
+
+    type SetFieldArgs = [string | null, string, string]
+    const setField = async (testid: string, value: string): Promise<void> => {
+      await browser.execute(
+        ((id: string | null, tid: string, val: string) => {
+          if (!id) throw new Error('row id is null')
+          const r = document.querySelector(
+            `[data-testid="issue-row"][data-issue-id="${CSS.escape(id)}"]`
+          )
+          if (!r) throw new Error(`row ${id} not found`)
+          const sel = r.querySelector(
+            `[data-testid="${tid}"]`
+          ) as HTMLSelectElement | null
+          if (!sel) throw new Error(`${tid} not found in row`)
+          const setter = Object.getOwnPropertyDescriptor(
+            window.HTMLSelectElement.prototype,
+            'value'
+          )?.set
+          setter?.call(sel, val)
+          sel.dispatchEvent(new Event('change', { bubbles: true }))
+        }) as (...args: SetFieldArgs) => void,
+        r3RowId,
+        testid,
+        value
+      )
+    }
+
+    if (r3OriginalStatus !== '') {
+      await setField('inline-status-select', r3OriginalStatus)
+    }
+    if (r3OriginalPriority !== '') {
+      await setField('inline-priority-select', r3OriginalPriority)
+    }
+    // Give the watcher tick a beat to settle so the next spec
+    // re-keys its query against the reverted state.
+    await browser.waitUntil(
+      async () => {
+        const r = await $(
+          `[data-testid="issue-row"][data-issue-id="${r3RowId}"]`
+        )
+        return (
+          (await r.getAttribute('data-issue-status')) === r3OriginalStatus &&
+          (await r.getAttribute('data-issue-priority')) === r3OriginalPriority
+        )
+      },
+      {
+        timeout: 10_000,
+        interval: 250,
+        timeoutMsg: 'r3 cleanup did not land',
+      }
+    )
+  })
+
   it('changing a row status inline persists via bd update (optimistic + reconcile)', async () => {
     // -- Given: at least one rendered row, status=open (or any
     //    status that has alternatives in the dropdown).
@@ -64,6 +143,11 @@ describe('Collier M1 R3 inline editing', () => {
     const firstRow = rows[0] as unknown as WebdriverIO.Element
     const rowId = (await firstRow.getAttribute('data-issue-id')) ?? ''
     const originalStatus = await firstRow.getAttribute('data-issue-status')
+    // ponytail: capture the original values for the after hook so
+    // the r6-status-overview spec sees the original fixture
+    // distribution.
+    r3RowId = rowId
+    r3OriginalStatus = originalStatus ?? ''
     expect(rowId).toBeTruthy()
     // Pick a status different from the current one so we can
     // verify the change.
@@ -151,6 +235,12 @@ describe('Collier M1 R3 inline editing', () => {
     const firstRow = rows[0] as unknown as WebdriverIO.Element
     const rowId = (await firstRow.getAttribute('data-issue-id')) ?? ''
     const originalPriority = await firstRow.getAttribute('data-issue-priority')
+    // ponytail: capture the original priority for the after
+    // hook so we revert the r3 row back to its starting
+    // priority.
+    if (r3RowId === rowId) {
+      r3OriginalPriority = originalPriority ?? ''
+    }
 
     // Pick a priority different from the current one so we can
     // verify the change. The fixture ships only P1-P4 (no P0),

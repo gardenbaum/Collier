@@ -39,11 +39,22 @@ vi.mock('@/lib/logger', () => ({
 
 const importSut = () => import('./IssueListView')
 
+// ponytail: the generated `Issue` type advertises priority as
+// `"P0"|"P1"|...|"P4"` (the specta name), but `bd list --json`
+// emits the bare integer 0..4 on the wire (Rust `Serialize_repr`).
+// The component sorts by `Number(issue.priority)`, so a test that
+// uses the variant-name strings silently sorts by NaN — which is
+// why this file's history shows a buggy comparator slipping
+// through CI. `p` is the integer-shape helper so callers stay
+// honest about the wire data while satisfying the structural
+// type system.
+const p = (n: number): Issue['priority'] => n as unknown as Issue['priority']
+
 const makeIssue = (overrides: Partial<Issue> = {}): Issue => ({
   id: 'beads-1',
   title: 'Ship T15b',
   status: 'open',
-  priority: 'P1',
+  priority: p(1),
   issue_type: 'task',
   created_at: '2026-06-17T00:00:00Z',
   updated_at: null,
@@ -479,7 +490,7 @@ describe('IssueListView', () => {
         title: `Updated ${i}`,
         // Mutate a visible field too so a hypothetical full re-render
         // would have to repaint every row.
-        priority: i % 2 === 0 ? 'P0' : 'P1',
+        priority: i % 2 === 0 ? p(0) : p(1),
       })
     )
     mockBdList.mockResolvedValueOnce({ status: 'ok', data: initial })
@@ -540,7 +551,7 @@ describe('IssueListView', () => {
 
   it('renders a column header row with the spec R1 columns', async () => {
     const issues = [
-      makeIssue({ id: 'beads-1', status: 'open', priority: 'P1' }),
+      makeIssue({ id: 'beads-1', status: 'open', priority: p(1) }),
     ]
     mockBdList.mockResolvedValue({ status: 'ok', data: issues })
 
@@ -574,7 +585,7 @@ describe('IssueListView', () => {
         id: 'beads-1',
         title: 'Hello world',
         status: 'in_progress',
-        priority: 'P2',
+        priority: p(2),
         issue_type: 'bug',
         owner: 'alice',
       }),
@@ -615,7 +626,7 @@ describe('IssueListView', () => {
     // that don't have to traverse the DOM tree.
     expect(row.getAttribute('data-issue-id')).toBe('beads-1')
     expect(row.getAttribute('data-issue-status')).toBe('in_progress')
-    expect(row.getAttribute('data-issue-priority')).toBe('P2')
+    expect(row.getAttribute('data-issue-priority')).toBe('2')
     expect(row.getAttribute('data-issue-type')).toBe('bug')
     expect(row.getAttribute('data-issue-assignee')).toBe('alice')
   })
@@ -655,10 +666,10 @@ describe('IssueListView', () => {
     // header, the row order must match the P0..P3 rank, NOT the
     // original id order.
     const issues = [
-      makeIssue({ id: 'beads-1', priority: 'P3' }),
-      makeIssue({ id: 'beads-2', priority: 'P0' }),
-      makeIssue({ id: 'beads-3', priority: 'P2' }),
-      makeIssue({ id: 'beads-4', priority: 'P1' }),
+      makeIssue({ id: 'beads-1', priority: p(3) }),
+      makeIssue({ id: 'beads-2', priority: p(0) }),
+      makeIssue({ id: 'beads-3', priority: p(2) }),
+      makeIssue({ id: 'beads-4', priority: p(1) }),
     ]
     mockBdList.mockResolvedValue({ status: 'ok', data: issues })
 
@@ -679,7 +690,10 @@ describe('IssueListView', () => {
       header.click()
     })
 
-    // After click: ascending priority order.
+    // After click: ascending priority order. beads-2 and beads-4
+    // share priority 1, so the stable id tiebreaker (asc) puts
+    // beads-2 before beads-4. Likewise beads-3 (P2) sits between
+    // the two P1 issues and beads-1 (P3) trails.
     const rows = screen.getAllByTestId('issue-row')
     const idsInOrder = rows.map(r => r.getAttribute('data-issue-id'))
     expect(idsInOrder).toEqual(['beads-2', 'beads-4', 'beads-3', 'beads-1'])
@@ -688,8 +702,8 @@ describe('IssueListView', () => {
 
   it('clicking the active sort header again toggles to desc', async () => {
     const issues = [
-      makeIssue({ id: 'beads-1', priority: 'P3' }),
-      makeIssue({ id: 'beads-2', priority: 'P0' }),
+      makeIssue({ id: 'beads-1', priority: p(3) }),
+      makeIssue({ id: 'beads-2', priority: p(0) }),
     ]
     mockBdList.mockResolvedValue({ status: 'ok', data: issues })
 
@@ -724,8 +738,8 @@ describe('IssueListView', () => {
 
   it('clicking a different sort header resets direction to asc', async () => {
     const issues = [
-      makeIssue({ id: 'beads-1', status: 'closed', priority: 'P0' }),
-      makeIssue({ id: 'beads-2', status: 'open', priority: 'P3' }),
+      makeIssue({ id: 'beads-1', status: 'closed', priority: p(0) }),
+      makeIssue({ id: 'beads-2', status: 'open', priority: p(3) }),
     ]
     mockBdList.mockResolvedValue({ status: 'ok', data: issues })
 
@@ -876,8 +890,8 @@ describe('IssueListView', () => {
     // order than the user expects. We assert by snapshotting the
     // input array reference and confirming it survives the sort.
     const issues = [
-      makeIssue({ id: 'beads-1', priority: 'P3' }),
-      makeIssue({ id: 'beads-2', priority: 'P0' }),
+      makeIssue({ id: 'beads-1', priority: p(3) }),
+      makeIssue({ id: 'beads-2', priority: p(0) }),
     ]
     const snapshot = [...issues]
     mockBdList.mockResolvedValue({ status: 'ok', data: issues })
@@ -906,8 +920,8 @@ describe('IssueListView', () => {
     // the assertion: the LIST VIEW itself never paints the colour on
     // a non-P0 element.
     const issues = [
-      makeIssue({ id: 'beads-1', priority: 'P1' }),
-      makeIssue({ id: 'beads-2', priority: 'P2' }),
+      makeIssue({ id: 'beads-1', priority: p(1) }),
+      makeIssue({ id: 'beads-2', priority: p(2) }),
     ]
     mockBdList.mockResolvedValue({ status: 'ok', data: issues })
 

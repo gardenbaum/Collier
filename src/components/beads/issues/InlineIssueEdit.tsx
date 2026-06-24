@@ -104,17 +104,23 @@ interface InlineCellBaseProps {
  * future inline-editable field (e.g. `type`) can be added without
  * adding a parallel mutation hook.
  *
- * ponytail: optimistic update strategy. We patch the two caches
- * the user might be looking at:
- *   - `['beads', 'list', cwd]` — the issue list. Patching this
- *     keeps the rendered rows in sync immediately.
- *   - `['beads', 'show', cwd, issueId]` — the detail drawer, if
- *     mounted. Patching this keeps the detail header in sync
- *     without waiting for the watcher to round-trip.
+ * ponytail: optimistic update strategy. The issue list view keys
+ * its query as `['beads', 'list', cwd, filters]` — the `filters`
+ * segment carries the active sidebar selection, so a query exists
+ * for EVERY (status, priority, type, label, assignee) combination
+ * the user has visited, not just one cache slot. Patching only
+ * `['beads', 'list', cwd]` (no filters) leaves the rendered list
+ * stale until the watcher tick reconciles, which is exactly what
+ * the r3-inline-edit E2E observed as "row X status never updated
+ * to open optimistically". We instead walk every list cache
+ * variant for this cwd and patch each one in place. The detail
+ * drawer (`['beads', 'show', cwd, issueId]`) is single-keyed, so
+ * it patches as before.
  *
  * The watcher tick (which always fires after a successful bd
- * write) will refetch both caches and confirm the optimistic value.
- * On mutation error, we revert the patch and toast the error.
+ * write) will refetch every list variant and confirm the
+ * optimistic value. On mutation error, we revert every patch we
+ * made and toast the error.
  */
 type Field =
   | { kind: 'status'; value: IssueStatus }
@@ -156,18 +162,17 @@ function useInlineUpdate({ cwd, issueId }: UseInlineUpdateArgs) {
       throw result.error
     },
     onMutate: async (field: Field) => {
-      // ponytail: cancel any in-flight refetch for both caches
-      // BEFORE we patch. Otherwise a stale refetch could overwrite
-      // the optimistic value between our patch and the cache write.
+      // ponytail: cancel any in-flight refetch for every list
+      // variant for this cwd BEFORE we patch. Otherwise a stale
+      // refetch from another filter combination could overwrite
+      // our optimistic value between the patch and the cache
+      // write. The detail drawer's query is single-keyed.
       await queryClient.cancelQueries({ queryKey: ['beads', 'list', cwd] })
       await queryClient.cancelQueries({
         queryKey: ['beads', 'show', cwd, issueId],
       })
 
-      const listKey = ['beads', 'list', cwd]
       const showKey = ['beads', 'show', cwd, issueId]
-
-      const previousList = queryClient.getQueryData<Issue[]>(listKey)
       const previousShow = queryClient.getQueryData<Issue>(showKey)
 
       const apply = (issue: Issue): Issue => {
@@ -181,31 +186,44 @@ function useInlineUpdate({ cwd, issueId }: UseInlineUpdateArgs) {
         }
       }
 
-      if (previousList) {
-        queryClient.setQueryData<Issue[]>(
-          listKey,
-          previousList.map(i => (i.id === issueId ? apply(i) : i))
-        )
-      }
+      // ponytail: `setQueriesData` returns the POST-update data,
+      // not the pre-update snapshot — confirmed in the TanStack
+      // source (`queryClient.setQueryData` returns the new value).
+      // For the optimistic-patch / revert-on-error pattern we
+      // need the pre-update snapshot, so we read it from
+      // `getQueriesData` first and feed it to the rollback in
+      // `onError`. The filter payloads differ across variants
+      // (status, priority, type, label, assignee combinations),
+      // so the patch applies correctly whether the user has the
+      // unfiltered list, a status=open list, or any other open.
+      const previousLists = queryClient.getQueriesData<Issue[]>({
+        queryKey: ['beads', 'list', cwd],
+      })
+      queryClient.setQueriesData<Issue[]>(
+        { queryKey: ['beads', 'list', cwd] },
+        prev => (prev ? prev.map(i => (i.id === issueId ? apply(i) : i)) : prev)
+      )
       if (previousShow) {
         queryClient.setQueryData<Issue>(showKey, apply(previousShow))
       }
 
-      return { previousList, previousShow }
+      return { previousLists, previousShow }
     },
     onError: (err, _field, context) => {
-      // ponytail: revert both caches to the pre-mutation snapshot.
-      // The context is typed as `unknown` by TanStack; we know the
-      // shape because we own onMutate. The cast is the standard
-      // TanStack escape hatch for the same reason.
+      // ponytail: revert every cache slot we touched. The context
+      // is typed as `unknown` by TanStack; we know the shape
+      // because we own onMutate. The cast is the standard TanStack
+      // escape hatch for the same reason.
       const ctx = context as
         | {
-            previousList: Issue[] | undefined
+            previousLists: [readonly unknown[], Issue[] | undefined][]
             previousShow: Issue | undefined
           }
         | undefined
-      if (ctx?.previousList) {
-        queryClient.setQueryData(['beads', 'list', cwd], ctx.previousList)
+      if (ctx?.previousLists) {
+        for (const [key, prev] of ctx.previousLists) {
+          queryClient.setQueryData(key, prev)
+        }
       }
       if (ctx?.previousShow) {
         queryClient.setQueryData(
@@ -218,12 +236,12 @@ function useInlineUpdate({ cwd, issueId }: UseInlineUpdateArgs) {
     },
     onSuccess: updated => {
       // ponytail: the watcher will fire beads-data-changed within
-      // ~1s and TanStack will refetch both caches. We also patch
-      // them with the freshly-returned issue here so the UI is
-      // instantly correct even if the watcher is slow.
-      queryClient.setQueryData<Issue[]>(
-        ['beads', 'list', cwd],
-        (prev: Issue[] | undefined) =>
+      // ~1s and TanStack will refetch every list variant. We also
+      // patch them with the freshly-returned issue here so the UI
+      // is instantly correct even if the watcher is slow.
+      queryClient.setQueriesData<Issue[]>(
+        { queryKey: ['beads', 'list', cwd] },
+        prev =>
           prev ? prev.map(i => (i.id === updated.id ? updated : i)) : prev
       )
       queryClient.setQueryData<Issue>(['beads', 'show', cwd, issueId], updated)

@@ -36,6 +36,7 @@
  */
 
 import { readFileSync } from 'node:fs'
+import path from 'node:path'
 import { browser, expect, $ } from '@wdio/globals'
 
 import { openFixtureWorkspace } from './helpers'
@@ -48,7 +49,19 @@ interface FixtureIds {
   TASK_INV: string
 }
 
-const FIXTURE_IDS_PATH = '.fixture-ids.json'
+/**
+ * Path to the E2E fixture's `.fixture-ids.json` file. The CI
+ * workflow exports `E2E_FIXTURE_DIR=/tmp/e2e-workspace` for the
+ * e2e job (see `.github/workflows/ci.yml`); the wdio CWD is the
+ * repo root, not the fixture dir, so a bare
+ * `'.fixture-ids.json'` lookup blows up with ENOENT under CI.
+ * Local runs (no env var set) fall back to the cwd so a dev
+ * running `bun run test:e2e` from a checkout that happens to
+ * have the fixture at its root still works.
+ */
+const FIXTURE_IDS_PATH = process.env.E2E_FIXTURE_DIR
+  ? path.join(process.env.E2E_FIXTURE_DIR, '.fixture-ids.json')
+  : '.fixture-ids.json'
 
 function readFixtureIds(): FixtureIds {
   // ponytail: Beads hashes issue IDs from a per-repo random
