@@ -569,8 +569,17 @@ const detailViewContainerStyle: CSSProperties = {
 }
 
 const drawerStyle: CSSProperties = {
+  // ponytail: the standalone IssueDetailView (used in unit tests +
+  // any future direct consumer) still wants a fixed 600px surface,
+  // but when the component is nested inside the IssueDetailDrawer's
+  // 480px panel, the maxWidth = 100% clamp wins and the drawer fits
+  // inside the parent instead of overflowing past the close button.
+  // The old `maxWidth: '90vw'` was sized against the viewport, not
+  // the parent, so the 600px aside extended 120px past the panel
+  // — putting the close button outside the panel's overflow region
+  // and triggering `element not interactable` in the r3/r4 e2e.
   width: 600,
-  maxWidth: '90vw',
+  maxWidth: '100%',
   height: '100%',
   backgroundColor: colors.mono9,
   borderLeft: `1px solid ${colors.mono7}`,
