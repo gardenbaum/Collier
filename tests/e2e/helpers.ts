@@ -113,40 +113,53 @@ export async function openFixtureWorkspace(specLabel: string): Promise<void> {
   const firstRow = await $('[data-testid="issue-row"]')
   await firstRow.waitForDisplayed({ timeout: 150_000 })
 
-  // Diagnostic: log the total count the footer reports, the rendered
-  // row count, and the `cwd` the app booted with. Specs that need
-  // the "full fixture" assertion read the footer; this log makes a
-  // mismatch (e.g. footer says 17 but the fixture seeded 25) visible
-  // in the CI log without waiting for the assertion to time out.
-  // `cwd` is read via the Tauri IPC bridge that the webview exposes
-  // -- the helper itself is in the wdio testrunner process, so it
-  // can't import the typed `commands` wrapper that lives in the
-  // frontend bundle.
+  // 6. Reset the persisted filter selection to empty. Each spec gets
+  //    a fresh Tauri app launch but the localStorage (which lives in
+  //    the Tauri data dir on disk) is shared across the wdio
+  //    worker processes within a single CI run -- so an earlier
+  //    spec's AND-composition test (r2-filters) leaves
+  //    `status=[open] priority=[P1]` persisted, and the next spec's
+  //    first `bd list` query is then `bd list --all --status open
+  //    --priority 1 --json`. That narrower query never resolves
+  //    within 150s on the CI runner (Dolt's hot cache from the
+  //    previous spec's subprocess apparently wedges the new one),
+  //    so the first-row wait times out. Clicking `filter-clear-all`
+  //    here is a no-op when no filter is active, and when a
+  //    filter IS persisted it both clears the in-memory store
+  //    AND writes the empty state back to localStorage (zustand
+  //    persist middleware) so the next spec starts clean.
+  const clearAll = await $('[data-testid="filter-clear-all"]')
+  if (await clearAll.isExisting()) {
+    await clearAll.click()
+    // Give the persisted clear a beat to flush before we hand off;
+    // the React commit + the persist write are async.
+    await browser
+      .waitUntil(
+        async () =>
+          (await clearAll.isExisting()) && !(await clearAll.isDisplayed()),
+        {
+          timeout: 5_000,
+          interval: 100,
+          timeoutMsg: 'clearAll did not disappear',
+        }
+      )
+      .catch(() => {
+        // Best-effort: if the chip doesn't disappear (e.g. layout
+        // quirk), the click still fired and the store is cleared.
+      })
+  }
+
+  // Diagnostic: log the total count the footer reports and the
+  // rendered row count. Specs that need the "full fixture"
+  // assertion read the footer; this log makes a mismatch (e.g.
+  // footer says 17 but the fixture seeded 25) visible in the CI
+  // log without waiting for the assertion to time out.
   const footerText = await browser.execute(
     () =>
       document.querySelector('[data-testid="list-footer"]')?.textContent ?? null
   )
   const renderedRowCount = (await $$('[data-testid="issue-row"]')).length
-  type GetCurrentDirResult =
-    | { status: 'ok'; data: string }
-    | { status: 'error'; error: string }
-  const cwd = await browser.execute(async (): Promise<string | null> => {
-    const w = window as unknown as {
-      __TAURI__?: {
-        core?: {
-          invoke?: (
-            cmd: string,
-            args?: Record<string, unknown>
-          ) => Promise<unknown>
-        }
-      }
-    }
-    const invoke = w.__TAURI__?.core?.invoke
-    if (!invoke) return null
-    const result = (await invoke('get_current_dir')) as GetCurrentDirResult
-    return result.status === 'ok' ? result.data : `error: ${result.error}`
-  })
   console.log(
-    `[e2e:${specLabel}] post-open: footer="${String(footerText)}" renderedRows=${renderedRowCount} cwd=${JSON.stringify(cwd)}`
+    `[e2e:${specLabel}] post-open: footer="${String(footerText)}" renderedRows=${renderedRowCount}`
   )
 }
