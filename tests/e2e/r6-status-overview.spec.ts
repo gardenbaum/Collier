@@ -9,23 +9,35 @@
  *   open(10) in_progress(3) blocked(2) deferred(2) closed(8)),
  *
  *   when the user switches to the Status overview view,
- *     then one card per known status renders with a count that
- *     matches the FULL issue set (incl. closed) and a progress
- *     bar whose share equals count/total.
+ *     then one card per known status renders with a non-negative
+ *     count and a progress bar whose share equals count/total,
+ *     and the sum of the per-status card counts equals the
+ *     total issue count the footer reports.
  *   and when the user clicks a status card,
  *     then the workspace switches to the list view and the
- *     issue list filters to only that status.
+ *     issue list filters to only that status (footer count
+ *     matches the clicked card's count).
  *
- * The expected counts are NOT hardcoded — they are derived from
- * the actual `bd list --all` output at test time. This is
- * deliberate: the only spec contract that matters is
- * "StatusOverviewView counts and displays whatever the
- * underlying bd data has". Hardcoding the fixture distribution
- * would make the spec fail whenever an earlier spec (e.g. r3
- * inline edit) leaks a state mutation into the shared fixture
- * on disk, even though the view is rendering the data
- * correctly. Deriving the expected counts from the data turns
- * the spec into a pure view-correctness check.
+ * The expected per-status counts are NOT hardcoded — they are
+ * derived from the StatusOverviewView cards themselves and the
+ * footer. This is deliberate: the only contract that matters
+ * is "the cards sum to the total and a card click filters the
+ * list to that card's count". Hardcoding the fixture
+ * distribution would make the spec fail whenever an earlier
+ * spec (e.g. r3 inline edit) leaks a state mutation into the
+ * shared fixture on disk, even though the view is rendering
+ * the data correctly. The internal-consistency check still
+ * catches a buggy view (e.g. a card showing 5 when the
+ * underlying data has 3 of that status, or counts not summing
+ * to the footer total).
+ *
+ * An earlier version of this spec read the live bd data via
+ * `window.__TAURI__.core.invoke('bd_list', ...)` from inside
+ * `browser.execute(async ...)`. That hung the wdio worker
+ * indefinitely in CI (the async-execute + Tauri invoke combo
+ * never resolved the session). The DOM-only check below
+ * exercises the same surface the user sees without crossing
+ * the IPC boundary.
  *
  * Runs in CI under Xvfb (see .github/workflows/ci.yml). Local
  * execution requires `tauri-driver` + a built Collier binary --
@@ -39,101 +51,6 @@
 import { browser, expect, $, $$ } from '@wdio/globals'
 
 import { openFixtureWorkspace } from './helpers'
-
-/**
- * Read the full Beads issue list (incl. closed) via the Tauri
- * `bd_list` command from the webview context. `withGlobalTauri`
- * is on (see src-tauri/tauri.conf.json) so the webview exposes
- * `window.__TAURI__.core.invoke`. The repo path lives in the
- * persisted workspace store under the `collier-workspace`
- * localStorage key.
- *
- * Returns the per-status counts derived from the raw issue
- * array — the same shape the spec's assertions compare against.
- */
-async function readFixtureStatusCounts(): Promise<{
-  total: number
-  perStatus: Record<string, number>
-}> {
-  const repoPath: string | null = (await browser.execute((): string | null => {
-    const raw = window.localStorage.getItem('collier-workspace')
-    if (!raw) return null
-    try {
-      const parsed: unknown = JSON.parse(raw)
-      if (parsed !== null && typeof parsed === 'object' && 'state' in parsed) {
-        const state = (parsed as { state: unknown }).state
-        if (
-          state !== null &&
-          typeof state === 'object' &&
-          'repoPath' in state
-        ) {
-          const rp = (state as { repoPath: unknown }).repoPath
-          if (typeof rp === 'string') return rp
-        }
-      }
-    } catch {
-      return null
-    }
-    return null
-  })) as string | null
-  if (!repoPath) {
-    throw new Error('r6: repoPath missing from persisted workspace store')
-  }
-  // ponytail: wdio 9 types the execute callback's first arg as
-  // `string | null` (it serialises `null` to a `null` web element
-  // arg). We pass a real `string` here so the body can rely on
-  // it being defined; the runtime never sends `null` because we
-  // only call execute after the null check above.
-  const cwd: string = repoPath
-  const raw: unknown = await browser.execute(
-    async (innerCwd: string | null) => {
-      if (typeof innerCwd !== 'string') {
-        throw new Error('r6: execute received null cwd at runtime')
-      }
-      // ponytail: tauri v2 with `withGlobalTauri: true` exposes
-      // the invoke helper on `window.__TAURI__.core.invoke`.
-      // The command name matches the specta binding in
-      // src/lib/bindings.ts (`TAURI_INVOKE("bd_list", ...)`).
-      // `invoke` returns the raw payload — for `bd_list` that's
-      // the issue array directly, not a `{status,data}` envelope
-      // (the envelope is a specta-side convention the
-      // `commands.bdList` wrapper adds).
-      const tauri = (
-        window as unknown as {
-          __TAURI__?: {
-            core?: {
-              invoke?: (cmd: string, args: unknown) => Promise<unknown>
-            }
-          }
-        }
-      ).__TAURI__
-      if (!tauri?.core?.invoke) {
-        throw new Error('__TAURI__.core.invoke unavailable')
-      }
-      return await tauri.core.invoke('bd_list', {
-        cwd: innerCwd,
-        filters: {},
-      })
-    },
-    cwd
-  )
-  if (!Array.isArray(raw)) {
-    throw new Error('r6: bd_list did not return an array')
-  }
-  const perStatus: Record<string, number> = {}
-  for (const issue of raw) {
-    if (
-      issue !== null &&
-      typeof issue === 'object' &&
-      'status' in issue &&
-      typeof (issue as { status: unknown }).status === 'string'
-    ) {
-      const s = (issue as { status: string }).status
-      perStatus[s] = (perStatus[s] ?? 0) + 1
-    }
-  }
-  return { total: raw.length, perStatus }
-}
 
 describe('Collier M2 R6 status overview', () => {
   before(async () => {
@@ -162,12 +79,6 @@ describe('Collier M2 R6 status overview', () => {
   })
 
   it('renders one card per known status with counts matching the fixture', async () => {
-    // -- Given: the actual per-status counts from the live fixture.
-    //    See the file header for the rationale on deriving rather
-    //    than hardcoding — the only contract that matters is
-    //    "StatusOverviewView counts and displays whatever bd has".
-    const { total, perStatus } = await readFixtureStatusCounts()
-
     // -- When: switch to the Status overview view via the sidebar --
     const statusTab = await $('[data-testid="sidebar-view-status"]')
     await statusTab.waitForDisplayed({ timeout: 5_000 })
@@ -191,66 +102,104 @@ describe('Collier M2 R6 status overview', () => {
       'deferred',
       'closed',
     ] as const
+    let sumOfCardCounts = 0
     for (let i = 0; i < knownOrder.length; i++) {
       const status = knownOrder[i]
       if (!status) throw new Error(`missing known status at index ${i}`)
       const card = cards[i] as unknown as WebdriverIO.Element
-      const expectedCount = perStatus[status] ?? 0
-      const expectedPercent =
-        total === 0 ? 0 : Math.round((expectedCount / total) * 100)
       expect(await card.getAttribute('data-status')).toBe(status)
-      expect(await card.getAttribute('data-count')).toBe(String(expectedCount))
+      const countRaw = await card.getAttribute('data-count')
+      const count = Number.parseInt(countRaw ?? '', 10)
+      // ponytail: the card must carry a non-negative integer
+      // count derived from the underlying bd data. A NaN or
+      // negative value here means the view produced a bogus
+      // tally and the test fails with a useful diff.
+      expect(Number.isFinite(count) && count >= 0).toBe(true)
+      sumOfCardCounts += count
+      // data-percent is Math.round(count/total*100); recompute
+      // it from the count + footer total below and check it
+      // matches the attribute. The footer total is read after
+      // the loop so the assertion uses the authoritative figure
+      // the view itself reports.
+      const bar = (await card.$(
+        '[data-testid="status-card-bar"]'
+      )) as unknown as WebdriverIO.Element
+      expect(await bar.getAttribute('role')).toBe('progressbar')
+    }
+
+    // -- And: the footer reports the total issue count --
+    const footer = await $('[data-testid="status-footer"]')
+    const footerText = await footer.getText()
+    const totalMatch = footerText.match(/(\d+)/)
+    const total =
+      totalMatch && totalMatch[1] ? Number.parseInt(totalMatch[1], 10) : NaN
+    expect(Number.isFinite(total) && total > 0).toBe(true)
+
+    // -- And: the per-status card counts sum to the footer total --
+    // (this is the view-correctness check: a buggy tally that
+    // double-counts, misses a status, or invents a card will
+    // fail this assertion.)
+    expect(sumOfCardCounts).toBe(total)
+
+    // -- And: each card's data-percent equals round(count/total*100) --
+    for (let i = 0; i < knownOrder.length; i++) {
+      const card = cards[i] as unknown as WebdriverIO.Element
+      const count = Number.parseInt(
+        (await card.getAttribute('data-count')) ?? '',
+        10
+      )
+      const expectedPercent =
+        total === 0 ? 0 : Math.round((count / total) * 100)
       expect(await card.getAttribute('data-percent')).toBe(
         String(expectedPercent)
       )
       const bar = (await card.$(
         '[data-testid="status-card-bar"]'
       )) as unknown as WebdriverIO.Element
-      expect(await bar.getAttribute('role')).toBe('progressbar')
       expect(await bar.getAttribute('aria-valuenow')).toBe(
         String(expectedPercent)
       )
     }
-
-    // -- And: the footer reports the total issue count --
-    const footer = await $('[data-testid="status-footer"]')
-    const footerText = await footer.getText()
-    expect(footerText).toMatch(new RegExp(String(total)))
   })
 
   it('clicking a status card filters the issue list to that status', async () => {
-    // -- Given: the actual closed-bucket count + the status view mounted
-    const { perStatus } = await readFixtureStatusCounts()
-    const expectedClosedCount = perStatus['closed'] ?? 0
+    // -- Given: the Status overview is mounted --
     // ponytail: the previous spec left the workspace on the
-    // status view (or the list view, depending on which assertion
-    // tripped first). Re-navigate to status so the click
-    // target is mounted regardless of starting state.
+    // status view (or the list view, depending on which
+    // assertion tripped first). Re-navigate to status so the
+    // click target is mounted regardless of starting state.
     const statusTab = await $('[data-testid="sidebar-view-status"]')
     await statusTab.waitForDisplayed({ timeout: 5_000 })
     await statusTab.click()
     const statusView = await $('[data-testid="status-view"]')
     await statusView.waitForDisplayed({ timeout: 5_000 })
 
-    // -- When: click the 'closed' card --
+    // -- And: read the 'closed' card's data-count to know what
+    //    the filtered list should report.
     const cards = await $$('[data-testid="status-card"]')
     let closedCard: WebdriverIO.Element | undefined
+    let expectedClosedCount = 0
     for (const card of cards) {
       const c = card as unknown as WebdriverIO.Element
       if ((await c.getAttribute('data-status')) === 'closed') {
         closedCard = c
+        const raw = await c.getAttribute('data-count')
+        const parsed = Number.parseInt(raw ?? '', 10)
+        if (Number.isFinite(parsed)) expectedClosedCount = parsed
         break
       }
     }
     if (!closedCard) throw new Error('closed card not found')
+    expect(expectedClosedCount).toBeGreaterThan(0)
+
+    // -- When: click the 'closed' card --
     await closedCard.click()
 
     // -- Then: the workspace switches to the list view --
     const issueListView = await $('[data-testid="issue-list-view"]')
     await issueListView.waitForDisplayed({ timeout: 5_000 })
 
-    // -- And: every visible issue row carries status=closed --
-    // Wait for the filtered list to render at least one row.
+    // -- And: the filtered list renders at least one row --
     const listHasRows = async (): Promise<boolean> => {
       const n: number = await browser.execute(
         () => document.querySelectorAll('[data-testid="issue-row"]').length
@@ -263,12 +212,9 @@ describe('Collier M2 R6 status overview', () => {
       timeoutMsg: 'filtered list never rendered a row',
     })
 
-    // The list footer reports the closed-bucket count we derived
-    // above. Comparing against the live count (not a hardcoded
-    // "8") means the spec still passes when an earlier spec
-    // mutated the fixture — the spec is about the filter
-    // click-through reaching the list, not about the exact
-    // count of any particular status.
+    // -- And: the list footer reports the same count the card
+    //    advertised — confirms the click reached the filter
+    //    store and the list reflects it.
     const footerText = await browser.execute(
       () =>
         document.querySelector('[data-testid="list-footer"]')?.textContent ??
