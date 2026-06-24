@@ -367,8 +367,14 @@ describe('IssueListView', () => {
       mockBdList.mock.calls.length - 1
     ] as [string, ListFilters]
     // All five dimensions active; all carry every value (AND).
+    // ponytail: priority is sent as the bare integer 0..4
+    // (matching the Rust `bd_list` deserializer's `u8` shape)
+    // — see IssueListView's `priorityToWire` helper for the
+    // IPC-boundary conversion. The store still holds the specta
+    // string union ("P0".."P4"), so the test toggles
+    // `togglePriority('P0')` and asserts the wire value `0`.
     expect(filters.status).toEqual(['open', 'in_progress'])
-    expect(filters.priority).toEqual(['P0'])
+    expect(filters.priority).toEqual([0])
     expect(filters.issueType).toEqual(['bug'])
     expect(filters.labels).toEqual(['urgent'])
     expect(filters.assignees).toEqual(['alice'])
@@ -391,7 +397,11 @@ describe('IssueListView', () => {
     const [cwd, filters] = mockBdList.mock.calls[0] as [string, ListFilters]
     expect(cwd).toBe('/fake')
     expect(filters.status).toEqual(['open', 'in_progress'])
-    expect(filters.priority).toEqual(['P1'])
+    // ponytail: priority sent as bare integer 1 over the wire
+    // (IssueListView.priorityToWire converts "P1" -> 1). See the
+    // R2 spec's "AND composition" assertion in tests/e2e for the
+    // matching convention.
+    expect(filters.priority).toEqual([1])
     // Empty dimensions are omitted (undefined), not empty arrays.
     expect(filters.issueType).toBeUndefined()
     expect(filters.labels).toBeUndefined()

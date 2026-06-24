@@ -113,6 +113,20 @@ const priorityRank: Record<number, number> = {
   4: 4, // P4,
 }
 
+/**
+ * Convert an `IssuePriority` (string union "P0".."P4") to the
+ * bare-integer wire format Rust's `bd_list` deserializer expects.
+ * Accepts both shapes on the way in (string OR number) so a
+ * caller that already converted once is a no-op.
+ */
+function priorityToWire(p: string | number): number {
+  if (typeof p === 'number') return p
+  if (typeof p === 'string' && p.startsWith('P')) {
+    return Number.parseInt(p.slice(1), 10)
+  }
+  return Number(p)
+}
+
 function compareIssues(a: Issue, b: Issue, sort: SortState): number {
   const sign = sort.direction === 'asc' ? 1 : -1
   switch (sort.key) {
@@ -168,10 +182,32 @@ export function IssueListView({
   // when the user toggles a checkbox on and off (the resulting array
   // is a new reference each call, but only the dimensions the user
   // actually changes do).
+  //
+  // ponytail: the filter store holds `IssuePriority` as the specta
+  // string union ("P0".."P4"), but the specta-generated Rust
+  // deserializer for `IssuePriority` (a `#[repr(u8)] Serialize_repr`
+  // enum) reads a `u8` off the wire. The store's string values reach
+  // the backend as `"P1"` and Tauri's command dispatcher rejects the
+  // call with `invalid type: string "P1", expected u8` — the
+  // AND-composition r2 spec hit this and surfaced it as
+  // `Failed to load: invalid args 'filters'`. Map every priority
+  // value to its bare integer form (0..4) at the IPC boundary so
+  // the wire format matches the Rust `to_args` shape (which writes
+  // `--priority 1`, `--priority 2`, …). The TS type can't be
+  // widened without regenerating the bindings, so we cast through
+  // `unknown` at the call site — the value is still a valid
+  // `IssuePriority` from Rust's perspective (its custom
+  // `Deserialize` impl accepts both the string and the integer
+  // shape, see src-tauri/src/beads/types.rs).
   const filters: ListFilters = useMemo(
     () => ({
       status: status.length > 0 ? status : undefined,
-      priority: priority.length > 0 ? priority : undefined,
+      priority:
+        priority.length > 0
+          ? (priority.map(p =>
+              priorityToWire(p)
+            ) as unknown as ListFilters['priority'])
+          : undefined,
       // ponytail: the store uses `type` (TS-natural) but the Rust
       // struct's `#[serde(rename_all = "camelCase")]` exposes it as
       // `issueType` on the bridge. One-line rename here, no Rust
@@ -549,6 +585,7 @@ function SortableHeader({
   return (
     <div
       role="columnheader"
+      data-testid={`sort-header-${sortKey}-column`}
       aria-sort={ariaSort}
       style={{
         ...style,
@@ -560,7 +597,6 @@ function SortableHeader({
         data-testid={`sort-header-${sortKey}`}
         data-sort-key={sortKey}
         data-sort-direction={direction ?? 'none'}
-        aria-sort={ariaSort}
         onClick={() => onClick(sortKey)}
         style={headerButtonStyle}
       >

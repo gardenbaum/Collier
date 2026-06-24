@@ -122,9 +122,17 @@ describe('Collier M1 R1 sortable columns', () => {
     await expect(statusHeader).toHaveAttribute('data-sort-direction', 'asc')
     await expect(priorityHeader).toHaveAttribute('data-sort-direction', 'none')
 
-    // Sanity: status header advertises a real sort via aria-sort.
-    const ariaSort = await statusHeader.getAttribute('aria-sort')
-    expect(ariaSort).toBe('ascending')
+    // Sanity: status column header advertises a real sort via
+    // aria-sort. `aria-sort` is a WAI-ARIA property of
+    // `role="columnheader"`, not the clickable <button> inside it;
+    // the previous attempt set it on both, but WebKitWebDriver's
+    // `getElementAttribute('aria-sort')` on a <button> returns null
+    // even when the content attribute is present (the attribute is
+    // only reflected to the IDL property on columnheader-shaped
+    // elements). Query the columnheader div, which carries
+    // data-testid="sort-header-status-column".
+    const statusColumn = await $('[data-testid="sort-header-status-column"]')
+    await expect(statusColumn).toHaveAttribute('aria-sort', 'ascending')
   })
 })
 

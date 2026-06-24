@@ -210,7 +210,7 @@ describe('InlinePriorityEdit', () => {
       expect(mockBdUpdate).toHaveBeenCalledTimes(1)
     })
     expect(mockBdUpdate).toHaveBeenCalledWith('/fake', 'beads-42', {
-      priority: '0',
+      priority: 0,
     })
   })
 })

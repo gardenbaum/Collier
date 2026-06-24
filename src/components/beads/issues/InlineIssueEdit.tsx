@@ -404,17 +404,27 @@ export function InlinePriorityEdit({
     // useInlineUpdate lands the same value the next `bd list`
     // refetch will see — no shape round-trip, no String() vs
     // Number drift between the cache and the rendered DOM.
+    //
+    // Send the value as a JS `number` to the Rust command:
+    // the specta-generated deserializer for `IssuePriority`
+    // (a `#[repr(u8)] Serialize_repr` enum) reads a `u8` off
+    // the wire, and Tauri's command dispatcher rejects a
+    // `string` with `invalid type: string "2", expected u8`.
+    // `issue.priority` is the bare integer on the live data
+    // (Rust emits u8), so `String(issue.priority) === String(2)`
+    // matches the DOM value '2' without a cast.
     const next = e.target.value
     if (String(next) === String(issue.priority)) return
+    const nextNumeric = Number.parseInt(next, 10)
     mutation.mutate({
       kind: 'priority',
-      value: next as unknown as IssuePriority,
+      value: nextNumeric as unknown as IssuePriority,
     })
     toast.success(
       t('beads.inlineEdit.priorityChanged', {
         id: issue.id,
-        priority: next,
-        defaultValue: `${issue.id} → ${next}`,
+        priority: nextNumeric,
+        defaultValue: `${issue.id} → ${nextNumeric}`,
       })
     )
   }

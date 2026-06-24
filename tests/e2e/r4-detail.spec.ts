@@ -35,7 +35,7 @@
  * `.fixture-ids.json`) live below.
  */
 
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import { browser, expect, $ } from '@wdio/globals'
 
@@ -55,13 +55,33 @@ interface FixtureIds {
  * e2e job (see `.github/workflows/ci.yml`); the wdio CWD is the
  * repo root, not the fixture dir, so a bare
  * `'.fixture-ids.json'` lookup blows up with ENOENT under CI.
- * Local runs (no env var set) fall back to the cwd so a dev
- * running `bun run test:e2e` from a checkout that happens to
- * have the fixture at its root still works.
+ *
+ * Resolution order:
+ *   1. `E2E_FIXTURE_DIR` env var (set by the CI workflow).
+ *   2. `/tmp/e2e-workspace` (the canonical CI fixture dir; we
+ *      probe this so a missing env var on a local dev box still
+ *      picks up the freshly-generated fixture under CI's
+ *      conventional path).
+ *   3. Bare `.fixture-ids.json` next to the wdio CWD (lets a
+ *      developer running `bun run test:e2e` from a checkout that
+ *      happens to have the fixture at its root still work).
  */
-const FIXTURE_IDS_PATH = process.env.E2E_FIXTURE_DIR
-  ? path.join(process.env.E2E_FIXTURE_DIR, '.fixture-ids.json')
-  : '.fixture-ids.json'
+const FIXTURE_IDS_PATH = (() => {
+  if (process.env.E2E_FIXTURE_DIR) {
+    return path.join(process.env.E2E_FIXTURE_DIR, '.fixture-ids.json')
+  }
+  // ponytail: the CI workflow always writes the fixture to
+  // /tmp/e2e-workspace. If the env var didn't make it to the wdio
+  // worker (wdio 9's `runnerEnv` doesn't always inherit every
+  // parent key — see wdio.config.ts), probe the canonical CI
+  // path so the spec still finds the file. `existsSync` is a
+  // cheap fs.stat, no fd held.
+  const ciFixture = '/tmp/e2e-workspace/.fixture-ids.json'
+  if (existsSync(ciFixture)) {
+    return ciFixture
+  }
+  return '.fixture-ids.json'
+})()
 
 function readFixtureIds(): FixtureIds {
   // ponytail: Beads hashes issue IDs from a per-repo random
