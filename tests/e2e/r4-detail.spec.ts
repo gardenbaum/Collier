@@ -193,11 +193,31 @@ describe('Collier M1 R4 detail panel completeness', () => {
     //    already cover priority / status / type / assignee; we
     //    also verify the metadata dl because the spec calls it
     //    out separately.
+    //
+    // ponytail: the labels are rendered with CSS
+    // `text-transform: uppercase` (see
+    // `descriptionMetaLabelStyle` in IssueDetailView.tsx) so
+    // `WebDriver.getElementText` returns the visually-uppercased
+    // string. WebDriverIO's `getText()` reads the rendered text
+    // after the CSS transform, not the raw DOM textContent, so
+    // the assertions have to match what the user actually sees
+    // on screen ("TYPE", "PRIORITY", "STATUS", "CREATED"), not
+    // the underlying JSX text ("Type", "Priority", "Status",
+    // "Created"). The previous attempt shipped this section with
+    // mixed-case literals and CI run 28121828600 (PR #8)
+    // surfaced it as the next failure after the overlay fix: the
+    // four `expect(detailText).toContain(...)` calls all threw
+    // because "Type" is not a substring of "TYPE" (JS .contains
+    // is case-sensitive), the test bailed out before the comments
+    // tab click, and the cleanup close-button click was never
+    // reached — so the next spec started with the drawer still
+    // open and WebDriverIO reported "click intercepted" on the
+    // titleCell click. Two symptoms, one root cause.
     const detailText = await detail.getText()
-    expect(detailText).toContain('Type')
-    expect(detailText).toContain('Priority')
-    expect(detailText).toContain('Status')
-    expect(detailText).toContain('Created')
+    expect(detailText).toContain('TYPE')
+    expect(detailText).toContain('PRIORITY')
+    expect(detailText).toContain('STATUS')
+    expect(detailText).toContain('CREATED')
 
     // -- And: the header renders a label-chip for at least one of
     //    TASK_LOGIN's labels (auth, frontend per the fixture).

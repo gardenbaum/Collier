@@ -121,8 +121,19 @@ export function IssueDetailView({
 
   const issue = showQuery.data
 
+  // ponytail: this component used to wrap its body in a full-viewport
+  // `position: fixed; inset: 0; z-index: 50` overlay. That made sense
+  // when IssueDetailView was the top-level drawer, but the production
+  // surface nests it inside `IssueDetailDrawer` which already provides
+  // the backdrop overlay. The inner overlay sat on top of the drawer's
+  // own children (z-index 50 > the tabs' auto), and WebDriverIO's
+  // click-intercept check on the r4-detail E2E failed every tab click
+  // because the click was always on the inner overlay's background.
+  // The wrapper is now a plain flex-column container; the parent
+  // (IssueDetailDrawer's panel) supplies the backdrop, the close
+  // button, and the focus trap.
   return (
-    <div data-testid="issue-detail-view" style={overlayStyle}>
+    <div data-testid="issue-detail-view" style={detailViewContainerStyle}>
       <aside style={drawerStyle} role="dialog" aria-label="Issue detail">
         <header style={headerStyle}>
           <div style={headerTopRowStyle}>
@@ -543,18 +554,32 @@ function formatDate(iso: string): string {
   return d.toLocaleString()
 }
 
-const overlayStyle: CSSProperties = {
-  position: 'fixed',
-  inset: 0,
+// Plain flex-column container for the IssueDetailView body. Used as
+// the `data-testid="issue-detail-view"` wrapper now that the
+// full-viewport `overlayStyle` lives on the parent IssueDetailDrawer's
+// overlay (see the comment at the render site). Keeping the inner
+// flex-column means the header / nav / section stack vertically the
+// same way they did when the wrapper was a flex container, but without
+// the `position: fixed; inset: 0` that used to swallow tab clicks
+// inside the nested IssueDetailDrawer.
+const detailViewContainerStyle: CSSProperties = {
   display: 'flex',
-  justifyContent: 'flex-end',
-  zIndex: 50,
-  backgroundColor: 'rgba(0, 0, 0, 0.4)',
+  flexDirection: 'column',
+  height: '100%',
 }
 
 const drawerStyle: CSSProperties = {
+  // ponytail: the standalone IssueDetailView (used in unit tests +
+  // any future direct consumer) still wants a fixed 600px surface,
+  // but when the component is nested inside the IssueDetailDrawer's
+  // 480px panel, the maxWidth = 100% clamp wins and the drawer fits
+  // inside the parent instead of overflowing past the close button.
+  // The old `maxWidth: '90vw'` was sized against the viewport, not
+  // the parent, so the 600px aside extended 120px past the panel
+  // — putting the close button outside the panel's overflow region
+  // and triggering `element not interactable` in the r3/r4 e2e.
   width: 600,
-  maxWidth: '90vw',
+  maxWidth: '100%',
   height: '100%',
   backgroundColor: colors.mono9,
   borderLeft: `1px solid ${colors.mono7}`,

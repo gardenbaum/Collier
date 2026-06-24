@@ -167,13 +167,17 @@ pub struct Dependency {
     /// The target issue id (the issue being depended on, i.e. the
     /// "to" side of the relationship). The field is named
     /// `dependency_id` in the Rust→TS contract (see
-    /// `DependencyTreeView.tsx`) but bd's `bd list --json` emits it
-    /// as `depends_on_id`. The alias keeps both shapes deserialisable;
-    /// serialization stays `dependency_id` so the frontend contract
-    /// is unchanged. The `issue_id` bd also emits is the source side
-    /// — that's already on the enclosing `Issue`, so we just ignore
-    /// it on deserialize (serde_json drops unknown fields).
-    #[serde(alias = "depends_on_id")]
+    /// `DependencyTreeView.tsx`) but `bd show --json` emits the
+    /// nested issue object under the `id` key (the entry is a
+    /// full issue, not a `{dependency_id, dependency_type}`
+    /// pair), and `bd list --json` historically used
+    /// `depends_on_id`. The two aliases keep all three shapes
+    /// deserialisable; serialization stays `dependency_id` so the
+    /// frontend contract is unchanged. The `issue_id` bd also
+    /// emits is the source side — that's already on the
+    /// enclosing `Issue`, so we just ignore it on deserialize
+    /// (serde_json drops unknown fields).
+    #[serde(alias = "depends_on_id", alias = "id")]
     pub dependency_id: String,
     /// bd emits this as `type` (a reserved Rust keyword, hence the
     /// Rust field rename). Alias keeps bd's output deserialisable;
@@ -439,8 +443,23 @@ pub struct Issue {
     /// label regression was fixed.
     #[serde(default)]
     pub dependencies: Vec<Dependency>,
+    /// `#[serde(default)]` because bd v1.0.4's `bd show --json`
+    /// output omits `dependency_count` — the field is only present
+    /// in `bd list --json`. Default = `0`. The R4 E2E spec needs
+    /// the drawer to mount (which fails on `bd show` ParseError
+    /// without this default); the count is reconciled from
+    /// `dependencies.len()` if a future patch wants to backfill.
+    #[serde(default)]
     pub dependency_count: u32,
+    /// `#[serde(default)]` because bd v1.0.4's `bd show --json`
+    /// output omits `dependent_count`. Default = `0`. Mirror of
+    /// `dependency_count` above.
+    #[serde(default)]
     pub dependent_count: u32,
+    /// `#[serde(default)]` because bd v1.0.4's `bd show --json`
+    /// output omits `comment_count`. Default = `0`. Mirror of
+    /// `dependency_count` above.
+    #[serde(default)]
     pub comment_count: u32,
     /// `#[serde(default)]` because bd v1.0.4's list output omits
     /// `parent` for issues that aren't children of an epic. Default
