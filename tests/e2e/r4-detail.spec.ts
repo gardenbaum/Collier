@@ -126,7 +126,15 @@ describe('Collier M1 R4 detail panel completeness', () => {
     taskBug1Id = ids.TASK_BUG1
     taskRefacId = ids.TASK_REFAC
     taskOauthId = ids.TASK_OAUTH
-    expect(taskLoginId).toMatch(/^[a-z0-9-]+-\w+$/i)
+    // ponytail: bd 1.0.4 issue IDs are `<prefix>-<hash>` for
+    // top-level issues and `<prefix>-<hash>.<counter>` for
+    // children of an epic (the child counter disambiguates them
+    // under the same hash as the parent epic). Earlier docs
+    // (and this spec's original regex) treated IDs as a single
+    // `\w+` tail, which silently rejected child IDs. The relaxed
+    // pattern accepts both shapes without weakening the
+    // "looks like a Beads ID" contract.
+    expect(taskLoginId).toMatch(/^[a-z0-9-]+-\w+(\.\w+)?$/i)
   })
 
   it('opens TASK_LOGIN detail and renders description + metadata + labels + comments', async () => {
