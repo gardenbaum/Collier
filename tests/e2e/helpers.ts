@@ -106,30 +106,30 @@ export async function openFixtureWorkspace(specLabel: string): Promise<void> {
     )
   }
 
-  // 5. Wait for at least one issue row to mount before handing off.
-  //    The budget must exceed the app's 120s `bd list` subprocess
-  //    timeout so a slow first Dolt cold-start query under CI
-  //    still resolves in time; steady-state is ~1-2s.
-  const firstRow = await $('[data-testid="issue-row"]')
-  await firstRow.waitForDisplayed({ timeout: 150_000 })
-
-  // 6. Reset the persisted filter selection to empty. Each spec gets
-  //    a fresh Tauri app launch but the localStorage (which lives in
-  //    the Tauri data dir on disk) is shared across the wdio
-  //    worker processes within a single CI run -- so an earlier
-  //    spec's AND-composition test (r2-filters) leaves
-  //    `status=[open] priority=[P1]` persisted, and the next spec's
-  //    first `bd list` query is then `bd list --all --status open
-  //    --priority 1 --json`. That narrower query never resolves
+  // 5. Reset the persisted filter selection to empty BEFORE the row
+  //    wait. Each spec gets a fresh Tauri app launch but the
+  //    localStorage (which lives in the Tauri data dir on disk) is
+  //    shared across the wdio worker processes within a single CI
+  //    run -- so an earlier spec's AND-composition test (r2-filters)
+  //    leaves `status=[open] priority=[P1]` persisted, and the next
+  //    spec's first `bd list` query is then `bd list --all --status
+  //    open --priority 1 --json`. That narrower query never resolves
   //    within 150s on the CI runner (Dolt's hot cache from the
   //    previous spec's subprocess apparently wedges the new one),
   //    so the first-row wait times out. Clicking `filter-clear-all`
-  //    here is a no-op when no filter is active, and when a
-  //    filter IS persisted it both clears the in-memory store
+  //    BEFORE the row wait is a no-op when no filter is active, and
+  //    when a filter IS persisted it both clears the in-memory store
   //    AND writes the empty state back to localStorage (zustand
-  //    persist middleware) so the next spec starts clean.
+  //    persist middleware) so this spec's `bd list` (and the next
+  //    spec's) fires with the empty filter. The clearAll click
+  //    happens before the row wait intentionally: if the row wait
+  //    times out anyway, the filter has still been cleared, so the
+  //    NEXT spec starts clean.
   const clearAll = await $('[data-testid="filter-clear-all"]')
   if (await clearAll.isExisting()) {
+    console.log(
+      `[e2e:${specLabel}] clearing persisted filter (filter-clear-all exists)`
+    )
     await clearAll.click()
     // Give the persisted clear a beat to flush before we hand off;
     // the React commit + the persist write are async.
@@ -148,6 +148,13 @@ export async function openFixtureWorkspace(specLabel: string): Promise<void> {
         // quirk), the click still fired and the store is cleared.
       })
   }
+
+  // 6. Wait for at least one issue row to mount before handing off.
+  //    The budget must exceed the app's 120s `bd list` subprocess
+  //    timeout so a slow first Dolt cold-start query under CI
+  //    still resolves in time; steady-state is ~1-2s.
+  const firstRow = await $('[data-testid="issue-row"]')
+  await firstRow.waitForDisplayed({ timeout: 150_000 })
 
   // Diagnostic: log the total count the footer reports and the
   // rendered row count. Specs that need the "full fixture"
