@@ -142,7 +142,7 @@ export function IssueDetailView({
             <div style={titleStyle}>Loading…</div>
           ) : showQuery.isError ? (
             <div style={titleStyle}>
-              Failed to load issue: {String(showQuery.error)}
+              Failed to load issue: {formatBdError(showQuery.error)}
             </div>
           ) : issue ? (
             <>
@@ -480,6 +480,58 @@ function formatMutationError(err: unknown): string {
   }
   if (err instanceof Error) return err.message
   return 'Failed to post comment.'
+}
+
+/**
+ * Flatten a `bd_show` failure (a `BdError` tagged enum from the
+ * Rust side, deserialised to a plain object) into a human-readable
+ * string. The default `String(showQuery.error)` produces
+ * "[object Object]" because the error is a tagged-union object
+ * (`{ type: 'NonZeroExit', code, stderr }` etc.) with no useful
+ * `toString()`. The E2E suite asserts on the detail-view's text
+ * content, so a clearer message here makes a CI failure
+ * diagnosable without re-running locally.
+ */
+function formatBdError(err: unknown): string {
+  if (err && typeof err === 'object' && 'type' in err) {
+    const e = err as {
+      type: string
+      id?: string
+      code?: number
+      stderr?: string
+      stdout?: string
+      message?: string
+      path?: string
+      repo_path?: string
+      seconds?: number
+    }
+    switch (e.type) {
+      case 'NotFound':
+        return `NotFound (id=${e.id ?? '?'})`
+      case 'NonZeroExit':
+        return `NonZeroExit (code=${e.code ?? '?'}) stderr=${(e.stderr ?? '').trim() || '<empty>'}`
+      case 'ParseError':
+        return `ParseError: ${e.message ?? ''}`
+      case 'IoError':
+        return `IoError: ${e.message ?? ''}`
+      case 'SchemaMismatch':
+        return `SchemaMismatch: ${e.message ?? ''}`
+      case 'PermissionDenied':
+        return `PermissionDenied (path=${e.path ?? '?'})`
+      case 'BdNotInPath':
+        return 'BdNotInPath'
+      case 'Timeout':
+        return `Timeout (seconds=${e.seconds ?? '?'})`
+      case 'DoltOnly':
+        return `DoltOnly: ${e.message ?? ''}`
+      case 'AlreadyLocked':
+        return `AlreadyLocked (repo=${e.repo_path ?? '?'})`
+      default:
+        return JSON.stringify(e)
+    }
+  }
+  if (err instanceof Error) return err.message
+  return String(err)
 }
 
 function formatDate(iso: string): string {
