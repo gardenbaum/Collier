@@ -243,6 +243,22 @@ function computeProgress(children: Issue[]): {
   return { closed, total, percent }
 }
 
+// ponytail: `IssuePriority` is `#[repr(u8)] Serialize_repr` on the Rust
+// side, so `bd list --json` emits priority as a bare integer 0..4
+// (not the P0..P4 string the generated TS type advertises). Calling
+// `localeCompare` on a number throws TypeError and crashes the app,
+// which the r5 e2e spec surfaces as the "Something went wrong"
+// fallback. Use a numeric lookup instead — same shape as the M1
+// IssueListView `priorityRank`, kept local so the dependency on
+// the runtime data shape is explicit at the call site.
+const priorityRank: Record<number, number> = {
+  0: 0, // P0
+  1: 1, // P1
+  2: 2, // P2
+  3: 3, // P3
+  4: 4, // P4
+}
+
 export function EpicView({ cwd, onOpenIssue }: EpicViewProps) {
   const { t } = useTranslation()
   const { data, isLoading, error } = useQuery({
@@ -261,9 +277,12 @@ export function EpicView({ cwd, onOpenIssue }: EpicViewProps) {
     const epics = issues
       .filter(i => i.issue_type === 'epic' && i.parent === null)
       // Stable order: highest priority first, then by id for determinism.
+      // Uses the numeric `priorityRank` lookup — see comment above
+      // for why the generated TS `IssuePriority` string type lies.
       .sort((a, b) => {
-        if (a.priority !== b.priority)
-          return a.priority.localeCompare(b.priority)
+        const pa = priorityRank[Number(a.priority)] ?? Number.MAX_SAFE_INTEGER
+        const pb = priorityRank[Number(b.priority)] ?? Number.MAX_SAFE_INTEGER
+        if (pa !== pb) return pa - pb
         return a.id.localeCompare(b.id)
       })
     const childrenByParent = new Map<string, Issue[]>()
