@@ -74,7 +74,37 @@ const ALL_STATUSES: readonly IssueStatus[] = [
   'closed',
 ]
 
+// ponytail: `IssuePriority` is `#[repr(u8)] Serialize_repr` on the
+// Rust side, so `bd list --json` emits priority as the bare
+// integer 0..4 at runtime even though the generated TS type
+// advertises the variant-name string union. The rendered
+// `data-issue-priority` attribute and the `<select>` value are
+// both the bare integer — the user sees a priority of `1`, the
+// fixture data and the test contract match. `toLabel` is the
+// only surface that needs the human-friendly "P1" form.
 const ALL_PRIORITIES: readonly IssuePriority[] = ['P0', 'P1', 'P2', 'P3', 'P4']
+const priorityToLabel = (p: IssuePriority): string => {
+  // ponytail: in practice the wire value is the bare integer 0..4;
+  // when a specta-only string union slips through, map it back.
+  if (typeof p === 'string' && p.startsWith('P')) {
+    const n = Number.parseInt(p.slice(1), 10)
+    if (Number.isFinite(n) && n >= 0 && n <= 4) return `P${n}`
+    return p
+  }
+  const n = Number(p)
+  if (Number.isFinite(n) && n >= 0 && n <= 4) return `P${n}`
+  return String(p)
+}
+const priorityToValue = (p: IssuePriority): string => {
+  // Same dance as `priorityToLabel` but for the <option value="">
+  // — we always want the bare integer so the rendered DOM matches
+  // the Rust wire format (and React's controlled <select value={X}>
+  // finds a matching option).
+  if (typeof p === 'string' && p.startsWith('P')) {
+    return p.slice(1)
+  }
+  return String(p)
+}
 
 /** Common base shape for the three inline-editable cells. */
 interface InlineCellBaseProps {
@@ -366,9 +396,20 @@ export function InlinePriorityEdit({
   const guard = hostGuardProps(swallowHostEvents)
 
   const handleChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const next = e.target.value as IssuePriority
-    if (next === issue.priority) return
-    mutation.mutate({ kind: 'priority', value: next })
+    // ponytail: the <option value="..."> is the bare integer
+    // string 0..4 (matching the Rust wire format). The TS type
+    // for `IssuePriority` is the variant-name string union, but
+    // our deserialiser accepts both shapes. Pass the wire shape
+    // through directly so the optimistic patch in
+    // useInlineUpdate lands the same value the next `bd list`
+    // refetch will see — no shape round-trip, no String() vs
+    // Number drift between the cache and the rendered DOM.
+    const next = e.target.value
+    if (String(next) === String(issue.priority)) return
+    mutation.mutate({
+      kind: 'priority',
+      value: next as unknown as IssuePriority,
+    })
     toast.success(
       t('beads.inlineEdit.priorityChanged', {
         id: issue.id,
@@ -392,7 +433,7 @@ export function InlinePriorityEdit({
         data-testid="inline-priority-select"
         data-priority={issue.priority}
         aria-label={t('beads.inlineEdit.changePriority', 'Change priority')}
-        value={issue.priority}
+        value={priorityToValue(issue.priority)}
         onChange={handleChange}
         disabled={mutation.isPending}
         style={{
@@ -401,8 +442,8 @@ export function InlinePriorityEdit({
         }}
       >
         {ALL_PRIORITIES.map(p => (
-          <option key={p} value={p}>
-            {p}
+          <option key={p} value={priorityToValue(p)}>
+            {priorityToLabel(p)}
           </option>
         ))}
       </select>

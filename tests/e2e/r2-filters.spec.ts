@@ -202,7 +202,11 @@ describe('Collier M1 R2 filter sidebar', () => {
     )
 
     // Every rendered row must carry BOTH data-issue-status=open
-    // AND data-issue-priority=P1.
+    // AND data-issue-priority=1. The data attribute is the bare
+    // integer 0..4 — bd serialises IssuePriority via Serialize_repr
+    // and the specta-generated TS type advertises the variant-name
+    // string, so the assertion must read the integer shape, not
+    // "P1" (see r1-sort.spec.ts for the matching convention).
     const rendered = await readRenderedRows(15)
     console.log(
       `[e2e:r2] rendered (status,priority) after AND: ${rendered
@@ -212,7 +216,7 @@ describe('Collier M1 R2 filter sidebar', () => {
     expect(rendered.length).toBeGreaterThan(0)
     for (const row of rendered) {
       expect(row.status).toBe('open')
-      expect(row.priority).toBe('P1')
+      expect(row.priority).toBe('1')
     }
 
     // Clear up for the next test.
