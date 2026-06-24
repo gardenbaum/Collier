@@ -156,9 +156,29 @@ describe('Collier M1 R4 detail panel completeness', () => {
     await detail.waitForDisplayed({ timeout: 5_000 })
 
     // -- Then: the description text renders (R4 acceptance) --
+    // ponytail: fail fast with the actual error message if the
+    // detail view shows "Failed to load issue" (the
+    // showQuery.error is a BdError tagged-enum object, which
+    // `String()` flattens to "[object Object]"; we serialise
+    // it so the CI log shows the type + payload so the
+    // underlying bd failure (NonZeroExit, NotFound, etc.) is
+    // diagnosable without re-running locally).
     await browser.waitUntil(
       async () => {
         const text = await detail.getText()
+        if (text.includes('Failed to load issue')) {
+          const errDump = await browser.execute(
+            (root: HTMLElement | null): string => {
+              if (!root) return ''
+              const el = root.querySelector('[role="dialog"]')
+              return el?.textContent ?? ''
+            },
+            await detail.getElement()
+          )
+          throw new Error(
+            `bd show failed for TASK_LOGIN: ${errDump.replace(/\s+/g, ' ').trim()}`
+          )
+        }
         return text.includes('Replace the legacy login form')
       },
       {
