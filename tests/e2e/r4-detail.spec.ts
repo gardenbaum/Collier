@@ -28,10 +28,18 @@
  * `src/components/beads/issues/IssueDetailView.tsx`,
  * `src/components/beads/issues/InlineDescriptionEdit.tsx`, and
  * `src/components/beads/dependencies/DependencyListView.tsx`.
+ *
+ * The "open the fixture workspace" step is shared via
+ * `tests/e2e/helpers.ts` -- see that file for the isolation
+ * rationale. Spec-specific waits (full fixture footer + reading
+ * `.fixture-ids.json`) live below.
  */
 
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
+import path from 'node:path'
 import { browser, expect, $ } from '@wdio/globals'
+
+import { openFixtureWorkspace } from './helpers'
 
 interface FixtureIds {
   TASK_LOGIN: string
@@ -41,7 +49,39 @@ interface FixtureIds {
   TASK_INV: string
 }
 
-const FIXTURE_IDS_PATH = '.fixture-ids.json'
+/**
+ * Path to the E2E fixture's `.fixture-ids.json` file. The CI
+ * workflow exports `E2E_FIXTURE_DIR=/tmp/e2e-workspace` for the
+ * e2e job (see `.github/workflows/ci.yml`); the wdio CWD is the
+ * repo root, not the fixture dir, so a bare
+ * `'.fixture-ids.json'` lookup blows up with ENOENT under CI.
+ *
+ * Resolution order:
+ *   1. `E2E_FIXTURE_DIR` env var (set by the CI workflow).
+ *   2. `/tmp/e2e-workspace` (the canonical CI fixture dir; we
+ *      probe this so a missing env var on a local dev box still
+ *      picks up the freshly-generated fixture under CI's
+ *      conventional path).
+ *   3. Bare `.fixture-ids.json` next to the wdio CWD (lets a
+ *      developer running `bun run test:e2e` from a checkout that
+ *      happens to have the fixture at its root still work).
+ */
+const FIXTURE_IDS_PATH = (() => {
+  if (process.env.E2E_FIXTURE_DIR) {
+    return path.join(process.env.E2E_FIXTURE_DIR, '.fixture-ids.json')
+  }
+  // ponytail: the CI workflow always writes the fixture to
+  // /tmp/e2e-workspace. If the env var didn't make it to the wdio
+  // worker (wdio 9's `runnerEnv` doesn't always inherit every
+  // parent key — see wdio.config.ts), probe the canonical CI
+  // path so the spec still finds the file. `existsSync` is a
+  // cheap fs.stat, no fd held.
+  const ciFixture = '/tmp/e2e-workspace/.fixture-ids.json'
+  if (existsSync(ciFixture)) {
+    return ciFixture
+  }
+  return '.fixture-ids.json'
+})()
 
 function readFixtureIds(): FixtureIds {
   // ponytail: Beads hashes issue IDs from a per-repo random
@@ -61,28 +101,7 @@ describe('Collier M1 R4 detail panel completeness', () => {
   let taskOauthId = ''
 
   before(async () => {
-    // -- Given: app launches and the fixture list is rendered --
-    //
-    // Window title comes from tauri.conf.json -> app.windows[0].title
-    // (and from index.html's <title>; both are "Collier").
-    const title = await browser.execute(() => document.title)
-    expect(title).toBe('Collier')
-
-    // The bootstrap screen (RepoSelection) gates the issue list.
-    // When `bd` is on PATH and `.beads/` exists in CWD, the
-    // "Use CWD" button appears -- click it to load the fixture.
-    const useCwdButton = await $('[data-testid="use-cwd-button"]')
-    await useCwdButton.waitForDisplayed({ timeout: 30_000 })
-    await useCwdButton.click()
-
-    // Wait for the React Query behind <IssueListView /> to resolve
-    // -- the first `bd list` call on a fresh fixture pays the
-    // Dolt cold-start cost (~5-30s on CI).
-    const list = await $('[data-testid="issue-list-view"]')
-    await list.waitForDisplayed({ timeout: 30_000 })
-
-    const firstRow = await $('[data-testid="issue-row"]')
-    await firstRow.waitForDisplayed({ timeout: 150_000 })
+    await openFixtureWorkspace('r4')
 
     // The footer reflects the total count. Wait for the full
     // fixture (25 issues) to be loaded before sampling -- a
@@ -107,7 +126,15 @@ describe('Collier M1 R4 detail panel completeness', () => {
     taskBug1Id = ids.TASK_BUG1
     taskRefacId = ids.TASK_REFAC
     taskOauthId = ids.TASK_OAUTH
-    expect(taskLoginId).toMatch(/^[a-z0-9-]+-\w+$/i)
+    // ponytail: bd 1.0.4 issue IDs are `<prefix>-<hash>` for
+    // top-level issues and `<prefix>-<hash>.<counter>` for
+    // children of an epic (the child counter disambiguates them
+    // under the same hash as the parent epic). Earlier docs
+    // (and this spec's original regex) treated IDs as a single
+    // `\w+` tail, which silently rejected child IDs. The relaxed
+    // pattern accepts both shapes without weakening the
+    // "looks like a Beads ID" contract.
+    expect(taskLoginId).toMatch(/^[a-z0-9-]+-\w+(\.\w+)?$/i)
   })
 
   it('opens TASK_LOGIN detail and renders description + metadata + labels + comments', async () => {
@@ -129,9 +156,29 @@ describe('Collier M1 R4 detail panel completeness', () => {
     await detail.waitForDisplayed({ timeout: 5_000 })
 
     // -- Then: the description text renders (R4 acceptance) --
+    // ponytail: fail fast with the actual error message if the
+    // detail view shows "Failed to load issue" (the
+    // showQuery.error is a BdError tagged-enum object, which
+    // `String()` flattens to "[object Object]"; we serialise
+    // it so the CI log shows the type + payload so the
+    // underlying bd failure (NonZeroExit, NotFound, etc.) is
+    // diagnosable without re-running locally).
     await browser.waitUntil(
       async () => {
         const text = await detail.getText()
+        if (text.includes('Failed to load issue')) {
+          const errDump = await browser.execute(
+            (root: HTMLElement | null): string => {
+              if (!root) return ''
+              const el = root.querySelector('[role="dialog"]')
+              return el?.textContent ?? ''
+            },
+            await detail.getElement()
+          )
+          throw new Error(
+            `bd show failed for TASK_LOGIN: ${errDump.replace(/\s+/g, ' ').trim()}`
+          )
+        }
         return text.includes('Replace the legacy login form')
       },
       {

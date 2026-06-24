@@ -19,72 +19,32 @@
  * `src/components/beads/bootstrap/RepoSelection.tsx`, and the
  * window title set in `src-tauri/tauri.conf.json` -- all stable
  * contracts between the frontend and this test.
+ *
+ * The "open the fixture workspace" step lives in
+ * `tests/e2e/helpers.ts` (`openFixtureWorkspace`) and is shared
+ * with the M1 specs -- see that file for the isolation rationale.
  */
 
-import { browser, expect, $, $$ } from '@wdio/globals'
+import { expect, $$ } from '@wdio/globals'
+
+import { openFixtureWorkspace } from './helpers'
 
 describe('Collier M0 smoke', () => {
-  it('launches with the Collier title and renders the fixture issue list', async () => {
-    // -- Given/When: app launches (driver handles process spawn) --
+  before(async () => {
+    await openFixtureWorkspace('smoke')
+  })
 
-    // Window title comes from tauri.conf.json -> app.windows[0].title
-    // (and from index.html's <title>; both are "Collier"). Read
-    // document.title via execute() because wdio 9's types dropped
-    // the W3C getTitle shorthand -- both reach the same string in
-    // a Tauri webview.
-    const title = await browser.execute(() => document.title)
-    expect(title).toBe('Collier')
-
-    // The bootstrap screen (RepoSelection) gates the issue list.
-    // When `bd` is on PATH and `.beads/` exists in CWD, the
-    // "Use CWD" button appears -- click it to load the fixture.
-    const useCwdButton = await $('[data-testid="use-cwd-button"]')
-    await useCwdButton.waitForDisplayed({ timeout: 30_000 })
-    await useCwdButton.click()
-
-    // The issue list view is rendered once the Beads bootstrap
-    // finishes loading the workspace (see IssueListView.tsx). Wait
-    // for it -- Xvfb start + Dolt cold-start is ~2-5s on CI.
-    const list = await $('[data-testid="issue-list-view"]')
-    await list.waitForDisplayed({ timeout: 30_000 })
-
-    // Wait for the React Query behind <IssueListView /> to resolve
-    // -- the first `bd list` call on a fresh fixture pays the
-    // Dolt cold-start cost (~5-30s on CI). The list-loading /
-    // list-error / list-empty divs are mutually exclusive siblings
-    // of the virtualised rows; whichever is present tells us what
-    // state the query is in. We log them on the way past so the
-    // CI log shows whether we hit a real error or just a slow
-    // data load.
-    const loading = await $('[data-testid="list-loading"]')
-    const errorDiv = await $('[data-testid="list-error"]')
-    const empty = await $('[data-testid="list-empty"]')
-    if (await loading.isExisting()) {
-      console.log('[e2e] list-loading is visible (query in flight)')
-    }
-    if (await errorDiv.isExisting()) {
-      const err = await errorDiv.getText()
-      console.log(`[e2e] list-error is visible: ${err}`)
-    }
-    if (await empty.isExisting()) {
-      console.log('[e2e] list-empty is visible (query returned 0 issues)')
-    }
-
-    // The fixture ships 25 issues (acceptance: >=1). Wait for at
-    // least one row to mount before sampling the count. The budget
-    // must exceed the app's bd subprocess timeout (120 s) so a slow
-    // first Dolt cold-start query under CI still resolves in time;
-    // steady-state is ~1-2s.
-    const firstRow = await $('[data-testid="issue-row"]')
-    await firstRow.waitForDisplayed({ timeout: 150_000 })
-
-    const rowCount = (await $$('[data-testid="issue-row"]')).length
-    console.log(`[e2e] issue rows visible: ${rowCount}`)
-
+  it('renders at least one fixture issue row', async () => {
     // -- Then: assertion from spec R3 --
-
+    //
     // At least 1 row is the smoke contract; the fixture provides
-    // 25 to cover the "renders the real list" branch.
+    // 25 to cover the "renders the real list" branch. The row
+    // count is read from the live DOM rather than re-waiting on
+    // the footer -- the helper above already blocked on the first
+    // row, so any additional rows present are real.
+    const rowCount = (await $$('[data-testid="issue-row"]')).length
+    console.log(`[e2e:smoke] issue rows visible: ${rowCount}`)
+
     expect(rowCount).toBeGreaterThanOrEqual(1)
   })
 })

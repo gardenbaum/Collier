@@ -98,47 +98,56 @@ function useDescriptionUpdate({ cwd, issueId }: UseDescriptionUpdateArgs) {
       throw result.error
     },
     onMutate: async (description: string | null) => {
-      // ponytail: cancel any in-flight refetch for both caches
-      // BEFORE we patch. Otherwise a stale refetch could overwrite
-      // the optimistic value between our patch and the cache write.
+      // ponytail: cancel any in-flight refetch for every list
+      // variant for this cwd BEFORE we patch — same pattern as
+      // the inline status/priority/assignee cells (see
+      // InlineIssueEdit). The list view keys its query as
+      // `['beads', 'list', cwd, filters]`, so multiple variants
+      // are live at once; patching only the bare `['beads',
+      // 'list', cwd]` slot leaves the rendered list stale until
+      // the watcher reconciles.
       await queryClient.cancelQueries({ queryKey: ['beads', 'list', cwd] })
       await queryClient.cancelQueries({
         queryKey: ['beads', 'show', cwd, issueId],
       })
 
-      const listKey = ['beads', 'list', cwd]
       const showKey = ['beads', 'show', cwd, issueId]
-
-      const previousList = queryClient.getQueryData<Issue[]>(listKey)
       const previousShow = queryClient.getQueryData<Issue>(showKey)
 
       const apply = (issue: Issue): Issue => ({ ...issue, description })
 
-      if (previousList) {
-        queryClient.setQueryData<Issue[]>(
-          listKey,
-          previousList.map(i => (i.id === issueId ? apply(i) : i))
-        )
-      }
+      // ponytail: `setQueriesData` returns the POST-update data,
+      // not the pre-update snapshot. Read the pre-update state
+      // with `getQueriesData` first so the rollback in `onError`
+      // can restore it.
+      const previousLists = queryClient.getQueriesData<Issue[]>({
+        queryKey: ['beads', 'list', cwd],
+      })
+      queryClient.setQueriesData<Issue[]>(
+        { queryKey: ['beads', 'list', cwd] },
+        prev => (prev ? prev.map(i => (i.id === issueId ? apply(i) : i)) : prev)
+      )
       if (previousShow) {
         queryClient.setQueryData<Issue>(showKey, apply(previousShow))
       }
 
-      return { previousList, previousShow }
+      return { previousLists, previousShow }
     },
     onError: (err, _description, context) => {
-      // ponytail: revert both caches to the pre-mutation snapshot.
-      // The context is typed as `unknown` by TanStack; we know the
-      // shape because we own onMutate. The cast is the standard
+      // ponytail: revert every cache slot we touched. The context
+      // is typed as `unknown` by TanStack; we know the shape
+      // because we own onMutate. The cast is the standard
       // TanStack escape hatch for the same reason.
       const ctx = context as
         | {
-            previousList: Issue[] | undefined
+            previousLists: [readonly unknown[], Issue[] | undefined][]
             previousShow: Issue | undefined
           }
         | undefined
-      if (ctx?.previousList) {
-        queryClient.setQueryData(['beads', 'list', cwd], ctx.previousList)
+      if (ctx?.previousLists) {
+        for (const [key, prev] of ctx.previousLists) {
+          queryClient.setQueryData(key, prev)
+        }
       }
       if (ctx?.previousShow) {
         queryClient.setQueryData(
@@ -151,12 +160,12 @@ function useDescriptionUpdate({ cwd, issueId }: UseDescriptionUpdateArgs) {
     },
     onSuccess: updated => {
       // ponytail: the watcher will fire beads-data-changed within
-      // ~1s and TanStack will refetch both caches. We also patch
-      // them with the freshly-returned issue here so the UI is
-      // instantly correct even if the watcher is slow.
-      queryClient.setQueryData<Issue[]>(
-        ['beads', 'list', cwd],
-        (prev: Issue[] | undefined) =>
+      // ~1s and TanStack will refetch every list variant. We also
+      // patch them with the freshly-returned issue here so the UI
+      // is instantly correct even if the watcher is slow.
+      queryClient.setQueriesData<Issue[]>(
+        { queryKey: ['beads', 'list', cwd] },
+        prev =>
           prev ? prev.map(i => (i.id === updated.id ? updated : i)) : prev
       )
       queryClient.setQueryData<Issue>(['beads', 'show', cwd, issueId], updated)

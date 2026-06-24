@@ -74,7 +74,37 @@ const ALL_STATUSES: readonly IssueStatus[] = [
   'closed',
 ]
 
+// ponytail: `IssuePriority` is `#[repr(u8)] Serialize_repr` on the
+// Rust side, so `bd list --json` emits priority as the bare
+// integer 0..4 at runtime even though the generated TS type
+// advertises the variant-name string union. The rendered
+// `data-issue-priority` attribute and the `<select>` value are
+// both the bare integer — the user sees a priority of `1`, the
+// fixture data and the test contract match. `toLabel` is the
+// only surface that needs the human-friendly "P1" form.
 const ALL_PRIORITIES: readonly IssuePriority[] = ['P0', 'P1', 'P2', 'P3', 'P4']
+const priorityToLabel = (p: IssuePriority): string => {
+  // ponytail: in practice the wire value is the bare integer 0..4;
+  // when a specta-only string union slips through, map it back.
+  if (typeof p === 'string' && p.startsWith('P')) {
+    const n = Number.parseInt(p.slice(1), 10)
+    if (Number.isFinite(n) && n >= 0 && n <= 4) return `P${n}`
+    return p
+  }
+  const n = Number(p)
+  if (Number.isFinite(n) && n >= 0 && n <= 4) return `P${n}`
+  return String(p)
+}
+const priorityToValue = (p: IssuePriority): string => {
+  // Same dance as `priorityToLabel` but for the <option value="">
+  // — we always want the bare integer so the rendered DOM matches
+  // the Rust wire format (and React's controlled <select value={X}>
+  // finds a matching option).
+  if (typeof p === 'string' && p.startsWith('P')) {
+    return p.slice(1)
+  }
+  return String(p)
+}
 
 /** Common base shape for the three inline-editable cells. */
 interface InlineCellBaseProps {
@@ -104,17 +134,23 @@ interface InlineCellBaseProps {
  * future inline-editable field (e.g. `type`) can be added without
  * adding a parallel mutation hook.
  *
- * ponytail: optimistic update strategy. We patch the two caches
- * the user might be looking at:
- *   - `['beads', 'list', cwd]` — the issue list. Patching this
- *     keeps the rendered rows in sync immediately.
- *   - `['beads', 'show', cwd, issueId]` — the detail drawer, if
- *     mounted. Patching this keeps the detail header in sync
- *     without waiting for the watcher to round-trip.
+ * ponytail: optimistic update strategy. The issue list view keys
+ * its query as `['beads', 'list', cwd, filters]` — the `filters`
+ * segment carries the active sidebar selection, so a query exists
+ * for EVERY (status, priority, type, label, assignee) combination
+ * the user has visited, not just one cache slot. Patching only
+ * `['beads', 'list', cwd]` (no filters) leaves the rendered list
+ * stale until the watcher tick reconciles, which is exactly what
+ * the r3-inline-edit E2E observed as "row X status never updated
+ * to open optimistically". We instead walk every list cache
+ * variant for this cwd and patch each one in place. The detail
+ * drawer (`['beads', 'show', cwd, issueId]`) is single-keyed, so
+ * it patches as before.
  *
  * The watcher tick (which always fires after a successful bd
- * write) will refetch both caches and confirm the optimistic value.
- * On mutation error, we revert the patch and toast the error.
+ * write) will refetch every list variant and confirm the
+ * optimistic value. On mutation error, we revert every patch we
+ * made and toast the error.
  */
 type Field =
   | { kind: 'status'; value: IssueStatus }
@@ -156,18 +192,17 @@ function useInlineUpdate({ cwd, issueId }: UseInlineUpdateArgs) {
       throw result.error
     },
     onMutate: async (field: Field) => {
-      // ponytail: cancel any in-flight refetch for both caches
-      // BEFORE we patch. Otherwise a stale refetch could overwrite
-      // the optimistic value between our patch and the cache write.
+      // ponytail: cancel any in-flight refetch for every list
+      // variant for this cwd BEFORE we patch. Otherwise a stale
+      // refetch from another filter combination could overwrite
+      // our optimistic value between the patch and the cache
+      // write. The detail drawer's query is single-keyed.
       await queryClient.cancelQueries({ queryKey: ['beads', 'list', cwd] })
       await queryClient.cancelQueries({
         queryKey: ['beads', 'show', cwd, issueId],
       })
 
-      const listKey = ['beads', 'list', cwd]
       const showKey = ['beads', 'show', cwd, issueId]
-
-      const previousList = queryClient.getQueryData<Issue[]>(listKey)
       const previousShow = queryClient.getQueryData<Issue>(showKey)
 
       const apply = (issue: Issue): Issue => {
@@ -181,31 +216,44 @@ function useInlineUpdate({ cwd, issueId }: UseInlineUpdateArgs) {
         }
       }
 
-      if (previousList) {
-        queryClient.setQueryData<Issue[]>(
-          listKey,
-          previousList.map(i => (i.id === issueId ? apply(i) : i))
-        )
-      }
+      // ponytail: `setQueriesData` returns the POST-update data,
+      // not the pre-update snapshot — confirmed in the TanStack
+      // source (`queryClient.setQueryData` returns the new value).
+      // For the optimistic-patch / revert-on-error pattern we
+      // need the pre-update snapshot, so we read it from
+      // `getQueriesData` first and feed it to the rollback in
+      // `onError`. The filter payloads differ across variants
+      // (status, priority, type, label, assignee combinations),
+      // so the patch applies correctly whether the user has the
+      // unfiltered list, a status=open list, or any other open.
+      const previousLists = queryClient.getQueriesData<Issue[]>({
+        queryKey: ['beads', 'list', cwd],
+      })
+      queryClient.setQueriesData<Issue[]>(
+        { queryKey: ['beads', 'list', cwd] },
+        prev => (prev ? prev.map(i => (i.id === issueId ? apply(i) : i)) : prev)
+      )
       if (previousShow) {
         queryClient.setQueryData<Issue>(showKey, apply(previousShow))
       }
 
-      return { previousList, previousShow }
+      return { previousLists, previousShow }
     },
     onError: (err, _field, context) => {
-      // ponytail: revert both caches to the pre-mutation snapshot.
-      // The context is typed as `unknown` by TanStack; we know the
-      // shape because we own onMutate. The cast is the standard
-      // TanStack escape hatch for the same reason.
+      // ponytail: revert every cache slot we touched. The context
+      // is typed as `unknown` by TanStack; we know the shape
+      // because we own onMutate. The cast is the standard TanStack
+      // escape hatch for the same reason.
       const ctx = context as
         | {
-            previousList: Issue[] | undefined
+            previousLists: [readonly unknown[], Issue[] | undefined][]
             previousShow: Issue | undefined
           }
         | undefined
-      if (ctx?.previousList) {
-        queryClient.setQueryData(['beads', 'list', cwd], ctx.previousList)
+      if (ctx?.previousLists) {
+        for (const [key, prev] of ctx.previousLists) {
+          queryClient.setQueryData(key, prev)
+        }
       }
       if (ctx?.previousShow) {
         queryClient.setQueryData(
@@ -218,12 +266,12 @@ function useInlineUpdate({ cwd, issueId }: UseInlineUpdateArgs) {
     },
     onSuccess: updated => {
       // ponytail: the watcher will fire beads-data-changed within
-      // ~1s and TanStack will refetch both caches. We also patch
-      // them with the freshly-returned issue here so the UI is
-      // instantly correct even if the watcher is slow.
-      queryClient.setQueryData<Issue[]>(
-        ['beads', 'list', cwd],
-        (prev: Issue[] | undefined) =>
+      // ~1s and TanStack will refetch every list variant. We also
+      // patch them with the freshly-returned issue here so the UI
+      // is instantly correct even if the watcher is slow.
+      queryClient.setQueriesData<Issue[]>(
+        { queryKey: ['beads', 'list', cwd] },
+        prev =>
           prev ? prev.map(i => (i.id === updated.id ? updated : i)) : prev
       )
       queryClient.setQueryData<Issue>(['beads', 'show', cwd, issueId], updated)
@@ -348,14 +396,35 @@ export function InlinePriorityEdit({
   const guard = hostGuardProps(swallowHostEvents)
 
   const handleChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const next = e.target.value as IssuePriority
-    if (next === issue.priority) return
-    mutation.mutate({ kind: 'priority', value: next })
+    // ponytail: the <option value="..."> is the bare integer
+    // string 0..4 (matching the Rust wire format). The TS type
+    // for `IssuePriority` is the variant-name string union, but
+    // our deserialiser accepts both shapes. Pass the wire shape
+    // through directly so the optimistic patch in
+    // useInlineUpdate lands the same value the next `bd list`
+    // refetch will see — no shape round-trip, no String() vs
+    // Number drift between the cache and the rendered DOM.
+    //
+    // Send the value as a JS `number` to the Rust command:
+    // the specta-generated deserializer for `IssuePriority`
+    // (a `#[repr(u8)] Serialize_repr` enum) reads a `u8` off
+    // the wire, and Tauri's command dispatcher rejects a
+    // `string` with `invalid type: string "2", expected u8`.
+    // `issue.priority` is the bare integer on the live data
+    // (Rust emits u8), so `String(issue.priority) === String(2)`
+    // matches the DOM value '2' without a cast.
+    const next = e.target.value
+    if (String(next) === String(issue.priority)) return
+    const nextNumeric = Number.parseInt(next, 10)
+    mutation.mutate({
+      kind: 'priority',
+      value: nextNumeric as unknown as IssuePriority,
+    })
     toast.success(
       t('beads.inlineEdit.priorityChanged', {
         id: issue.id,
-        priority: next,
-        defaultValue: `${issue.id} → ${next}`,
+        priority: nextNumeric,
+        defaultValue: `${issue.id} → ${nextNumeric}`,
       })
     )
   }
@@ -374,7 +443,7 @@ export function InlinePriorityEdit({
         data-testid="inline-priority-select"
         data-priority={issue.priority}
         aria-label={t('beads.inlineEdit.changePriority', 'Change priority')}
-        value={issue.priority}
+        value={priorityToValue(issue.priority)}
         onChange={handleChange}
         disabled={mutation.isPending}
         style={{
@@ -383,8 +452,8 @@ export function InlinePriorityEdit({
         }}
       >
         {ALL_PRIORITIES.map(p => (
-          <option key={p} value={p}>
-            {p}
+          <option key={p} value={priorityToValue(p)}>
+            {priorityToLabel(p)}
           </option>
         ))}
       </select>

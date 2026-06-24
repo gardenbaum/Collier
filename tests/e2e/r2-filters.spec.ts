@@ -29,9 +29,15 @@
  * `src/components/layout/Sidebar.tsx` and
  * `src/components/beads/issues/IssueListView.tsx` -- the stable
  * contract between the frontend and this test.
+ *
+ * The "open the fixture workspace" step is shared via
+ * `tests/e2e/helpers.ts` -- see that file for the isolation
+ * rationale. Spec-specific waits (full fixture footer) live below.
  */
 
 import { browser, expect, $ } from '@wdio/globals'
+
+import { openFixtureWorkspace } from './helpers'
 
 // Fixture contract (from scripts/make-fixture.sh):
 //   open=10 in_progress=3 blocked=2 deferred=2 closed=8
@@ -41,28 +47,7 @@ const OPEN_FIXTURE = 10
 
 describe('Collier M1 R2 filter sidebar', () => {
   before(async () => {
-    // -- Given: app launches and the fixture list is rendered --
-    //
-    // Window title comes from tauri.conf.json -> app.windows[0].title
-    // (and from index.html's <title>; both are "Collier").
-    const title = await browser.execute(() => document.title)
-    expect(title).toBe('Collier')
-
-    // The bootstrap screen (RepoSelection) gates the issue list.
-    // When `bd` is on PATH and `.beads/` exists in CWD, the
-    // "Use CWD" button appears -- click it to load the fixture.
-    const useCwdButton = await $('[data-testid="use-cwd-button"]')
-    await useCwdButton.waitForDisplayed({ timeout: 30_000 })
-    await useCwdButton.click()
-
-    // Wait for the React Query behind <IssueListView /> to resolve
-    // -- the first `bd list` call on a fresh fixture pays the
-    // Dolt cold-start cost (~5-30s on CI).
-    const list = await $('[data-testid="issue-list-view"]')
-    await list.waitForDisplayed({ timeout: 30_000 })
-
-    const firstRow = await $('[data-testid="issue-row"]')
-    await firstRow.waitForDisplayed({ timeout: 150_000 })
+    await openFixtureWorkspace('r2')
 
     // The footer reflects the total count. Wait for the full
     // fixture (25 issues) to be loaded before sampling -- a
@@ -217,7 +202,11 @@ describe('Collier M1 R2 filter sidebar', () => {
     )
 
     // Every rendered row must carry BOTH data-issue-status=open
-    // AND data-issue-priority=P1.
+    // AND data-issue-priority=1. The data attribute is the bare
+    // integer 0..4 — bd serialises IssuePriority via Serialize_repr
+    // and the specta-generated TS type advertises the variant-name
+    // string, so the assertion must read the integer shape, not
+    // "P1" (see r1-sort.spec.ts for the matching convention).
     const rendered = await readRenderedRows(15)
     console.log(
       `[e2e:r2] rendered (status,priority) after AND: ${rendered
@@ -227,7 +216,7 @@ describe('Collier M1 R2 filter sidebar', () => {
     expect(rendered.length).toBeGreaterThan(0)
     for (const row of rendered) {
       expect(row.status).toBe('open')
-      expect(row.priority).toBe('P1')
+      expect(row.priority).toBe('1')
     }
 
     // Clear up for the next test.

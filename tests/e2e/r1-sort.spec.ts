@@ -28,54 +28,19 @@
  * Selectors target the `data-testid` attributes baked into
  * `src/components/beads/issues/IssueListView.tsx` — the stable
  * contract between the frontend and this test.
+ *
+ * The "open the fixture workspace" step is shared via
+ * `tests/e2e/helpers.ts` -- see that file for the isolation
+ * rationale. Spec-specific waits (headers row) live below.
  */
 
-import { browser, expect, $ } from '@wdio/globals'
+import { expect, $ } from '@wdio/globals'
+
+import { openFixtureWorkspace } from './helpers'
 
 describe('Collier M1 R1 sortable columns', () => {
   before(async () => {
-    // -- Given: app launches and the fixture list is rendered --
-    //
-    // Window title comes from tauri.conf.json -> app.windows[0].title
-    // (and from index.html's <title>; both are "Collier").
-    const title = await browser.execute(() => document.title)
-    expect(title).toBe('Collier')
-
-    // The bootstrap screen (RepoSelection) gates the issue list.
-    // When `bd` is on PATH and `.beads/` exists in CWD, the
-    // "Use CWD" button appears — click it to load the fixture.
-    const useCwdButton = await $('[data-testid="use-cwd-button"]')
-    await useCwdButton.waitForDisplayed({ timeout: 30_000 })
-    await useCwdButton.click()
-
-    // Wait for the React Query behind <IssueListView /> to resolve
-    // — the first `bd list` call on a fresh fixture pays the
-    // Dolt cold-start cost (~5-30s on CI). The list-loading /
-    // list-error / list-empty divs are mutually exclusive siblings
-    // of the virtualised rows; whichever is present tells us what
-    // state the query is in. We log them on the way past so the CI
-    // log shows whether we hit a real error or just a slow data
-    // load.
-    const list = await $('[data-testid="issue-list-view"]')
-    await list.waitForDisplayed({ timeout: 30_000 })
-
-    const loading = await $('[data-testid="list-loading"]')
-    const errorDiv = await $('[data-testid="list-error"]')
-    if (await loading.isExisting()) {
-      console.log('[e2e:r1] list-loading is visible (query in flight)')
-    }
-    if (await errorDiv.isExisting()) {
-      const err = await errorDiv.getText()
-      console.log(`[e2e:r1] list-error is visible: ${err}`)
-    }
-
-    // The fixture ships 25 issues (acceptance: >=1). Wait for at
-    // least one row to mount before sampling. The budget must exceed
-    // the app's bd subprocess timeout (120s) so a slow first Dolt
-    // cold-start query under CI still resolves in time; steady-state
-    // is ~1-2s.
-    const firstRow = await $('[data-testid="issue-row"]')
-    await firstRow.waitForDisplayed({ timeout: 150_000 })
+    await openFixtureWorkspace('r1')
 
     // The header row is a sibling of the scroll container inside
     // the issue-list-view — wait for it explicitly so the click
@@ -96,18 +61,21 @@ describe('Collier M1 R1 sortable columns', () => {
     // Read the priorities of the rendered (windowed) slice BEFORE
     // and AFTER the click. The fixture (scripts/make-fixture.sh)
     // ships 25 issues with priorities in {1,2,3,4} (P1..P4 — no P0)
-    // so the most-urgent bucket in this dataset is P1. Ascending
-    // sort must therefore put P1 at the top of the rendered slice.
+    // so the most-urgent bucket in this dataset is P1 (the `IssuePriority`
+    // enum serialises as the bare integer 1..4 via `#[repr(u8)]
+    // Serialize_repr`, so the `data-issue-priority` attribute is
+    // "1" not "P1"). Ascending sort must therefore put "1" at the
+    // top of the rendered slice.
     const topPrioritiesAsc = await readRenderedPriorities(15)
     console.log(
       `[e2e:r1] top priorities after asc: ${topPrioritiesAsc.join(',')}`
     )
 
     // First row is the highest-urgency bucket present in the fixture.
-    expect(topPrioritiesAsc[0]).toBe('P1')
+    expect(topPrioritiesAsc[0]).toBe('1')
 
     // Subsequent priorities are monotonically non-decreasing
-    // (P-rank-wise: P1 < P2 < P3 < P4). This proves the sort is
+    // (P-rank-wise: 1 < 2 < 3 < 4). This proves the sort is
     // applied across the list, not a single-row swap.
     for (let i = 1; i < topPrioritiesAsc.length; i++) {
       const prev = priorityRank(topPrioritiesAsc[i - 1] as string)
@@ -127,7 +95,7 @@ describe('Collier M1 R1 sortable columns', () => {
     )
 
     // First row is the LEAST-urgent bucket in the fixture.
-    expect(topPrioritiesDesc[0]).toBe('P4')
+    expect(topPrioritiesDesc[0]).toBe('4')
 
     // Subsequent priorities are monotonically non-increasing.
     for (let i = 1; i < topPrioritiesDesc.length; i++) {
@@ -154,9 +122,17 @@ describe('Collier M1 R1 sortable columns', () => {
     await expect(statusHeader).toHaveAttribute('data-sort-direction', 'asc')
     await expect(priorityHeader).toHaveAttribute('data-sort-direction', 'none')
 
-    // Sanity: status header advertises a real sort via aria-sort.
-    const ariaSort = await statusHeader.getAttribute('aria-sort')
-    expect(ariaSort).toBe('ascending')
+    // Sanity: status column header advertises a real sort via
+    // aria-sort. `aria-sort` is a WAI-ARIA property of
+    // `role="columnheader"`, not the clickable <button> inside it;
+    // the previous attempt set it on both, but WebKitWebDriver's
+    // `getElementAttribute('aria-sort')` on a <button> returns null
+    // even when the content attribute is present (the attribute is
+    // only reflected to the IDL property on columnheader-shaped
+    // elements). Query the columnheader div, which carries
+    // data-testid="sort-header-status-column".
+    const statusColumn = await $('[data-testid="sort-header-status-column"]')
+    await expect(statusColumn).toHaveAttribute('aria-sort', 'ascending')
   })
 })
 

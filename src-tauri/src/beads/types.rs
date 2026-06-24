@@ -1,7 +1,7 @@
 use chrono::{DateTime, Utc};
 use serde::de::{self, Deserializer, Visitor};
 use serde::{Deserialize, Serialize};
-use serde_repr::{Deserialize_repr, Serialize_repr};
+use serde_repr::Serialize_repr;
 use specta::Type;
 use std::fmt;
 
@@ -19,7 +19,20 @@ pub enum IssueStatus {
     Deferred,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize_repr, Deserialize_repr, Type)]
+// ponytail: `IssuePriority` serialises as a bare integer 0..4 (via
+// `Serialize_repr`) so the on-disk JSONL `bd` produces round-trips
+// 1:1 with the CLI. But the specta-generated TypeScript type
+// advertises the variant-name string union `"P0"|"P1"|...|"P4"`,
+// and the frontend sends that string form across the Tauri command
+// bridge. `Deserialize_repr` rejects the string form with
+// `invalid type: string "P1", expected u8`, which surfaces in the
+// r2-filters E2E as `Failed to load: invalid args filters for command
+// bd_list`. We keep the `Serialize_repr` (u8) for the wire format
+// and implement `Deserialize` manually to accept BOTH the bare
+// integer (what the bridge SHOULD send, and what the JSONL uses)
+// and the variant-name string (what the specta-generated TS
+// actually sends today). One deserialiser, two input shapes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize_repr, Type)]
 #[repr(u8)]
 pub enum IssuePriority {
     P0 = 0,
@@ -27,6 +40,90 @@ pub enum IssuePriority {
     P2 = 2,
     P3 = 3,
     P4 = 4,
+}
+
+impl<'de> Deserialize<'de> for IssuePriority {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        struct PriorityVisitor;
+
+        impl<'de> Visitor<'de> for PriorityVisitor {
+            type Value = IssuePriority;
+
+            fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+                f.write_str("an integer 0..4 or a string \"P0\"..\"P4\"")
+            }
+
+            fn visit_u8<E>(self, v: u8) -> Result<Self::Value, E>
+            where
+                E: de::Error,
+            {
+                match v {
+                    0 => Ok(IssuePriority::P0),
+                    1 => Ok(IssuePriority::P1),
+                    2 => Ok(IssuePriority::P2),
+                    3 => Ok(IssuePriority::P3),
+                    4 => Ok(IssuePriority::P4),
+                    other => Err(de::Error::invalid_value(
+                        de::Unexpected::Unsigned(other as u64),
+                        &"an integer 0..4",
+                    )),
+                }
+            }
+
+            fn visit_u64<E>(self, v: u64) -> Result<Self::Value, E>
+            where
+                E: de::Error,
+            {
+                if v > u8::MAX as u64 {
+                    return Err(de::Error::invalid_value(
+                        de::Unexpected::Unsigned(v),
+                        &"an integer 0..4",
+                    ));
+                }
+                self.visit_u8(v as u8)
+            }
+
+            fn visit_i64<E>(self, v: i64) -> Result<Self::Value, E>
+            where
+                E: de::Error,
+            {
+                if v < 0 || v > u8::MAX as i64 {
+                    return Err(de::Error::invalid_value(
+                        de::Unexpected::Signed(v),
+                        &"an integer 0..4",
+                    ));
+                }
+                self.visit_u8(v as u8)
+            }
+
+            fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
+            where
+                E: de::Error,
+            {
+                // Accept the variant-name form the specta-generated
+                // TS sends ("P0".."P4"). Also accept the bare-digit
+                // string form for symmetry with the integer path, so
+                // a `bd list --json` piped through jq and back round
+                // trips without manual coercion.
+                match v {
+                    "P0" | "0" => Ok(IssuePriority::P0),
+                    "P1" | "1" => Ok(IssuePriority::P1),
+                    "P2" | "2" => Ok(IssuePriority::P2),
+                    "P3" | "3" => Ok(IssuePriority::P3),
+                    "P4" | "4" => Ok(IssuePriority::P4),
+                    other => Err(de::Error::unknown_variant(
+                        other,
+                        &["P0", "P1", "P2", "P3", "P4", "0", "1", "2", "3", "4"],
+                    )),
+                }
+            }
+        }
+
+        deserializer.deserialize_any(PriorityVisitor)
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type)]
@@ -511,6 +608,57 @@ mod tests {
             let back: IssuePriority = serde_json::from_str(&json).unwrap();
             assert_eq!(priority, back);
         }
+    }
+
+    /// The Tauri command bridge sends `IssuePriority` as the
+    /// variant-name string ("P0".."P4") because that's what the
+    /// specta-generated TS type advertises. `Deserialize_repr`
+    /// rejected the string with "invalid type: string P1, expected
+    /// u8" — see r2-filters E2E failure. The custom `Deserialize`
+    /// must accept both shapes.
+    #[test]
+    fn test_issue_priority_deserializes_variant_string() {
+        let cases: &[(&str, IssuePriority)] = &[
+            ("\"P0\"", IssuePriority::P0),
+            ("\"P1\"", IssuePriority::P1),
+            ("\"P2\"", IssuePriority::P2),
+            ("\"P3\"", IssuePriority::P3),
+            ("\"P4\"", IssuePriority::P4),
+        ];
+        for (json, expected) in cases {
+            let back: IssuePriority = serde_json::from_str(json).unwrap();
+            assert_eq!(back, *expected, "input was {json}");
+        }
+    }
+
+    /// And it must keep accepting the bare integer for the JSONL
+    /// files on disk and any tests that exercise the integer path.
+    #[test]
+    fn test_issue_priority_deserializes_bare_integer() {
+        let cases: &[(u8, IssuePriority)] = &[
+            (0, IssuePriority::P0),
+            (1, IssuePriority::P1),
+            (2, IssuePriority::P2),
+            (3, IssuePriority::P3),
+            (4, IssuePriority::P4),
+        ];
+        for (n, expected) in cases {
+            let json = n.to_string();
+            let back: IssuePriority = serde_json::from_str(&json).unwrap();
+            assert_eq!(back, *expected, "input was {json}");
+        }
+    }
+
+    /// Out-of-range values must be rejected so a malformed
+    /// frontend payload (e.g. "P7" from a future migration)
+    /// surfaces as a parse error rather than silently mapping to
+    /// the catch-all `Number.MAX_SAFE_INTEGER` the comparator uses
+    /// for unknown buckets.
+    #[test]
+    fn test_issue_priority_rejects_out_of_range() {
+        assert!(serde_json::from_str::<IssuePriority>("5").is_err());
+        assert!(serde_json::from_str::<IssuePriority>("\"P7\"").is_err());
+        assert!(serde_json::from_str::<IssuePriority>("\"banana\"").is_err());
     }
 
     #[test]

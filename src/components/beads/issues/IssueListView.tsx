@@ -97,12 +97,34 @@ const statusRank: Record<Issue['status'], number> = {
   closed: 4,
 }
 
-const priorityRank: Record<Issue['priority'], number> = {
-  P0: 0,
-  P1: 1,
-  P2: 2,
-  P3: 3,
-  P4: 4,
+// ponytail: `IssuePriority` is `#[repr(u8)] Serialize_repr` on the Rust
+// side, so `bd list --json` emits priority as the bare integer 0..4
+// at runtime even though the generated TS type advertises the
+// "P0"|"P1"|...|"P4" string union. The sort runs in the browser over
+// the live data, so the lookup keys MUST be numbers — string keys
+// resolve to `undefined`, `undefined - undefined === NaN`, and the
+// sort treats every pair as equal, silently leaving the list in bd's
+// native order. Mirrors the EpicView priorityRank.
+const priorityRank: Record<number, number> = {
+  0: 0, // P0
+  1: 1, // P1
+  2: 2, // P2
+  3: 3, // P3
+  4: 4, // P4,
+}
+
+/**
+ * Convert an `IssuePriority` (string union "P0".."P4") to the
+ * bare-integer wire format Rust's `bd_list` deserializer expects.
+ * Accepts both shapes on the way in (string OR number) so a
+ * caller that already converted once is a no-op.
+ */
+function priorityToWire(p: string | number): number {
+  if (typeof p === 'number') return p
+  if (typeof p === 'string' && p.startsWith('P')) {
+    return Number.parseInt(p.slice(1), 10)
+  }
+  return Number(p)
 }
 
 function compareIssues(a: Issue, b: Issue, sort: SortState): number {
@@ -112,8 +134,14 @@ function compareIssues(a: Issue, b: Issue, sort: SortState): number {
       return a.id.localeCompare(b.id) * sign
     case 'status':
       return (statusRank[a.status] - statusRank[b.status]) * sign
-    case 'priority':
-      return (priorityRank[a.priority] - priorityRank[b.priority]) * sign
+    case 'priority': {
+      const pa = priorityRank[Number(a.priority)] ?? Number.MAX_SAFE_INTEGER
+      const pb = priorityRank[Number(b.priority)] ?? Number.MAX_SAFE_INTEGER
+      if (pa !== pb) return (pa - pb) * sign
+      // Stable tiebreaker: by id so the E2E spec can assert on the
+      // first row id when two rows share a priority bucket.
+      return a.id.localeCompare(b.id) * sign
+    }
     case 'type':
       return a.issue_type.localeCompare(b.issue_type) * sign
     case 'assignee': {
@@ -154,10 +182,32 @@ export function IssueListView({
   // when the user toggles a checkbox on and off (the resulting array
   // is a new reference each call, but only the dimensions the user
   // actually changes do).
+  //
+  // ponytail: the filter store holds `IssuePriority` as the specta
+  // string union ("P0".."P4"), but the specta-generated Rust
+  // deserializer for `IssuePriority` (a `#[repr(u8)] Serialize_repr`
+  // enum) reads a `u8` off the wire. The store's string values reach
+  // the backend as `"P1"` and Tauri's command dispatcher rejects the
+  // call with `invalid type: string "P1", expected u8` — the
+  // AND-composition r2 spec hit this and surfaced it as
+  // `Failed to load: invalid args 'filters'`. Map every priority
+  // value to its bare integer form (0..4) at the IPC boundary so
+  // the wire format matches the Rust `to_args` shape (which writes
+  // `--priority 1`, `--priority 2`, …). The TS type can't be
+  // widened without regenerating the bindings, so we cast through
+  // `unknown` at the call site — the value is still a valid
+  // `IssuePriority` from Rust's perspective (its custom
+  // `Deserialize` impl accepts both the string and the integer
+  // shape, see src-tauri/src/beads/types.rs).
   const filters: ListFilters = useMemo(
     () => ({
       status: status.length > 0 ? status : undefined,
-      priority: priority.length > 0 ? priority : undefined,
+      priority:
+        priority.length > 0
+          ? (priority.map(p =>
+              priorityToWire(p)
+            ) as unknown as ListFilters['priority'])
+          : undefined,
       // ponytail: the store uses `type` (TS-natural) but the Rust
       // struct's `#[serde(rename_all = "camelCase")]` exposes it as
       // `issueType` on the bridge. One-line rename here, no Rust
@@ -535,6 +585,7 @@ function SortableHeader({
   return (
     <div
       role="columnheader"
+      data-testid={`sort-header-${sortKey}-column`}
       aria-sort={ariaSort}
       style={{
         ...style,

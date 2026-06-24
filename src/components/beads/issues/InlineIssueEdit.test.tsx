@@ -175,26 +175,42 @@ describe('InlinePriorityEdit', () => {
     const select = screen.getByTestId(
       'inline-priority-select'
     ) as HTMLSelectElement
-    const options = Array.from(select.options).map(o => o.value)
-    expect(options).toEqual(['P0', 'P1', 'P2', 'P3', 'P4'])
+    // ponytail: option values are the bare integer 0..4 strings
+    // (matching the Rust wire format) and labels are the
+    // human-friendly "P0".."P4" form. The mutation handler reads
+    // `select.value` (the integer string) and the user sees
+    // `P1` in the dropdown label.
+    const values = Array.from(select.options).map(o => o.value)
+    expect(values).toEqual(['0', '1', '2', '3', '4'])
+    const labels = Array.from(select.options).map(o => o.textContent)
+    expect(labels).toEqual(['P0', 'P1', 'P2', 'P3', 'P4'])
   })
 
   it('fires bdUpdate with only the changed priority field on change', async () => {
     const { InlinePriorityEdit } = await importSut()
-    const updated: Issue = { ...baseIssue, priority: 'P0' }
+    // ponytail: the <option value="..."> is the bare integer
+    // string 0..4 (matching the Rust wire format) — see the
+    // InlineIssueEdit component for the same convention. The
+    // mutation passes the wire shape straight through to
+    // `bd update`, and the deserialiser accepts both shapes, so
+    // the assertion below matches the actual call payload.
+    const updated: Issue = {
+      ...baseIssue,
+      priority: 0 as unknown as Issue['priority'],
+    }
     mockBdUpdate.mockResolvedValue({ status: 'ok', data: updated })
     render(<InlinePriorityEdit cwd="/fake" issue={baseIssue} />)
     const select = screen.getByTestId(
       'inline-priority-select'
     ) as HTMLSelectElement
     act(() => {
-      setNativeSelect(select, 'P0')
+      setNativeSelect(select, '0')
     })
     await waitFor(() => {
       expect(mockBdUpdate).toHaveBeenCalledTimes(1)
     })
     expect(mockBdUpdate).toHaveBeenCalledWith('/fake', 'beads-42', {
-      priority: 'P0',
+      priority: 0,
     })
   })
 })

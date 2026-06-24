@@ -254,6 +254,14 @@ jobs:
         run: bun run test:e2e
         env:
           E2E_TAURI_EXECUTABLE: ${{ github.workspace }}/src-tauri/target/debug/collier
+          # ponytail: the E2E fixture (`scripts/make-fixture.sh`)
+          # writes `.fixture-ids.json` into the fixture TARGET_DIR,
+          # not the repo root. The wdio workers run from the repo
+          # root, so a bare `.fixture-ids.json` lookup throws
+          # ENOENT. Export the fixture dir and let the r4-detail
+          # spec resolve the file from it. Falls back to the cwd
+          # for local dev so the contract is unchanged.
+          E2E_FIXTURE_DIR: /tmp/e2e-workspace
 
       # Best-effort cleanup: kill the driver even if the test step
       # was skipped, so the runner can reclaim resources quickly.

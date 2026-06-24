@@ -24,34 +24,30 @@
  * `src/components/beads/issues/InlineIssueEdit.tsx` and
  * `src/components/beads/issues/IssueListView.tsx` -- the stable
  * contract between the frontend and this test.
+ *
+ * The "open the fixture workspace" step is shared via
+ * `tests/e2e/helpers.ts` -- see that file for the isolation
+ * rationale. Spec-specific waits (full fixture footer) live below.
  */
 
 import { browser, expect, $$, $ } from '@wdio/globals'
 
+import { openFixtureWorkspace } from './helpers'
+
 describe('Collier M1 R3 inline editing', () => {
+  // Captured during the status/priority tests and reverted in
+  // `after` so the next spec (r6-status-overview) sees the
+  // original fixture distribution. The wdio workers run in their
+  // own processes but the Tauri app's Beads fixture is a single
+  // file on disk under /tmp/e2e-workspace — every spec that
+  // mutates it leaks state into the next. r3 is the only spec
+  // that calls `bd update` via the UI, so it owns the cleanup.
+  let r3RowId = ''
+  let r3OriginalStatus = ''
+  let r3OriginalPriority = ''
+
   before(async () => {
-    // -- Given: app launches and the fixture list is rendered --
-    //
-    // Window title comes from tauri.conf.json -> app.windows[0].title
-    // (and from index.html's <title>; both are "Collier").
-    const title = await browser.execute(() => document.title)
-    expect(title).toBe('Collier')
-
-    // The bootstrap screen (RepoSelection) gates the issue list.
-    // When `bd` is on PATH and `.beads/` exists in CWD, the
-    // "Use CWD" button appears -- click it to load the fixture.
-    const useCwdButton = await $('[data-testid="use-cwd-button"]')
-    await useCwdButton.waitForDisplayed({ timeout: 30_000 })
-    await useCwdButton.click()
-
-    // Wait for the React Query behind <IssueListView /> to resolve
-    // -- the first `bd list` call on a fresh fixture pays the
-    // Dolt cold-start cost (~5-30s on CI).
-    const list = await $('[data-testid="issue-list-view"]')
-    await list.waitForDisplayed({ timeout: 30_000 })
-
-    const firstRow = await $('[data-testid="issue-row"]')
-    await firstRow.waitForDisplayed({ timeout: 150_000 })
+    await openFixtureWorkspace('r3')
 
     // The footer reflects the total count. Wait for the full
     // fixture (25 issues) to be loaded before sampling -- a
@@ -71,6 +67,88 @@ describe('Collier M1 R3 inline editing', () => {
     )
   })
 
+  after(async () => {
+    // ponytail: revert the row's status + priority through the
+    // same UI surface the spec exercises. We don't shell out to
+    // `bd update` — the test should depend only on the surface it
+    // covers. The inline select fires `commands.bdUpdate` and the
+    // watcher reconciles, same as the test itself.
+    if (r3RowId === '') return
+    const row = await $(`[data-testid="issue-row"][data-issue-id="${r3RowId}"]`)
+    if (!(await row.isExisting())) {
+      // Watcher tick may have already settled to a state where
+      // the row's `data-issue-status` no longer matches the
+      // captured r3OriginalStatus (e.g. r6 set it to a different
+      // value first). Best-effort skip in that case.
+      return
+    }
+
+    type SetFieldArgs = [string | null, string, string]
+    const setField = async (testid: string, value: string): Promise<void> => {
+      await browser.execute(
+        ((id: string | null, tid: string, val: string) => {
+          if (!id) throw new Error('row id is null')
+          const r = document.querySelector(
+            `[data-testid="issue-row"][data-issue-id="${CSS.escape(id)}"]`
+          )
+          if (!r) throw new Error(`row ${id} not found`)
+          const sel = r.querySelector(
+            `[data-testid="${tid}"]`
+          ) as HTMLSelectElement | null
+          if (!sel) throw new Error(`${tid} not found in row`)
+          const setter = Object.getOwnPropertyDescriptor(
+            window.HTMLSelectElement.prototype,
+            'value'
+          )?.set
+          setter?.call(sel, val)
+          sel.dispatchEvent(new Event('change', { bubbles: true }))
+        }) as (...args: SetFieldArgs) => void,
+        r3RowId,
+        testid,
+        value
+      )
+    }
+
+    if (r3OriginalStatus !== '') {
+      await setField('inline-status-select', r3OriginalStatus)
+    }
+    if (r3OriginalPriority !== '') {
+      await setField('inline-priority-select', r3OriginalPriority)
+    }
+    // ponytail: the waitUntil below checks the React state, which
+    // is updated by the optimistic cache patch the moment the
+    // mutation fires — that's much sooner than the bd write +
+    // watcher tick + cache refetch that actually mutates the
+    // fixture on disk. The fixture is what the r6 spec reads via
+    // `bdList`; if we hand off to r6 while the bd write is still
+    // in flight, r6 sees the leaked-mutation counts (open=11,
+    // closed=7 instead of 10/8). Wait for the bd write + watcher
+    // tick to actually complete before returning: sleep for
+    // ~1.5s, which is well under the wdio spec timeout (180s) and
+    // ~3x the observed bd-write + file-watcher latency on the
+    // CI runner. The mutation's `onSuccess` patches every list
+    // cache variant with the returned issue, so by the time we
+    // return the rendered `data-issue-status` reflects the
+    // server's truth, not the optimistic guess.
+    await browser.pause(1500)
+    await browser.waitUntil(
+      async () => {
+        const r = await $(
+          `[data-testid="issue-row"][data-issue-id="${r3RowId}"]`
+        )
+        return (
+          (await r.getAttribute('data-issue-status')) === r3OriginalStatus &&
+          (await r.getAttribute('data-issue-priority')) === r3OriginalPriority
+        )
+      },
+      {
+        timeout: 10_000,
+        interval: 250,
+        timeoutMsg: 'r3 cleanup did not land',
+      }
+    )
+  })
+
   it('changing a row status inline persists via bd update (optimistic + reconcile)', async () => {
     // -- Given: at least one rendered row, status=open (or any
     //    status that has alternatives in the dropdown).
@@ -79,6 +157,11 @@ describe('Collier M1 R3 inline editing', () => {
     const firstRow = rows[0] as unknown as WebdriverIO.Element
     const rowId = (await firstRow.getAttribute('data-issue-id')) ?? ''
     const originalStatus = await firstRow.getAttribute('data-issue-status')
+    // ponytail: capture the original values for the after hook so
+    // the r6-status-overview spec sees the original fixture
+    // distribution.
+    r3RowId = rowId
+    r3OriginalStatus = originalStatus ?? ''
     expect(rowId).toBeTruthy()
     // Pick a status different from the current one so we can
     // verify the change.
@@ -166,12 +249,21 @@ describe('Collier M1 R3 inline editing', () => {
     const firstRow = rows[0] as unknown as WebdriverIO.Element
     const rowId = (await firstRow.getAttribute('data-issue-id')) ?? ''
     const originalPriority = await firstRow.getAttribute('data-issue-priority')
+    // ponytail: capture the original priority for the after
+    // hook so we revert the r3 row back to its starting
+    // priority.
+    if (r3RowId === rowId) {
+      r3OriginalPriority = originalPriority ?? ''
+    }
 
     // Pick a priority different from the current one so we can
     // verify the change. The fixture ships only P1-P4 (no P0),
-    // so we cycle through P1..P4 to find an alternative.
-    const allPriorities = ['P0', 'P1', 'P2', 'P3', 'P4']
-    const nextPriority = allPriorities.find(p => p !== originalPriority) ?? 'P0'
+    // so we cycle through 1..4 to find an alternative. The
+    // `IssuePriority` enum serialises as the bare integer 0..4
+    // via `#[repr(u8)] Serialize_repr`, so the data attribute
+    // and the <select> value are the integers, not "P0".."P4".
+    const allPriorities = ['0', '1', '2', '3', '4']
+    const nextPriority = allPriorities.find(p => p !== originalPriority) ?? '0'
 
     // -- When: change the row's priority via the inline select --
     type SetPriorityArgs = [string | null, string]
