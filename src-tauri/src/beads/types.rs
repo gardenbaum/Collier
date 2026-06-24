@@ -167,13 +167,17 @@ pub struct Dependency {
     /// The target issue id (the issue being depended on, i.e. the
     /// "to" side of the relationship). The field is named
     /// `dependency_id` in the Rust→TS contract (see
-    /// `DependencyTreeView.tsx`) but bd's `bd list --json` emits it
-    /// as `depends_on_id`. The alias keeps both shapes deserialisable;
-    /// serialization stays `dependency_id` so the frontend contract
-    /// is unchanged. The `issue_id` bd also emits is the source side
-    /// — that's already on the enclosing `Issue`, so we just ignore
-    /// it on deserialize (serde_json drops unknown fields).
-    #[serde(alias = "depends_on_id")]
+    /// `DependencyTreeView.tsx`) but `bd show --json` emits the
+    /// nested issue object under the `id` key (the entry is a
+    /// full issue, not a `{dependency_id, dependency_type}`
+    /// pair), and `bd list --json` historically used
+    /// `depends_on_id`. The two aliases keep all three shapes
+    /// deserialisable; serialization stays `dependency_id` so the
+    /// frontend contract is unchanged. The `issue_id` bd also
+    /// emits is the source side — that's already on the
+    /// enclosing `Issue`, so we just ignore it on deserialize
+    /// (serde_json drops unknown fields).
+    #[serde(alias = "depends_on_id", alias = "id")]
     pub dependency_id: String,
     /// bd emits this as `type` (a reserved Rust keyword, hence the
     /// Rust field rename). Alias keeps bd's output deserialisable;
