@@ -39,7 +39,7 @@ export function ViewsRouter({ cwd, onOpenIssue }: ViewsRouterProps) {
     case 'search':
       return <SearchView cwd={cwd} />
     case 'epic':
-      return <EpicView cwd={cwd} />
+      return <EpicView cwd={cwd} onOpenIssue={onOpenIssue} />
     case 'swarm':
       return <SwarmView cwd={cwd} />
     case 'sync':
