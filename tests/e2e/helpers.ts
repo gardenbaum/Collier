@@ -23,6 +23,41 @@
 import { browser, $, $$ } from '@wdio/globals'
 
 /**
+ * Open the workspace switcher dropdown if it is not already open.
+ *
+ * Why this helper exists: the Radix DropdownMenu renders its content
+ * in a portal appended to document.body. Once open, the menu overlay
+ * sits on top of the trigger button, and WebdriverIO's element.click()
+ * refuses to fire ("element not interactable" — the centre point is
+ * owned by the portal, not the trigger). The retry loop burns ~10s per
+ * attempt and times the suite out.
+ *
+ * We dispatch a real DOM `click` via `browser.execute` so we bypass
+ * the interactability check; we still check `data-state="open"` on the
+ * trigger so we don't *toggle* an already-open menu shut. After the
+ * click we wait for `[data-testid="workspace-switcher-menu"]` to be
+ * displayed so callers can assert against its contents without a race.
+ */
+export async function openWorkspaceSwitcher(): Promise<void> {
+  const alreadyOpen = await browser.execute(
+    () =>
+      document
+        .querySelector('[data-testid="workspace-switcher-trigger"]')
+        ?.getAttribute('data-state') === 'open'
+  )
+  if (!alreadyOpen) {
+    await browser.execute(() => {
+      const trigger = document.querySelector(
+        '[data-testid="workspace-switcher-trigger"]'
+      ) as HTMLElement | null
+      trigger?.click()
+    })
+  }
+  const menu = await $('[data-testid="workspace-switcher-menu"]')
+  await menu.waitForDisplayed({ timeout: 5_000 })
+}
+
+/**
  * Open the fixture workspace and wait for the first issue row to
  * render. `specLabel` is a short tag (e.g. "r1", "r3", "smoke")
  * used as a log prefix so the CI log clearly shows which spec

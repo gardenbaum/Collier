@@ -42,7 +42,7 @@
 
 import { browser, expect, $ } from '@wdio/globals'
 
-import { openFixtureWorkspace } from './helpers'
+import { openFixtureWorkspace, openWorkspaceSwitcher } from './helpers'
 
 const SECOND_FIXTURE_PATH = '/tmp/e2e-workspace-b'
 
@@ -79,13 +79,9 @@ describe('Collier M4 R9 multi-workspace switcher', () => {
 
   it('lists the current workspace and the second fixture', async () => {
     // -- Given: the dropdown is open from the previous test.
-    //    Radix unmounts the menu when the trigger blurs and the
-    //    next click sequence will reopen it; we re-open explicitly
-    //    so this test is order-independent.
-    const trigger = await $('[data-testid="workspace-switcher-trigger"]')
-    await trigger.click()
-    const menu = await $('[data-testid="workspace-switcher-menu"]')
-    await menu.waitForDisplayed({ timeout: 5_000 })
+    //    Re-use the idempotent helper so we don't fight the Radix
+    //    portal overlay sitting on top of the trigger once open.
+    await openWorkspaceSwitcher()
 
     // -- Then: the current entry is rendered with the "current"
     //    marker and the second fixture's path is in the
@@ -112,10 +108,7 @@ describe('Collier M4 R9 multi-workspace switcher', () => {
 
   it('switches to the second fixture and reloads the list', async () => {
     // -- Given: the dropdown is open.
-    const trigger = await $('[data-testid="workspace-switcher-trigger"]')
-    await trigger.click()
-    const menu = await $('[data-testid="workspace-switcher-menu"]')
-    await menu.waitForDisplayed({ timeout: 5_000 })
+    await openWorkspaceSwitcher()
 
     // -- When: we click the row whose data-workspace-path
     //    matches the second fixture.
@@ -170,10 +163,7 @@ describe('Collier M4 R9 multi-workspace switcher', () => {
 
   it('persists the switch through a re-open of the dropdown', async () => {
     // -- When: we re-open the dropdown after the switch.
-    const trigger = await $('[data-testid="workspace-switcher-trigger"]')
-    await trigger.click()
-    const menu = await $('[data-testid="workspace-switcher-menu"]')
-    await menu.waitForDisplayed({ timeout: 5_000 })
+    await openWorkspaceSwitcher()
 
     // -- Then: the "current" entry is now the second fixture
     //    (basename `e2e-workspace-b`), proving switchWorkspace
@@ -187,10 +177,7 @@ describe('Collier M4 R9 multi-workspace switcher', () => {
   it('can switch back to the first fixture and reload', async () => {
     // -- Given: the dropdown is open and the second fixture is
     //    active.
-    const trigger = await $('[data-testid="workspace-switcher-trigger"]')
-    await trigger.click()
-    const menu = await $('[data-testid="workspace-switcher-menu"]')
-    await menu.waitForDisplayed({ timeout: 5_000 })
+    await openWorkspaceSwitcher()
 
     // -- When: click the first fixture's row.
     await browser.execute(() => {
