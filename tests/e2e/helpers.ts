@@ -47,11 +47,15 @@ import { browser, $, $$ } from '@wdio/globals'
  * owned by the portal, not the trigger). The retry loop burns ~10s per
  * attempt and times the suite out.
  *
- * We dispatch a real DOM `click` via `browser.execute` so we bypass
- * the interactability check; we still check `data-state="open"` on the
- * trigger so we don't *toggle* an already-open menu shut. After the
- * click we wait for `[data-testid="workspace-switcher-menu"]` to be
- * displayed so callers can assert against its contents without a race.
+ * We dispatch a real DOM `pointerdown` event via `browser.execute`
+ * so we bypass the WebDriver interactability check AND hit the
+ * Radix DropdownMenuTrigger handler, which listens exclusively for
+ * `pointerdown` (NOT `click`) to toggle the menu open — see the
+ * Radix source comment in the implementation below. We still gate on
+ * the trigger's `data-state="open"` so we don't *toggle* an
+ * already-open menu shut. After the click we wait for
+ * `[data-testid="workspace-switcher-menu"]` to be displayed so
+ * callers can assert against its contents without a race.
  */
 export async function openWorkspaceSwitcher(): Promise<void> {
   // ponytail: read `data-state` and trigger via `browser.execute`
@@ -67,11 +71,41 @@ export async function openWorkspaceSwitcher(): Promise<void> {
         ?.getAttribute('data-state') === 'open'
   )
   if (!alreadyOpen) {
+    // Dispatch a real `pointerdown` event (NOT a synthetic
+    // `element.click()`). Radix `DropdownMenuTrigger` listens
+    // exclusively on `pointerdown` to toggle the menu — see
+    // node_modules/@radix-ui/react-dropdown-menu/dist/index.mjs:
+    //
+    //   onPointerDown: composeEventHandlers(props.onPointerDown, (event) => {
+    //     if (!disabled && event.button === 0 && event.ctrlKey === false) {
+    //       context.onOpenToggle();
+    //       if (!context.open) event.preventDefault();
+    //     }
+    //   })
+    //
+    // `trigger.click()` only fires a `click` event, so the menu
+    // never opens — the post-workspace-switch re-open path of
+    // the r9 spec was failing with "workspace-switcher-menu did
+    // not appear within 5000ms" because of exactly this gap.
+    // Dispatching `pointerdown` with the same options Radix
+    // expects (button=0, ctrlKey=false, cancelable=true so the
+    // `event.preventDefault()` inside Radix doesn't throw on an
+    // un-cancelable event) reaches the handler.
     await browser.execute(() => {
       const trigger = document.querySelector(
         '[data-testid="workspace-switcher-trigger"]'
       ) as HTMLElement | null
-      trigger?.click()
+      if (!trigger) return
+      const event = new PointerEvent('pointerdown', {
+        bubbles: true,
+        cancelable: true,
+        button: 0,
+        buttons: 1,
+        ctrlKey: false,
+        pointerType: 'mouse',
+        isPrimary: true,
+      })
+      trigger.dispatchEvent(event)
     })
   }
   // Wait for the menu via `browser.execute` rather than wdio's
