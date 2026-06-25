@@ -492,9 +492,10 @@ describe('Sidebar — chip payload shape (AND composition proof)', () => {
         useIssueFilterStore.getState().toggleLabel('urgent')
       })
       render(<Sidebar />)
-      expect(
-        await screen.findByTestId('sidebar-label-urgent')
-      ).toHaveAttribute('aria-pressed', 'true')
+      expect(await screen.findByTestId('sidebar-label-urgent')).toHaveAttribute(
+        'aria-pressed',
+        'true'
+      )
       expect(
         await screen.findByTestId('sidebar-label-nice-to-have')
       ).toHaveAttribute('aria-pressed', 'false')

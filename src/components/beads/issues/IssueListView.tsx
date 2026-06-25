@@ -490,59 +490,59 @@ export function IssueListView({
           role="rowgroup"
           aria-label="Issue rows"
         >
-        {query.isLoading ? (
-          <div data-testid="list-loading" style={statusStyle}>
-            Loading…
-          </div>
-        ) : null}
-        {query.isError ? (
-          <div data-testid="list-error" style={statusStyle}>
-            Failed to load: {errorMessage}
-          </div>
-        ) : null}
-        {!query.isLoading && !query.isError && total === 0 ? (
-          <div data-testid="list-empty" style={statusStyle}>
-            No issues match.
-          </div>
-        ) : null}
-        {total > 0 ? (
-          <div
-            data-testid="issue-list-inner"
-            style={{
-              height: rowVirtualizer.getTotalSize(),
-              position: 'relative',
-              width: '100%',
-            }}
-          >
-            {/* ponytail: the inner div's height is the *total* list
+          {query.isLoading ? (
+            <div data-testid="list-loading" style={statusStyle}>
+              Loading…
+            </div>
+          ) : null}
+          {query.isError ? (
+            <div data-testid="list-error" style={statusStyle}>
+              Failed to load: {errorMessage}
+            </div>
+          ) : null}
+          {!query.isLoading && !query.isError && total === 0 ? (
+            <div data-testid="list-empty" style={statusStyle}>
+              No issues match.
+            </div>
+          ) : null}
+          {total > 0 ? (
+            <div
+              data-testid="issue-list-inner"
+              style={{
+                height: rowVirtualizer.getTotalSize(),
+                position: 'relative',
+                width: '100%',
+              }}
+            >
+              {/* ponytail: the inner div's height is the *total* list
                 height, so the scrollbar reflects the full list. Each
                 virtual row is absolutely positioned at
                 translateY(start) and only the visible ones (plus
                 OVERSCAN) are mounted. */}
-            {rowVirtualizer.getVirtualItems().map(virtualItem => {
-              const issue = issues[virtualItem.index]
-              if (!issue) return null
-              return (
-                <IssueRow
-                  key={issue.id}
-                  issue={issue}
-                  onClick={() => onOpenIssue(issue.id)}
-                  cwd={cwd}
-                  isKeyboardSelected={issue.id === selectedRowId}
-                  rowIndex={virtualItem.index}
-                  positionStyle={{
-                    position: 'absolute',
-                    top: 0,
-                    left: 0,
-                    width: '100%',
-                    height: virtualItem.size,
-                    transform: `translateY(${virtualItem.start}px)`,
-                  }}
-                />
-              )
-            })}
-          </div>
-        ) : null}
+              {rowVirtualizer.getVirtualItems().map(virtualItem => {
+                const issue = issues[virtualItem.index]
+                if (!issue) return null
+                return (
+                  <IssueRow
+                    key={issue.id}
+                    issue={issue}
+                    onClick={() => onOpenIssue(issue.id)}
+                    cwd={cwd}
+                    isKeyboardSelected={issue.id === selectedRowId}
+                    rowIndex={virtualItem.index}
+                    positionStyle={{
+                      position: 'absolute',
+                      top: 0,
+                      left: 0,
+                      width: '100%',
+                      height: virtualItem.size,
+                      transform: `translateY(${virtualItem.start}px)`,
+                    }}
+                  />
+                )
+              })}
+            </div>
+          ) : null}
         </div>
       </div>
 
@@ -798,7 +798,12 @@ function IssueRow({
         ...positionStyle,
       }}
     >
-      <div role="gridcell" aria-colindex={1} data-column="id" style={idCellStyle}>
+      <div
+        role="gridcell"
+        aria-colindex={1}
+        data-column="id"
+        style={idCellStyle}
+      >
         {issue.id}
       </div>
       <div

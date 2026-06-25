@@ -21,7 +21,13 @@
  * badge per AC-14; the panel is informational and stays on the
  * mono scale. `design-tokens` is the single source of truth.
  */
-import { useEffect, useRef, useState, type CSSProperties, type FormEvent } from 'react'
+import {
+  useEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type FormEvent,
+} from 'react'
 import { commands, type AppPreferences } from '@/lib/tauri-bindings'
 import { colors, space, type } from '@/lib/design-tokens'
 import { logger } from '@/lib/logger'

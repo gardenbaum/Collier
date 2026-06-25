@@ -1068,7 +1068,13 @@ describe('IssueListView', () => {
       })
 
       const { IssueListView } = await importSut()
-      render(<IssueListView cwd="/fake" onOpenIssue={vi.fn()} containerHeight={200} />)
+      render(
+        <IssueListView
+          cwd="/fake"
+          onOpenIssue={vi.fn()}
+          containerHeight={200}
+        />
+      )
 
       await waitFor(() => {
         expect(screen.getAllByTestId('issue-row')).toHaveLength(2)
@@ -1094,7 +1100,13 @@ describe('IssueListView', () => {
       })
 
       const { IssueListView } = await importSut()
-      render(<IssueListView cwd="/fake" onOpenIssue={vi.fn()} containerHeight={200} />)
+      render(
+        <IssueListView
+          cwd="/fake"
+          onOpenIssue={vi.fn()}
+          containerHeight={200}
+        />
+      )
 
       await waitFor(() => {
         expect(screen.getAllByTestId('issue-row')).toHaveLength(2)
@@ -1120,7 +1132,13 @@ describe('IssueListView', () => {
       })
 
       const { IssueListView } = await importSut()
-      render(<IssueListView cwd="/fake" onOpenIssue={vi.fn()} containerHeight={200} />)
+      render(
+        <IssueListView
+          cwd="/fake"
+          onOpenIssue={vi.fn()}
+          containerHeight={200}
+        />
+      )
 
       await waitFor(() => {
         expect(screen.getAllByTestId('issue-row')).toHaveLength(1)
@@ -1129,9 +1147,9 @@ describe('IssueListView', () => {
       // Sort is null initially — every columnheader is aria-sort="none".
       const idHeader = screen.getByTestId('sort-header-id-column')
       expect(idHeader).toHaveAttribute('aria-sort', 'none')
-      const titleHeader = screen.getAllByRole('columnheader').find(
-        h => h.textContent === 'Title'
-      )
+      const titleHeader = screen
+        .getAllByRole('columnheader')
+        .find(h => h.textContent === 'Title')
       expect(titleHeader).toHaveAttribute('aria-sort', 'none')
 
       // Click the ID header to sort asc → aria-sort flips to
@@ -1171,7 +1189,11 @@ describe('IssueListView', () => {
 
       const { IssueListView } = await importSut()
       const { rerender } = render(
-        <IssueListView cwd="/fake" onOpenIssue={vi.fn()} containerHeight={200} />
+        <IssueListView
+          cwd="/fake"
+          onOpenIssue={vi.fn()}
+          containerHeight={200}
+        />
       )
 
       await waitFor(() => {
@@ -1193,7 +1215,11 @@ describe('IssueListView', () => {
         useWorkspaceStore.getState().setSelectedRowId('beads-2')
       })
       rerender(
-        <IssueListView cwd="/fake" onOpenIssue={vi.fn()} containerHeight={200} />
+        <IssueListView
+          cwd="/fake"
+          onOpenIssue={vi.fn()}
+          containerHeight={200}
+        />
       )
 
       const after = screen.getAllByTestId('issue-row')
@@ -1215,7 +1241,13 @@ describe('IssueListView', () => {
       })
 
       const { IssueListView } = await importSut()
-      render(<IssueListView cwd="/fake" onOpenIssue={vi.fn()} containerHeight={200} />)
+      render(
+        <IssueListView
+          cwd="/fake"
+          onOpenIssue={vi.fn()}
+          containerHeight={200}
+        />
+      )
 
       await waitFor(() => {
         expect(screen.getAllByTestId('issue-row')).toHaveLength(2)

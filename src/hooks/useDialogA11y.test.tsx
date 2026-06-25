@@ -80,9 +80,7 @@ describe('useDialogA11y', () => {
     trigger.focus()
 
     await act(async () => {
-      render(
-        <Harness onClose={() => undefined} withExplicitInitialFocus />
-      )
+      render(<Harness onClose={() => undefined} withExplicitInitialFocus />)
     })
 
     await act(async () => {
