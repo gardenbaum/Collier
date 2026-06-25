@@ -140,6 +140,8 @@
   "commands.group.other": "أخرى",
   "commands.group.settings": "الإعدادات",
   "commands.group.window": "النافذة",
+  "commands.goToSearch.description": "الانتقال إلى عرض البحث وتركيز حقل الإدخال",
+  "commands.goToSearch.label": "البحث في التذاكر",
   "commands.hideLeftSidebar.description": "إخفاء الشريط الجانبي الأيسر",
   "commands.hideLeftSidebar.label": "إخفاء الشريط الجانبي الأيسر",
   "commands.hideRightSidebar.description": "إخفاء الشريط الجانبي الأيمن",

@@ -20,6 +20,7 @@ import { useQuery } from '@tanstack/react-query'
 import { Ban } from 'lucide-react'
 import { commands } from '@/lib/tauri-bindings'
 import type { Issue } from '@/lib/bindings'
+import { useWorkspaceStore } from '@/store/workspace-store'
 import { colors, space, type } from '@/lib/design-tokens'
 import { EmptyState } from '@/components/atoms'
 import { StatusPill } from './badges/StatusPill'
@@ -94,6 +95,13 @@ const skeletonBarStyle: CSSProperties = {
   backgroundColor: colors.mono7,
 }
 
+// ponytail: M5 keyboard cursor indicator — matches the rest of the
+// app's selected-row visual.
+const rowSelectedStyle: CSSProperties = {
+  backgroundColor: 'rgba(94, 106, 210, 0.18)',
+  boxShadow: 'inset 2px 0 0 0 rgb(94, 106, 210)',
+}
+
 /**
  * List view for `bd blocked`. Skeleton → error → empty → populated.
  */
@@ -109,6 +117,9 @@ export function BlockedView({ cwd }: BlockedViewProps) {
 
   const issues = data ?? []
   const count = issues.length
+  // M5 keyboard navigation: the cursor highlights the active row
+  // so j/k + Enter are visual as well as functional.
+  const selectedRowId = useWorkspaceStore(s => s.selectedRowId)
 
   return (
     <section data-testid="blocked-view" style={containerStyle}>
@@ -138,7 +149,11 @@ export function BlockedView({ cwd }: BlockedViewProps) {
           style={{ listStyle: 'none', margin: 0, padding: 0 }}
         >
           {issues.map(issue => (
-            <BlockedRow key={issue.id} issue={issue} />
+            <BlockedRow
+              key={issue.id}
+              issue={issue}
+              isKeyboardSelected={issue.id === selectedRowId}
+            />
           ))}
         </ul>
       ) : null}
@@ -146,9 +161,27 @@ export function BlockedView({ cwd }: BlockedViewProps) {
   )
 }
 
-function BlockedRow({ issue }: { issue: Issue }) {
+function BlockedRow({
+  issue,
+  isKeyboardSelected,
+}: {
+  issue: Issue
+  /** M5 keyboard navigation: highlights the row matching the cursor. */
+  isKeyboardSelected: boolean
+}) {
   return (
-    <li data-testid="blocked-row" data-issue-id={issue.id} style={rowStyle}>
+    <li
+      data-testid="blocked-row"
+      data-kbd-nav="row"
+      data-row-id={issue.id}
+      data-issue-id={issue.id}
+      data-row-selected={isKeyboardSelected ? 'true' : 'false'}
+      aria-selected={isKeyboardSelected}
+      style={{
+        ...rowStyle,
+        ...(isKeyboardSelected ? rowSelectedStyle : null),
+      }}
+    >
       <PriorityDot priority={issue.priority} />
       <TypeIcon type={issue.issue_type} />
       <StatusPill status={issue.status} />

@@ -140,6 +140,8 @@
   "commands.group.other": "Other",
   "commands.group.settings": "Settings",
   "commands.group.window": "Window",
+  "commands.goToSearch.description": "Switch to the search view and focus the input",
+  "commands.goToSearch.label": "Search Issues",
   "commands.hideLeftSidebar.description": "Hide the left sidebar",
   "commands.hideLeftSidebar.label": "Hide Left Sidebar",
   "commands.hideRightSidebar.description": "Hide the right sidebar",

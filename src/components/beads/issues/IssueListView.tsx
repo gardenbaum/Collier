@@ -39,6 +39,7 @@ import { commands } from '@/lib/tauri-bindings'
 import type { Issue, ListFilters } from '@/lib/bindings'
 import { useIssueFilterStore } from '@/store/issue-filter-store'
 import { useScrollPositionStore } from '@/store/scroll-position-store'
+import { useWorkspaceStore } from '@/store/workspace-store'
 import { colors, radius, space, type } from '@/lib/design-tokens'
 import { TypeIcon } from './badges/TypeIcon'
 import { LabelChip } from './badges/LabelChip'
@@ -271,6 +272,12 @@ export function IssueListView({
   const rawIssues = useMemo<Issue[]>(() => query.data ?? [], [query.data])
   const total = rawIssues.length
 
+  // M5 keyboard navigation: subscribe to the cursor and pass it to
+  // every row so the right one gets the selected visual. Reading
+  // via a single selector keeps the re-render surface minimal —
+  // only the rows that match the cursor change.
+  const selectedRowId = useWorkspaceStore(s => s.selectedRowId)
+
   // ponytail: sort state lives in component state (not Zustand) because
   // it's pure view state — nothing else in the app needs to react to
   // it, and the active sort shouldn't survive a reload. Clicking the
@@ -487,6 +494,7 @@ export function IssueListView({
                   issue={issue}
                   onClick={() => onOpenIssue(issue.id)}
                   cwd={cwd}
+                  isKeyboardSelected={issue.id === selectedRowId}
                   positionStyle={{
                     position: 'absolute',
                     top: 0,
@@ -668,9 +676,23 @@ interface IssueRowProps {
    * styles so the virtualizer's positioning always wins.
    */
   positionStyle: CSSProperties
+  /**
+   * M5 keyboard navigation: `true` when the row matches the
+   * keyboard cursor in `useWorkspaceStore.selectedRowId`. The
+   * cursor walks the rendered (windowed) rows in document order
+   * via `j` / `k`, so only one row at a time can be the cursor
+   * within a single view.
+   */
+  isKeyboardSelected: boolean
 }
 
-function IssueRow({ issue, onClick, cwd, positionStyle }: IssueRowProps) {
+function IssueRow({
+  issue,
+  onClick,
+  cwd,
+  positionStyle,
+  isKeyboardSelected,
+}: IssueRowProps) {
   const [hovered, setHovered] = useState(false)
 
   return (
@@ -687,14 +709,19 @@ function IssueRow({ issue, onClick, cwd, positionStyle }: IssueRowProps) {
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       data-testid="issue-row"
+      data-kbd-nav="row"
+      data-row-id={issue.id}
       data-issue-id={issue.id}
       data-issue-status={issue.status}
       data-issue-priority={issue.priority}
       data-issue-type={issue.issue_type}
       data-issue-assignee={issue.owner ?? ''}
+      data-row-selected={isKeyboardSelected ? 'true' : 'false'}
+      aria-selected={isKeyboardSelected}
       style={{
         ...rowStyle,
         ...(hovered ? rowHoverStyle : null),
+        ...(isKeyboardSelected ? rowSelectedStyle : null),
         ...positionStyle,
       }}
     >
@@ -894,6 +921,15 @@ const rowStyle: CSSProperties = {
 
 const rowHoverStyle: CSSProperties = {
   backgroundColor: 'rgba(94, 106, 210, 0.08)',
+}
+
+// ponytail: the keyboard cursor's visual is a thin inset ring on the
+// left edge plus a subtle background. Avoids fighting the brand
+// blue (reserved for destructive + P0 per AC-14) by using the same
+// neutral mono palette the rest of the row uses.
+const rowSelectedStyle: CSSProperties = {
+  backgroundColor: 'rgba(94, 106, 210, 0.18)',
+  boxShadow: 'inset 2px 0 0 0 rgb(94, 106, 210)',
 }
 
 // ponytail: each cell uses the grid's column alignment but constrains

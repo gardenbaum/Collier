@@ -1,5 +1,7 @@
-import { Sidebar, Settings } from 'lucide-react'
+import { Search, Sidebar, Settings } from 'lucide-react'
 import { useUIStore } from '@/store/ui-store'
+import { useWorkspaceStore } from '@/store/workspace-store'
+import { focusSearchInput } from '@/hooks/use-keyboard-navigation'
 import type { AppCommand } from './types'
 
 export const navigationCommands: AppCommand[] = [
@@ -46,6 +48,25 @@ export const navigationCommands: AppCommand[] = [
 
     execute: context => {
       context.openPreferences()
+    },
+  },
+
+  {
+    // M5 keyboard navigation: command-palette equivalent of the
+    // `/` shortcut. Same code path (switch view + dispatch focus
+    // event) so the behaviour is identical whether the user types
+    // `/` on the body or runs the command from the palette.
+    id: 'go-to-search',
+    labelKey: 'commands.goToSearch.label',
+    descriptionKey: 'commands.goToSearch.description',
+    icon: Search,
+    group: 'navigation',
+    shortcut: '/',
+    keywords: ['search', 'find', 'query', 'lookup'],
+
+    execute: () => {
+      useWorkspaceStore.getState().setActiveView('search')
+      focusSearchInput()
     },
   },
 ]

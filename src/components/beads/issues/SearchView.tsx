@@ -17,11 +17,13 @@
  * pattern mirrors `ReadyView` for visual consistency.
  */
 import { useState, type CSSProperties } from 'react'
+import { useEffect, useRef } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Search } from 'lucide-react'
 import { commands } from '@/lib/tauri-bindings'
 import type { Issue } from '@/lib/bindings'
 import { colors, space, type } from '@/lib/design-tokens'
+import { useWorkspaceStore } from '@/store/workspace-store'
 import { EmptyState } from '@/components/atoms'
 import { StatusPill } from './badges/StatusPill'
 import { PriorityDot } from './badges/PriorityDot'
@@ -145,6 +147,14 @@ const rowStyle: CSSProperties = {
   lineHeight: type.lineHeight.normal,
 }
 
+// ponytail: M5 keyboard cursor indicator — matches the IssueListView
+// visual (same neutral palette, same 2px left-edge ring) so the
+// cursor feels uniform across views.
+const rowSelectedStyle: CSSProperties = {
+  backgroundColor: 'rgba(94, 106, 210, 0.18)',
+  boxShadow: 'inset 2px 0 0 0 rgb(94, 106, 210)',
+}
+
 const titleStyle: CSSProperties = {
   fontWeight: type.fontWeight.medium,
   color: colors.mono0,
@@ -191,6 +201,22 @@ export function SearchView({ cwd, onOpenIssue }: SearchViewProps) {
   const [submittedQuery, setSubmittedQuery] = useState('')
   const [recent, setRecent] = useState<string[]>(() => readRecent())
   const [showRecent, setShowRecent] = useState(false)
+  // M5 keyboard navigation: the input gets focus when the user
+  // hits `/` (or runs the "Go to search" command from the palette).
+  // We listen for the global focus event dispatched by
+  // `use-keyboard-navigation` rather than reading a store, so the
+  // view stays decoupled from the hook's internals.
+  const inputRef = useRef<HTMLInputElement>(null)
+  useEffect(() => {
+    const handler = (): void => {
+      inputRef.current?.focus()
+    }
+    window.addEventListener('collier:focus-search-input', handler)
+    return () => {
+      window.removeEventListener('collier:focus-search-input', handler)
+    }
+  }, [])
+  const selectedRowId = useWorkspaceStore(s => s.selectedRowId)
 
   const { data, isLoading, error } = useQuery({
     queryKey: [
@@ -240,6 +266,7 @@ export function SearchView({ cwd, onOpenIssue }: SearchViewProps) {
 
       <form onSubmit={handleSubmit} style={formStyle} role="search">
         <input
+          ref={inputRef}
           type="search"
           data-testid="search-input"
           placeholder="Search issues..."
@@ -312,6 +339,7 @@ export function SearchView({ cwd, onOpenIssue }: SearchViewProps) {
               <SearchRow
                 key={issue.id}
                 issue={issue}
+                isKeyboardSelected={issue.id === selectedRowId}
                 onClick={() => onOpenIssue?.(issue.id)}
               />
             ))}
@@ -322,12 +350,37 @@ export function SearchView({ cwd, onOpenIssue }: SearchViewProps) {
   )
 }
 
-function SearchRow({ issue, onClick }: { issue: Issue; onClick: () => void }) {
+function SearchRow({
+  issue,
+  onClick,
+  isKeyboardSelected,
+}: {
+  issue: Issue
+  onClick: () => void
+  /**
+   * M5 keyboard navigation: when true, the row gets the same
+   * "selected" visual the list / epic views use. The keyboard
+   * hook walks search results the same way it walks list rows —
+   * `[data-testid="issue-row"][data-issue-id]` — so the only
+   * additional contract here is the `data-issue-id` attribute on
+   * the `<li>`. Both `search-result-row` and `search-result-button`
+   * carry the id so the hook's selector can find either DOM
+   * ancestor.
+   */
+  isKeyboardSelected: boolean
+}) {
   return (
     <li
       data-testid="search-result-row"
+      data-kbd-nav="row"
+      data-row-id={issue.id}
       data-issue-id={issue.id}
-      style={rowStyle}
+      data-row-selected={isKeyboardSelected ? 'true' : 'false'}
+      aria-selected={isKeyboardSelected}
+      style={{
+        ...rowStyle,
+        ...(isKeyboardSelected ? rowSelectedStyle : null),
+      }}
     >
       <button
         type="button"

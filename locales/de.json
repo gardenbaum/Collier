@@ -140,6 +140,8 @@
   "commands.group.other": "Andere",
   "commands.group.settings": "Einstellungen",
   "commands.group.window": "Fenster",
+  "commands.goToSearch.description": "Zur Suchansicht wechseln und das Eingabefeld fokussieren",
+  "commands.goToSearch.label": "Issues durchsuchen",
   "commands.hideLeftSidebar.description": "Die linke Seitenleiste ausblenden",
   "commands.hideLeftSidebar.label": "Linke Seitenleiste ausblenden",
   "commands.hideRightSidebar.description": "Die rechte Seitenleiste ausblenden",

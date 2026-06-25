@@ -140,6 +140,8 @@
   "commands.group.other": "Autre",
   "commands.group.settings": "Paramètres",
   "commands.group.window": "Fenêtre",
+  "commands.goToSearch.description": "Basculer vers la vue recherche et focaliser le champ de saisie",
+  "commands.goToSearch.label": "Rechercher des tickets",
   "commands.hideLeftSidebar.description": "Masquer la barre latérale gauche",
   "commands.hideLeftSidebar.label": "Masquer la barre latérale gauche",
   "commands.hideRightSidebar.description": "Masquer la barre latérale droite",

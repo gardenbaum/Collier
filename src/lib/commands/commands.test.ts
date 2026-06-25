@@ -14,6 +14,28 @@ vi.mock('@/store/ui-store', () => ({
   useUIStore: mockUIStore,
 }))
 
+const mockWorkspaceStore = {
+  getState: vi.fn(() => ({
+    setActiveView: vi.fn(),
+  })),
+}
+
+// M5 keyboard navigation: `go-to-search` reads the workspace store
+// to switch to the search view. Mock it here so the command-system
+// tests don't drag in the full Zustand persist + installQueryClient
+// machinery from the real store.
+vi.mock('@/store/workspace-store', () => ({
+  useWorkspaceStore: mockWorkspaceStore,
+}))
+
+const focusSearchInput = vi.fn()
+// Stub the focus event dispatcher so the command under test never
+// tries to talk to a real DOM EventTarget (jsdom can, but a stub
+// makes the assertion crisper).
+vi.mock('@/hooks/use-keyboard-navigation', () => ({
+  focusSearchInput,
+}))
+
 const { registerCommands, getAllCommands, executeCommand } =
   await import('./registry')
 const { navigationCommands } = await import('./navigation-commands')
@@ -163,6 +185,18 @@ describe('Simplified Command System', () => {
       const result = await executeCommand('hide-sidebar', mockContext)
 
       expect(result.success).toBe(true)
+    })
+
+    it('executes go-to-search: switches the active view and dispatches focus', async () => {
+      const setActiveView = vi.fn()
+      mockWorkspaceStore.getState.mockReturnValue({ setActiveView })
+      focusSearchInput.mockClear()
+
+      const result = await executeCommand('go-to-search', mockContext)
+
+      expect(result.success).toBe(true)
+      expect(setActiveView).toHaveBeenCalledWith('search')
+      expect(focusSearchInput).toHaveBeenCalledTimes(1)
     })
   })
 })
