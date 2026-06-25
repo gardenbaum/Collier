@@ -5,6 +5,7 @@ import { i18n } from './i18n/config'
 import './i18n'
 import App from './App'
 import { queryClient } from './lib/query-client'
+import { installQueryClient } from './store/workspace-store'
 
 // Set the `<html lang>` synchronously from the saved preference
 // (or the i18n default) so screen readers announce the correct
@@ -24,6 +25,13 @@ if (rootElement === null) {
     'Collier could not mount: #root element is missing from index.html'
   )
 }
+
+// Wire the singleton queryClient into the workspace store so
+// `switchWorkspace` can drop the old workspace's `['beads']` query
+// cache. Must happen before `App` mounts (so the bootstrap path's
+// `setRepoPath` calls don't race the install); we do it here at the
+// QueryClientProvider boundary.
+installQueryClient(queryClient)
 
 ReactDOM.createRoot(rootElement).render(
   <QueryClientProvider client={queryClient}>

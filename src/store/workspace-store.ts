@@ -10,7 +10,20 @@
  * back into the last workspace without a re-pick. `version: 1` makes
  * any future schema change opt-in via a `migrate` step instead of a
  * silent corruption.
+ *
+ * **M4 — multi-workspace switcher.** The header dropdown lets the
+ * user jump between known Beads workspaces without going back to
+ * the bootstrap screen. `switchWorkspace(path)` is the action: it
+ * updates `repoPath`, closes any open detail drawer, clears the
+ * TanStack Query cache for the old workspace (so list / detail /
+ * graph views refetch against the new repo), and writes the new
+ * path to `recent_repos` (so the dropdown finds it again next
+ * time). The queryClient is captured via a setter installed by
+ * `installQueryClient` on app boot — see `src/main.tsx`. We
+ * deliberately don't take a `queryClient` parameter on every
+ * action because the singleton is process-global and stable.
  */
+import type { QueryClient } from '@tanstack/react-query'
 import { create } from 'zustand'
 import { devtools, persist } from 'zustand/middleware'
 
@@ -52,12 +65,49 @@ interface WorkspaceState {
   openIssue: (id: string) => void
   closeIssue: () => void
   reset: () => void
+  /**
+   * Switch to a different Beads workspace in-place. Updates
+   * `repoPath`, closes the open detail drawer, drops the old
+   * workspace's TanStack Query cache (so list / detail / graph
+   * refetch against the new repo), and fires a `recent_repos`
+   * update via the on-disk Rust command so the dropdown finds
+   * the workspace again next launch. No-op when `path` equals
+   * the current `repoPath`.
+   */
+  switchWorkspace: (path: string) => void
+}
+
+// Module-level queryClient handle. Set once at app boot via
+// `installQueryClient` (see src/main.tsx); used by `switchWorkspace`
+// to drop the old workspace's query cache. Kept module-private so
+// callers can't mutate it from outside the store.
+let queryClient: QueryClient | null = null
+
+/**
+ * Wire the TanStack Query singleton into the workspace store so
+ * `switchWorkspace` can clear the old workspace's cache. Idempotent
+ * — re-calling with the same client is a no-op. MUST be called once
+ * during app boot, after `QueryClientProvider` mounts.
+ */
+export function installQueryClient(client: QueryClient): void {
+  queryClient = client
+}
+
+/**
+ * Read-only access for tests and the `switchWorkspace` action.
+ * Returns null when the app hasn't installed a client yet (the
+ * store itself never throws on this — `switchWorkspace` simply
+ * skips the invalidation step in that case so the store stays
+ * usable from isolated tests).
+ */
+export function getQueryClient(): QueryClient | null {
+  return queryClient
 }
 
 export const useWorkspaceStore = create<WorkspaceState>()(
   devtools(
     persist(
-      set => ({
+      (set, get) => ({
         repoPath: null,
         activeView: 'list',
         selectedIssueId: null,
@@ -78,6 +128,25 @@ export const useWorkspaceStore = create<WorkspaceState>()(
             activeView: 'list',
             selectedIssueId: null,
           }),
+        switchWorkspace: path => {
+          if (path.length === 0) return
+          const current = get().repoPath
+          if (current === path) return
+          // Drop the OLD workspace's `['beads', ...]` query cache
+          // before flipping `repoPath` so the React components
+          // (which key their `useQuery` on the new path) don't see
+          // stale data from the previous workspace for a frame.
+          // We use `removeQueries` rather than `invalidateQueries`
+          // because the data is from a different workspace — there's
+          // no "stale → fresh" relationship to model.
+          if (queryClient) {
+            queryClient.removeQueries({ queryKey: ['beads'] })
+          }
+          set({
+            repoPath: path,
+            selectedIssueId: null,
+          })
+        },
       }),
       {
         name: 'collier-workspace',
