@@ -149,16 +149,33 @@ describe('Collier M4 R9 multi-workspace switcher', () => {
     //    5 issues. We assert by waiting for the unique
     //    "M4 second workspace alpha" title to render — this
     //    proves bd is reading from /tmp/e2e-workspace-b and
-    //    not the old workspace.
-    const alphaRow = await browser.execute(() => {
-      const rows = Array.from(
-        document.querySelectorAll('[data-testid="issue-row"]')
-      )
-      return rows.find(r =>
-        (r.textContent ?? '').includes('second workspace alpha')
-      )
-    })
-    expect(alphaRow).not.toBeNull()
+    //    not the old workspace. The previous single-shot
+    //    query raced the cold-start of the new fixture's
+    //    `bd list` subprocess (the second fixture's Dolt
+    //    database isn't pre-warmed by any earlier spec, so
+    //    the first query after the switch can take several
+    //    seconds under CI load), which made the original
+    //    E2E flaky once the labels ParseError was fixed and
+    //    the list actually had to load.
+    const alphaRow = await browser.waitUntil(
+      async () => {
+        const rows = await browser.execute(() =>
+          Array.from(document.querySelectorAll('[data-testid="issue-row"]'))
+        )
+        const match = rows.find((r: unknown) =>
+          ((r as HTMLElement).textContent ?? '').includes(
+            'second workspace alpha'
+          )
+        )
+        return match ?? false
+      },
+      {
+        timeout: 10_000,
+        interval: 250,
+        timeoutMsg: 'second-fixture "alpha" issue row never rendered',
+      }
+    )
+    expect(alphaRow).toBeTruthy()
   })
 
   it('persists the switch through a re-open of the dropdown', async () => {
