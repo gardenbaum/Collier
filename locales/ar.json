@@ -245,6 +245,22 @@
     "hideLeftSidebar": "إخفاء الشريط الجانبي",
     "showLeftSidebar": "إظهار الشريط الجانبي"
   },
+  "workspace": {
+    "switcherLabel": "تبديل مساحة العمل",
+    "switcherHeading": "مساحات العمل",
+    "noWorkspace": "لا توجد مساحة عمل",
+    "pickOne": "اختر مساحة عمل",
+    "refresh": "تحديث",
+    "loading": "جارٍ تحميل مساحات العمل…",
+    "error": "تعذر تحميل مساحات العمل",
+    "empty": "لا توجد مساحات عمل بعد",
+    "currentSection": "الحالية",
+    "recentsSection": "حديثة",
+    "registrySection": "السجل",
+    "missing": "مفقود",
+    "switchFailedTitle": "تعذر تبديل مساحة العمل",
+    "switchFailedDescription": "أبلغت Beads عن خطأ أثناء فتح {{path}}: {{error}}"
+  },
   "toast.error.fullscreenEnterFailed": "فشل الدخول إلى ملء الشاشة: {{message}}",
   "toast.error.fullscreenExitFailed": "فشل الخروج من ملء الشاشة: {{message}}",
   "toast.error.generic": "حدث خطأ ما",

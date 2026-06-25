@@ -245,6 +245,22 @@
     "hideLeftSidebar": "Seitenleiste ausblenden",
     "showLeftSidebar": "Seitenleiste anzeigen"
   },
+  "workspace": {
+    "switcherLabel": "Arbeitsbereich wechseln",
+    "switcherHeading": "Arbeitsbereiche",
+    "noWorkspace": "Kein Arbeitsbereich",
+    "pickOne": "Arbeitsbereich wählen",
+    "refresh": "Aktualisieren",
+    "loading": "Lade Arbeitsbereiche…",
+    "error": "Arbeitsbereiche konnten nicht geladen werden",
+    "empty": "Noch keine Arbeitsbereiche",
+    "currentSection": "Aktuell",
+    "recentsSection": "Zuletzt verwendet",
+    "registrySection": "Registry",
+    "missing": "fehlt",
+    "switchFailedTitle": "Arbeitsbereich konnte nicht gewechselt werden",
+    "switchFailedDescription": "Beads meldete einen Fehler beim Öffnen von {{path}}: {{error}}"
+  },
   "toast.error.fullscreenEnterFailed": "Vollbild konnte nicht aktiviert werden: {{message}}",
   "toast.error.fullscreenExitFailed": "Vollbild konnte nicht beendet werden: {{message}}",
   "toast.error.generic": "Ein Fehler ist aufgetreten",

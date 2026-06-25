@@ -244,14 +244,12 @@ export const useIssueFilterStore = create<IssueFilterState>()(
  * the caller can use for cleanup; in production the app keeps
  * the store alive for the whole session, so cleanup is a no-op.
  */
-export function attachToWorkspaceStore(
-  workspaceStore: {
-    getState: () => { repoPath: string | null }
-    subscribe: (
-      listener: (state: { repoPath: string | null }) => void
-    ) => () => void
-  }
-): () => void {
+export function attachToWorkspaceStore(workspaceStore: {
+  getState: () => { repoPath: string | null }
+  subscribe: (
+    listener: (state: { repoPath: string | null }) => void
+  ) => () => void
+}): () => void {
   const prev = useIssueFilterStore.getState()._unsubscribeWorkspace
   if (prev) prev()
 

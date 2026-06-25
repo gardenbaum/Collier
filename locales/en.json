@@ -245,6 +245,22 @@
     "hideLeftSidebar": "Hide sidebar",
     "showLeftSidebar": "Show sidebar"
   },
+  "workspace": {
+    "switcherLabel": "Switch workspace",
+    "switcherHeading": "Workspaces",
+    "noWorkspace": "No workspace",
+    "pickOne": "Pick a workspace",
+    "refresh": "Refresh",
+    "loading": "Loading workspaces…",
+    "error": "Failed to load workspaces",
+    "empty": "No workspaces yet",
+    "currentSection": "Current",
+    "recentsSection": "Recents",
+    "registrySection": "Registry",
+    "missing": "missing",
+    "switchFailedTitle": "Couldn't switch workspace",
+    "switchFailedDescription": "Beads reported an error opening {{path}}: {{error}}"
+  },
   "toast.error.fullscreenEnterFailed": "Failed to enter fullscreen: {{message}}",
   "toast.error.fullscreenExitFailed": "Failed to exit fullscreen: {{message}}",
   "toast.error.generic": "Something went wrong",

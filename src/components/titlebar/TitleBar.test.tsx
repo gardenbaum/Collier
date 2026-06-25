@@ -2,20 +2,24 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen } from '@/test/test-utils'
 import { TitleBar } from './TitleBar'
 import { useWorkspaceStore } from '@/store/workspace-store'
+import type { WorkspaceEntry } from '@/lib/bindings'
 
-const { mockUsePlatform, mockWindowApi } = vi.hoisted(() => ({
-  mockUsePlatform: vi.fn<() => 'macos' | 'windows' | 'linux'>(() => 'macos'),
-  mockWindowApi: {
-    isMaximized: vi.fn().mockResolvedValue(false),
-    maximize: vi.fn().mockResolvedValue(undefined),
-    unmaximize: vi.fn().mockResolvedValue(undefined),
-    onResized: vi.fn().mockResolvedValue(() => undefined),
-    onFocusChanged: vi.fn().mockResolvedValue(() => undefined),
-    isFullscreen: vi.fn().mockResolvedValue(false),
-    close: vi.fn().mockResolvedValue(undefined),
-    minimize: vi.fn().mockResolvedValue(undefined),
-  },
-}))
+const { mockUsePlatform, mockWindowApi, mockListWorkspaces } = vi.hoisted(
+  () => ({
+    mockUsePlatform: vi.fn<() => 'macos' | 'windows' | 'linux'>(() => 'macos'),
+    mockWindowApi: {
+      isMaximized: vi.fn().mockResolvedValue(false),
+      maximize: vi.fn().mockResolvedValue(undefined),
+      unmaximize: vi.fn().mockResolvedValue(undefined),
+      onResized: vi.fn().mockResolvedValue(() => undefined),
+      onFocusChanged: vi.fn().mockResolvedValue(() => undefined),
+      isFullscreen: vi.fn().mockResolvedValue(false),
+      close: vi.fn().mockResolvedValue(undefined),
+      minimize: vi.fn().mockResolvedValue(undefined),
+    },
+    mockListWorkspaces: vi.fn(),
+  })
+)
 
 vi.mock('@/hooks/use-platform', () => ({
   usePlatform: mockUsePlatform,
@@ -31,11 +35,36 @@ vi.mock('@tauri-apps/api/window', () => ({
   getCurrentWindow: vi.fn(() => mockWindowApi),
 }))
 
+// WorkspaceSwitcher calls `commands.listWorkspaces` via TanStack
+// Query. Default: return a single current-workspace entry that
+// matches whatever the test sets `repoPath` to. Individual tests
+// override this with `mockListWorkspaces.mockResolvedValueOnce`.
+vi.mock('@/lib/tauri-bindings', () => ({
+  commands: {
+    listWorkspaces: mockListWorkspaces,
+  },
+}))
+
+function makeEntry(
+  path: string,
+  source: 'current' | 'recent' | 'registry',
+  exists = true
+): WorkspaceEntry {
+  const parts = path.split('/').filter(Boolean)
+  return {
+    path,
+    name: parts[parts.length - 1] ?? path,
+    source,
+    exists,
+  }
+}
+
 describe('TitleBar', () => {
   beforeEach(() => {
     mockUsePlatform.mockReset()
     mockUsePlatform.mockReturnValue('macos')
     useWorkspaceStore.setState({ repoPath: null })
+    mockListWorkspaces.mockReset()
   })
 
   it('renders the macOS layout with traffic lights when platform is macOS', () => {
@@ -86,19 +115,40 @@ describe('TitleBar', () => {
     expect(screen.getByTestId('titlebar-monogram')).toBeInTheDocument()
   })
 
-  it('appends the repo basename next to the title when repoPath is set', () => {
+  it('renders the WorkspaceSwitcher trigger in the left actions', () => {
+    // M4: the workspace name lives in a dropdown trigger in the
+    // left actions, not as a static badge next to the title.
     mockUsePlatform.mockReturnValue('macos')
     useWorkspaceStore.setState({ repoPath: '/Users/dev/projects/collier' })
+    mockListWorkspaces.mockResolvedValue({
+      status: 'ok',
+      data: [makeEntry('/Users/dev/projects/collier', 'current')],
+    })
     render(<TitleBar title="Collier" />)
-    expect(screen.getByTestId('titlebar-workspace')).toHaveTextContent(
-      'collier'
-    )
+    expect(screen.getByTestId('workspace-switcher-trigger')).toBeInTheDocument()
+    // The old static `titlebar-workspace` badge is gone.
+    expect(screen.queryByTestId('titlebar-workspace')).not.toBeInTheDocument()
   })
 
-  it('omits the workspace suffix when repoPath is null', () => {
+  it('shows the workspace basename on the switcher trigger when a workspace is open', async () => {
+    mockUsePlatform.mockReturnValue('macos')
+    useWorkspaceStore.setState({ repoPath: '/Users/dev/projects/collier' })
+    mockListWorkspaces.mockResolvedValue({
+      status: 'ok',
+      data: [makeEntry('/Users/dev/projects/collier', 'current')],
+    })
+    render(<TitleBar title="Collier" />)
+    // The trigger renders the workspace name; we wait for the
+    // TanStack Query to resolve and the React commit to land.
+    expect(await screen.findByText('collier')).toBeInTheDocument()
+  })
+
+  it('falls back to the no-workspace label when no workspace is set', () => {
     mockUsePlatform.mockReturnValue('macos')
     useWorkspaceStore.setState({ repoPath: null })
+    mockListWorkspaces.mockResolvedValue({ status: 'ok', data: [] })
     render(<TitleBar title="Collier" />)
-    expect(screen.queryByTestId('titlebar-workspace')).not.toBeInTheDocument()
+    // The trigger shows the i18n default ("No workspace" in en).
+    expect(screen.getByTestId('workspace-switcher-trigger')).toBeInTheDocument()
   })
 })

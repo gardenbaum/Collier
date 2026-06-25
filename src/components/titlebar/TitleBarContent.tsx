@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button'
 import { useUIStore } from '@/store/ui-store'
 import { executeCommand, useCommandContext } from '@/lib/commands'
 import { Monogram } from '@/components/atoms'
+import { WorkspaceSwitcher } from './WorkspaceSwitcher'
 
 export function TitleBarLeftActions() {
   const { t } = useTranslation()
@@ -29,6 +30,7 @@ export function TitleBarLeftActions() {
           <PanelLeft className="size-3.5" />
         )}
       </Button>
+      <WorkspaceSwitcher />
     </div>
   )
 }
@@ -62,37 +64,25 @@ interface TitleBarTitleProps {
   repoPath?: string | null
 }
 
-function repoBasename(path: string | null | undefined): string | null {
-  if (!path) return null
-  const parts = path.split('/').filter(Boolean)
-  return parts[parts.length - 1] ?? null
-}
+/**
+ * The centered window title (Monogram + "Collier"). The workspace
+ * name used to live here as a small monospace badge, but the M4
+ * `WorkspaceSwitcher` in the left actions already shows the active
+ * workspace — keeping a second copy here was redundant and confusing
+ * when the user has multiple workspaces open. The `repoPath` prop
+ * is preserved for callers that want to render a custom badge (the
+ * default ignores it).
+ */
 
 export function TitleBarTitle({
   title = 'Collier',
-  repoPath,
-}: TitleBarTitleProps) {
-  const repo = repoBasename(repoPath)
+}: TitleBarTitleProps): React.JSX.Element {
   return (
     <div className="flex items-center gap-2 px-3 select-none">
       <Monogram size={18} data-testid="titlebar-monogram" />
       <span className="text-[12px] font-semibold text-[color:var(--foreground)] tracking-tight">
         {title}
       </span>
-      {repo ? (
-        <>
-          <span className="text-[color:var(--muted-foreground)] text-[11px]">
-            ·
-          </span>
-          <span
-            className="text-[11px] text-[color:var(--muted-foreground)] font-mono"
-            data-testid="titlebar-workspace"
-            title={repoPath ?? ''}
-          >
-            {repo}
-          </span>
-        </>
-      ) : null}
     </div>
   )
 }

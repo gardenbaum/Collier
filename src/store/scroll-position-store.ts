@@ -152,14 +152,12 @@ export const useScrollPositionStore = create<ScrollPositionState>()(
  * pattern — the two stores are intentionally isomorphic so the
  * `App.tsx` wiring reads as two parallel lines.
  */
-export function attachToWorkspaceStore(
-  workspaceStore: {
-    getState: () => { repoPath: string | null }
-    subscribe: (
-      listener: (state: { repoPath: string | null }) => void
-    ) => () => void
-  }
-): () => void {
+export function attachToWorkspaceStore(workspaceStore: {
+  getState: () => { repoPath: string | null }
+  subscribe: (
+    listener: (state: { repoPath: string | null }) => void
+  ) => () => void
+}): () => void {
   const prev = useScrollPositionStore.getState()._unsubscribeWorkspace
   if (prev) prev()
   const initialPath = workspaceStore.getState().repoPath

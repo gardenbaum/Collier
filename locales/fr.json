@@ -245,6 +245,22 @@
     "hideLeftSidebar": "Masquer le panneau",
     "showLeftSidebar": "Afficher le panneau"
   },
+  "workspace": {
+    "switcherLabel": "Changer d'espace de travail",
+    "switcherHeading": "Espaces de travail",
+    "noWorkspace": "Aucun espace de travail",
+    "pickOne": "Choisir un espace de travail",
+    "refresh": "Rafraîchir",
+    "loading": "Chargement des espaces de travail…",
+    "error": "Impossible de charger les espaces de travail",
+    "empty": "Aucun espace de travail",
+    "currentSection": "Actuel",
+    "recentsSection": "Récents",
+    "registrySection": "Registre",
+    "missing": "manquant",
+    "switchFailedTitle": "Impossible de changer d'espace de travail",
+    "switchFailedDescription": "Beads a signalé une erreur lors de l'ouverture de {{path}} : {{error}}"
+  },
   "toast.error.fullscreenEnterFailed": "Échec du passage en plein écran : {{message}}",
   "toast.error.fullscreenExitFailed": "Échec de la sortie du plein écran : {{message}}",
   "toast.error.generic": "Une erreur s'est produite",

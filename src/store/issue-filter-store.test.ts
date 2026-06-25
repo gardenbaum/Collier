@@ -115,10 +115,7 @@ describe('useIssueFilterStore', () => {
       const { toggleAssignee } = useIssueFilterStore.getState()
       toggleAssignee('alice')
       toggleAssignee('bob')
-      expect(useIssueFilterStore.getState().assignees).toEqual([
-        'alice',
-        'bob',
-      ])
+      expect(useIssueFilterStore.getState().assignees).toEqual(['alice', 'bob'])
       toggleAssignee('alice')
       expect(useIssueFilterStore.getState().assignees).toEqual(['bob'])
     })
@@ -174,7 +171,7 @@ describe('useIssueFilterStore', () => {
       expect(useIssueFilterStore.getState()._activeRepoPath).toBe('/repo-a')
     })
 
-    it('keeps two repos\' filters isolated', () => {
+    it("keeps two repos' filters isolated", () => {
       const ws = bootWorkspace('/repo-a')
       useIssueFilterStore.getState().toggleStatus('open')
       ws.setRepoPath('/repo-b')
