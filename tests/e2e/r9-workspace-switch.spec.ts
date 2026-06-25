@@ -199,10 +199,11 @@ describe('Collier M4 R9 multi-workspace switcher', () => {
           return client
             .getQueryCache()
             .getAll()
-            .filter((q: { queryKey: readonly unknown[] }) =>
-              Array.isArray(q.queryKey) &&
-              q.queryKey[0] === 'beads' &&
-              q.queryKey[1] === 'list'
+            .filter(
+              (q: { queryKey: readonly unknown[] }) =>
+                Array.isArray(q.queryKey) &&
+                q.queryKey[0] === 'beads' &&
+                q.queryKey[1] === 'list'
             )
             .flatMap((q: { state: { data: unknown } }) => {
               const data = q.state.data
