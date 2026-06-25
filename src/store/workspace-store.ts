@@ -136,11 +136,16 @@ export const useWorkspaceStore = create<WorkspaceState>()(
           // before flipping `repoPath` so the React components
           // (which key their `useQuery` on the new path) don't see
           // stale data from the previous workspace for a frame.
-          // We use `removeQueries` rather than `invalidateQueries`
-          // because the data is from a different workspace — there's
-          // no "stale → fresh" relationship to model.
-          if (queryClient) {
-            queryClient.removeQueries({ queryKey: ['beads'] })
+          // Scope the removal to the OLD workspace's path so the
+          // NEW workspace's cached list (from when it was last
+          // active) survives the switch — without this, every
+          // workspace switch forces a fresh `bd list --json`
+          // subprocess call even when the target workspace's
+          // cache is already populated, which races the e2e
+          // spec's 10s budget under Dolt cold-start.
+          if (queryClient && current !== null) {
+            queryClient.removeQueries({ queryKey: ['beads', 'list', current] })
+            queryClient.removeQueries({ queryKey: ['beads', 'show', current] })
           }
           set({
             repoPath: path,

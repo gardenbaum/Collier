@@ -136,13 +136,22 @@ describe('useWorkspaceStore', () => {
       expect(useWorkspaceStore.getState().selectedIssueId).toBeNull()
     })
 
-    it('drops the old workspace beads query cache', () => {
+    it('drops the old workspace beads query cache (scoped to the old path)', () => {
       useWorkspaceStore.getState().setRepoPath('/old')
       const client = getQueryClient()
       expect(client).not.toBeNull()
       const removeSpy = vi.spyOn(client as QueryClient, 'removeQueries')
       useWorkspaceStore.getState().switchWorkspace('/new')
-      expect(removeSpy).toHaveBeenCalledWith({ queryKey: ['beads'] })
+      // Scoped removal — only the old workspace's list + show
+      // queries are wiped, so the new workspace's cached list
+      // survives a switch (no fresh `bd list --json` subprocess
+      // unless the new workspace was never loaded before).
+      expect(removeSpy).toHaveBeenCalledWith({
+        queryKey: ['beads', 'list', '/old'],
+      })
+      expect(removeSpy).toHaveBeenCalledWith({
+        queryKey: ['beads', 'show', '/old'],
+      })
     })
 
     it('is a no-op when path equals current repoPath', () => {
