@@ -231,9 +231,35 @@ describe('Collier M4 R9 multi-workspace switcher', () => {
     // -- Then: the "current" entry is now the second fixture
     //    (basename `e2e-workspace-b`), proving switchWorkspace
     //    wrote the new repo to the store.
-    const current = await $('[data-testid="workspace-switcher-current"]')
-    await current.waitForDisplayed({ timeout: 5_000 })
-    const currentText = (await current.getText()).toLowerCase()
+    //
+    // ponytail: read the text via `browser.execute` rather than
+    // wdio's `$().getText()` chain. The Radix portal re-mounts
+    // its content while the open animation settles, so a wdio
+    // element handle captured here has a stale WebDriver
+    // reference by the time `getText()` runs and returns "" —
+    // we observed exactly that race in CI run 28176992325 after
+    // the pointerdown-based re-open (the menu visibly contains
+    // "e2e-workspace-b" in the screenshot but wdio reads an
+    // empty string). Page-context DOM lookup re-queries on each
+    // iteration of the `waitUntil` below, so a transient
+    // remount just retries until the row stabilises.
+    const currentText = (await browser.waitUntil(
+      async () => {
+        const text = await browser.execute(
+          () =>
+            document
+              .querySelector('[data-testid="workspace-switcher-current"]')
+              ?.textContent?.toLowerCase() ?? null
+        )
+        return text
+      },
+      {
+        timeout: 5_000,
+        interval: 100,
+        timeoutMsg:
+          'workspace-switcher-current text never resolved after re-open',
+      }
+    )) as string
     expect(currentText).toContain('e2e-workspace-b')
   })
 
