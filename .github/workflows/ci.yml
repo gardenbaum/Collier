@@ -162,9 +162,6 @@ jobs:
           cat >"$HOME/.beads/registry.json" <<'REGISTRY_END'
           { "version" : 1, "workspaces" : [ { "path" : "/tmp/e2e-workspace" }, { "path" : "/tmp/e2e-workspace-b" } ] }
           REGISTRY_END
-          # Mirror to /root/.beads for the runner's default user.
-          mkdir -p /root/.beads
-          cp "$HOME/.beads/registry.json" /root/.beads/registry.json
           echo "Registry written to $HOME/.beads/registry.json"
           cat "$HOME/.beads/registry.json"
 
