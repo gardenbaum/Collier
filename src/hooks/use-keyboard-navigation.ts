@@ -92,7 +92,12 @@ function collectRows(): KeyboardNavRow[] {
     rows.push({
       id,
       element: node,
-      isExpanded: expandedAttr === 'true' ? true : expandedAttr === 'false' ? false : undefined,
+      isExpanded:
+        expandedAttr === 'true'
+          ? true
+          : expandedAttr === 'false'
+            ? false
+            : undefined,
     })
   }
   return rows
@@ -162,9 +167,7 @@ function toggleEpicAt(id: string, expand: boolean): void {
     `[data-kbd-nav="row"][data-row-id="${cssEscape(id)}"]`
   )
   if (!row) return
-  const chevron = row.querySelector<HTMLElement>(
-    '[data-testid="epic-chevron"]'
-  )
+  const chevron = row.querySelector<HTMLElement>('[data-testid="epic-chevron"]')
   if (!chevron) return
   const currentlyExpanded = chevron.getAttribute('data-expanded') === 'true'
   if (currentlyExpanded === expand) return
@@ -202,7 +205,8 @@ function moveCursor(
 ): string | null {
   const rows = collectRows()
   if (rows.length === 0) return null
-  const index = currentId === null ? -1 : rows.findIndex(r => r.id === currentId)
+  const index =
+    currentId === null ? -1 : rows.findIndex(r => r.id === currentId)
   if (index === -1) {
     const first = rows[0]
     const last = rows[rows.length - 1]

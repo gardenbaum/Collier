@@ -136,7 +136,9 @@ export const useWorkspaceStore = create<WorkspaceState>()(
         setActiveView: view => set({ activeView: view }),
         setSelectedIssueId: id => set({ selectedIssueId: id }),
         setSelectedRowId: id =>
-          set(state => (state.selectedRowId === id ? state : { selectedRowId: id })),
+          set(state =>
+            state.selectedRowId === id ? state : { selectedRowId: id }
+          ),
         openIssue: id => set({ selectedIssueId: id }),
         closeIssue: () => set({ selectedIssueId: null }),
         reset: () =>
