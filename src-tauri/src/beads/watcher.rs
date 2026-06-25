@@ -403,30 +403,67 @@ pub fn spawn_watcher(
     // list refetch (which races the 1 s end-to-end target under
     // CI cold-start and flakes the r10 spec — observed on runs
     // 28164785305, 28173810778, 28176649802, 28176992325,
-    // 28178940994). Seeding via `read_jsonl` is a no-op when the
-    // JSONL is missing/empty (the diff_snapshot path already
-    // handles that case with `if !baseline.is_seeded()`), so
-    // this is safe to do unconditionally.
+    // 28178940994, 28182904396).
+    //
+    // Two-stage seed: try `read_jsonl` first (fast — direct file
+    // read, ~10ms), fall back to `bd list --all --json` via
+    // subprocess if the workspace is Dolt-only (no JSONL file).
+    // The subprocess call is the same one the React list query
+    // uses, so it lands in the OS page cache and warms the bd
+    // binary for the first user query too. The diff_snapshot path
+    // is a no-op when the baseline isn't seeded yet, so this is
+    // safe to do unconditionally.
     let snapshot_for_seed = snapshot.clone();
     let repo_path_for_seed = repo_path.clone();
     let app_for_seed = app.clone();
     tauri::async_runtime::spawn(async move {
-        match crate::beads::jsonl::read_jsonl(&repo_path_for_seed).await {
-            Ok(read_result) => {
-                let _ = diff_snapshot(&snapshot_for_seed, &read_result.issues);
-                log::info!(
-                    "Seeded beads watcher baseline with {} issues from {}",
-                    read_result.issues.len(),
-                    repo_path_for_seed.display()
-                );
+        let read_result = crate::beads::jsonl::read_jsonl(&repo_path_for_seed).await;
+        let issues: Vec<Issue> = match read_result {
+            Ok(r) => r.issues,
+            Err(_) => {
+                // Fallback for Dolt-only fixtures: ask `bd` for
+                // the full list via subprocess. Same call the React
+                // list query uses (`bd list --all --json`), so we
+                // double as a warm-up for the first user query.
+                let argv: Vec<&str> = vec!["list", "--all", "--json"];
+                let path = repo_path_for_seed.as_path();
+                match crate::beads::runner::run_bd(&argv, path).await {
+                    Ok(crate::beads::runner::BdOutput::Json { value }) => {
+                        match crate::beads::search_query::extract_data(value) {
+                            Ok(v) => v,
+                            Err(e) => {
+                                log::warn!(
+                                    "Seeded baseline fallback parse failed for {}: {e:?}",
+                                    repo_path_for_seed.display()
+                                );
+                                Vec::new()
+                            }
+                        }
+                    }
+                    Ok(crate::beads::runner::BdOutput::Text { value }) => {
+                        log::warn!(
+                            "Seeded baseline fallback got text output for {}: {}",
+                            repo_path_for_seed.display(),
+                            value.chars().take(200).collect::<String>()
+                        );
+                        Vec::new()
+                    }
+                    Err(e) => {
+                        log::warn!(
+                            "Seeded baseline fallback failed for {}: {e:?}",
+                            repo_path_for_seed.display()
+                        );
+                        Vec::new()
+                    }
+                }
             }
-            Err(e) => {
-                log::warn!(
-                    "Failed to seed beads watcher baseline for {}: {e:?}",
-                    repo_path_for_seed.display()
-                );
-            }
-        }
+        };
+        let count = issues.len();
+        let _ = diff_snapshot(&snapshot_for_seed, &issues);
+        log::info!(
+            "Seeded beads watcher baseline with {count} issues from {}",
+            repo_path_for_seed.display()
+        );
         // Drop the app handle once seeding is done so the
         // closure doesn't keep a ref-counted handle alive past
         // its useful scope.
@@ -468,61 +505,94 @@ fn handle_change(
 
     let app_for_task = app.clone();
     tauri::async_runtime::spawn(async move {
-        match crate::beads::jsonl::read_jsonl(&repo_path).await {
-            Ok(read_result) => {
-                let was_seeded = snapshot.is_seeded();
-                let changes = diff_snapshot(&snapshot, &read_result.issues);
-                if !was_seeded {
-                    // First observation of this repo — let the
-                    // React side invalidate the broad cache once so
-                    // its existing queries settle. The targeted
-                    // events skip this tick intentionally; the
-                    // baseline is seeded but no per-issue events
-                    // fire (we just observed what's already on
-                    // disk).
-                    let reset = BeadsDataResetPayload {
-                        repo_path: repo_path_str.clone(),
-                        count: read_result.issues.len(),
-                    };
-                    if let Err(e) = app_for_task.emit("beads-data-reset", reset) {
-                        log::warn!("Failed to emit beads-data-reset: {e}");
+        // Try `read_jsonl` first (fast — direct file read).
+        // Fall back to `bd list --all --json` for Dolt-only
+        // fixtures where no JSONL file exists. Without this
+        // fallback, the watcher silently drops every change on
+        // a Dolt-only workspace and the React cache never
+        // catches up.
+        let jsonl_result = crate::beads::jsonl::read_jsonl(&repo_path).await;
+        let issues: Vec<Issue> = match jsonl_result {
+            Ok(r) => r.issues,
+            Err(_) => {
+                let argv: Vec<&str> = vec!["list", "--all", "--json"];
+                let path = repo_path.as_path();
+                match crate::beads::runner::run_bd(&argv, path).await {
+                    Ok(crate::beads::runner::BdOutput::Json { value }) => {
+                        crate::beads::search_query::extract_data(value).unwrap_or_else(|e| {
+                            log::warn!(
+                                "handle_change fallback parse failed for {}: {e:?}",
+                                repo_path.display()
+                            );
+                            Vec::new()
+                        })
                     }
-                    return;
-                }
-                for change in changes {
-                    match change {
-                        IssueChange::Created(issue) => {
-                            let payload = BeadsIssuePayload {
-                                repo_path: repo_path_str.clone(),
-                                issue,
-                            };
-                            if let Err(e) = app_for_task.emit("beads-issue-created", payload) {
-                                log::warn!("Failed to emit beads-issue-created: {e}");
-                            }
-                        }
-                        IssueChange::Updated(issue) => {
-                            let payload = BeadsIssuePayload {
-                                repo_path: repo_path_str.clone(),
-                                issue,
-                            };
-                            if let Err(e) = app_for_task.emit("beads-issue-updated", payload) {
-                                log::warn!("Failed to emit beads-issue-updated: {e}");
-                            }
-                        }
-                        IssueChange::Deleted(issue) => {
-                            let payload = BeadsIssueDeletedPayload {
-                                repo_path: repo_path_str.clone(),
-                                issue_id: issue.id,
-                            };
-                            if let Err(e) = app_for_task.emit("beads-issue-deleted", payload) {
-                                log::warn!("Failed to emit beads-issue-deleted: {e}");
-                            }
-                        }
+                    Ok(crate::beads::runner::BdOutput::Text { value }) => {
+                        log::warn!(
+                            "handle_change fallback got text output for {}: {}",
+                            repo_path.display(),
+                            value.chars().take(200).collect::<String>()
+                        );
+                        Vec::new()
+                    }
+                    Err(e) => {
+                        log::warn!(
+                            "handle_change fallback failed for {}: {e:?}",
+                            repo_path.display()
+                        );
+                        Vec::new()
                     }
                 }
             }
-            Err(e) => {
-                log::warn!("Failed to read JSONL for diff: {e:?}");
+        };
+        let was_seeded = snapshot.is_seeded();
+        let changes = diff_snapshot(&snapshot, &issues);
+        if !was_seeded {
+            // First observation of this repo — let the
+            // React side invalidate the broad cache once so
+            // its existing queries settle. The targeted
+            // events skip this tick intentionally; the
+            // baseline is seeded but no per-issue events
+            // fire (we just observed what's already on
+            // disk).
+            let reset = BeadsDataResetPayload {
+                repo_path: repo_path_str.clone(),
+                count: issues.len(),
+            };
+            if let Err(e) = app_for_task.emit("beads-data-reset", reset) {
+                log::warn!("Failed to emit beads-data-reset: {e}");
+            }
+            return;
+        }
+        for change in changes {
+            match change {
+                IssueChange::Created(issue) => {
+                    let payload = BeadsIssuePayload {
+                        repo_path: repo_path_str.clone(),
+                        issue,
+                    };
+                    if let Err(e) = app_for_task.emit("beads-issue-created", payload) {
+                        log::warn!("Failed to emit beads-issue-created: {e}");
+                    }
+                }
+                IssueChange::Updated(issue) => {
+                    let payload = BeadsIssuePayload {
+                        repo_path: repo_path_str.clone(),
+                        issue,
+                    };
+                    if let Err(e) = app_for_task.emit("beads-issue-updated", payload) {
+                        log::warn!("Failed to emit beads-issue-updated: {e}");
+                    }
+                }
+                IssueChange::Deleted(issue) => {
+                    let payload = BeadsIssueDeletedPayload {
+                        repo_path: repo_path_str.clone(),
+                        issue_id: issue.id,
+                    };
+                    if let Err(e) = app_for_task.emit("beads-issue-deleted", payload) {
+                        log::warn!("Failed to emit beads-issue-deleted: {e}");
+                    }
+                }
             }
         }
     });
