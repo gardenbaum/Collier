@@ -169,6 +169,18 @@ describe('Collier M3 R7 dependency graph', () => {
     // explicitly so the assertion doesn't race React's commit.
     const drawer = await $('[data-testid="issue-detail-view"]')
     await drawer.waitForDisplayed({ timeout: 5_000 })
+
+    // ponytail: clean up the drawer so the next test's sidebar
+    // click (sidebar-view-graph) isn't intercepted by the
+    // drawer's `fixed inset-0` backdrop. Same pattern as
+    // r3-inline-edit.spec.ts, r4-detail.spec.ts, and the
+    // "renders a header dep badge" spec in r8 — see those
+    // for the close-button selector + reverse waitForDisplayed
+    // rationale.
+    const closeButton = await $('[data-testid="close-button"]')
+    await closeButton.waitForDisplayed({ timeout: 5_000 })
+    await closeButton.click()
+    await drawer.waitForDisplayed({ timeout: 1_000, reverse: true })
   })
 
   it('exposes pan + zoom attributes on the canvas', async () => {
