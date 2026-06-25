@@ -44,11 +44,11 @@ function makeNode(overrides: Partial<GraphNode> = {}): GraphNode {
 
 function makeGraph(
   nodes: GraphNode[],
-  edges: Array<{
+  edges: {
     source: string
     target: string
     depType: DependencyType
-  }>,
+  }[]
 ): Graph {
   return {
     nodes,
@@ -62,7 +62,12 @@ describe('isBlockedNode', () => {
   })
 
   it('returns false for every other status', () => {
-    for (const status of ['open', 'in_progress', 'closed', 'deferred'] as const) {
+    for (const status of [
+      'open',
+      'in_progress',
+      'closed',
+      'deferred',
+    ] as const) {
       expect(isBlockedNode(makeNode({ status }))).toBe(false)
     }
   })
@@ -152,12 +157,8 @@ describe('zoomAroundPoint', () => {
 describe('computeLayout', () => {
   it('assigns x/y to every input node', () => {
     const graph = makeGraph(
-      [
-        makeNode({ id: 'a' }),
-        makeNode({ id: 'b' }),
-        makeNode({ id: 'c' }),
-      ],
-      [],
+      [makeNode({ id: 'a' }), makeNode({ id: 'b' }), makeNode({ id: 'c' })],
+      []
     )
     const layout = computeLayout(graph)
     expect(layout.nodes.length).toBe(3)
@@ -170,7 +171,7 @@ describe('computeLayout', () => {
   it('returns a polyline per edge between known nodes', () => {
     const graph = makeGraph(
       [makeNode({ id: 'a' }), makeNode({ id: 'b' })],
-      [{ source: 'a', target: 'b', depType: 'blocks' }],
+      [{ source: 'a', target: 'b', depType: 'blocks' }]
     )
     const layout = computeLayout(graph)
     expect(layout.edges.length).toBe(1)
@@ -183,7 +184,7 @@ describe('computeLayout', () => {
       [
         { source: 'a', target: 'ghost', depType: 'blocks' },
         { source: 'ghost2', target: 'a', depType: 'related' },
-      ],
+      ]
     )
     const layout = computeLayout(graph)
     // Both edges are filtered (source or target missing).
@@ -206,15 +207,11 @@ describe('computeLayout', () => {
     // semantics; computeLayout reverses it before dagre so the
     // parent lands upstream in TB (parent y < child y).
     const graph = makeGraph(
-      [
-        makeNode({ id: 'p' }),
-        makeNode({ id: 'c' }),
-        makeNode({ id: 'g' }),
-      ],
+      [makeNode({ id: 'p' }), makeNode({ id: 'c' }), makeNode({ id: 'g' })],
       [
         { source: 'c', target: 'p', depType: 'parent_child' },
         { source: 'g', target: 'c', depType: 'parent_child' },
-      ],
+      ]
     )
     const layout = computeLayout(graph)
     const byId = new Map(layout.nodes.map(n => [n.id, n]))
@@ -234,20 +231,16 @@ describe('computeLayout', () => {
 
   it('is deterministic: same input yields the same coordinates', () => {
     const graph = makeGraph(
-      [
-        makeNode({ id: 'a' }),
-        makeNode({ id: 'b' }),
-        makeNode({ id: 'c' }),
-      ],
+      [makeNode({ id: 'a' }), makeNode({ id: 'b' }), makeNode({ id: 'c' })],
       [
         { source: 'b', target: 'a', depType: 'blocks' },
         { source: 'c', target: 'b', depType: 'blocks' },
-      ],
+      ]
     )
     const first = computeLayout(graph)
     const second = computeLayout(graph)
     expect(second.nodes.map(n => ({ id: n.id, x: n.x, y: n.y }))).toEqual(
-      first.nodes.map(n => ({ id: n.id, x: n.x, y: n.y })),
+      first.nodes.map(n => ({ id: n.id, x: n.x, y: n.y }))
     )
   })
 })
@@ -271,7 +264,7 @@ describe('centreOnLayout', () => {
   it('returns the origin for a zero-sized layout (no centering move)', () => {
     const result = centreOnLayout(
       { nodes: [], edges: [], width: 0, height: 0 },
-      { width: 800, height: 600 },
+      { width: 800, height: 600 }
     )
     expect(result).toEqual({ panX: 0, panY: 0, zoom: 1 })
   })

@@ -30,7 +30,11 @@
  * See `depGraphLayout.ts` for the rationale + bundle math.
  */
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import type { CSSProperties, PointerEvent as ReactPointerEvent, WheelEvent as ReactWheelEvent } from 'react'
+import type {
+  CSSProperties,
+  PointerEvent as ReactPointerEvent,
+  WheelEvent as ReactWheelEvent,
+} from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { Network } from 'lucide-react'
@@ -181,9 +185,7 @@ function edgeStrokeStyle(kind: 'blocker' | 'parent' | 'related'): {
  * The arrow head is a fixed 8px line, drawn along the direction
  * of the last segment so it tracks turns in the polyline.
  */
-function polylinePath(
-  points: ReadonlyArray<{ x: number; y: number }>,
-): string {
+function polylinePath(points: readonly { x: number; y: number }[]): string {
   if (points.length === 0) return ''
   const first = points[0]
   if (!first) return ''
@@ -202,9 +204,7 @@ function polylinePath(
  * Returns an SVG `path` `d` string, or empty string for a degenerate
  * edge (single-point polyline).
  */
-function arrowHeadPath(
-  points: ReadonlyArray<{ x: number; y: number }>,
-): string {
+function arrowHeadPath(points: readonly { x: number; y: number }[]): string {
   if (points.length < 2) return ''
   const last = points[points.length - 1]
   const prev = points[points.length - 2]
@@ -496,7 +496,11 @@ export function DepGraphView({ cwd, onOpenIssue }: DepGraphViewProps) {
 
   if (isLoading) {
     return (
-      <section data-testid="dep-graph-view" style={containerStyle} aria-busy="true">
+      <section
+        data-testid="dep-graph-view"
+        style={containerStyle}
+        aria-busy="true"
+      >
         <div style={loadingStyle} data-testid="graph-loading">
           Loading…
         </div>

@@ -221,7 +221,10 @@ async fn graph_edges_use_documented_dep_types() {
     assert_eq!(parent_child_count, 5, "fixture seeds 5 parent-child edges");
 
     // Spot-check: MIGRATE -> OPT is one of the 5 blocks edges.
-    let migrate_id = ids.get("TASK_MIGRATE").and_then(Value::as_str).expect("migrate id");
+    let migrate_id = ids
+        .get("TASK_MIGRATE")
+        .and_then(Value::as_str)
+        .expect("migrate id");
     let opt_id = ids.get("TASK_OPT").and_then(Value::as_str).expect("opt id");
     let migrate_blocks_opt = edges.iter().any(|e| {
         e.get("source").and_then(Value::as_str) == Some(opt_id)
@@ -234,8 +237,14 @@ async fn graph_edges_use_documented_dep_types() {
     );
 
     // Spot-check: LOGIN -> EPIC_AUTH is one of the 5 parent-child edges.
-    let login_id = ids.get("TASK_LOGIN").and_then(Value::as_str).expect("login id");
-    let epic_auth_id = ids.get("EPIC_AUTH").and_then(Value::as_str).expect("epic_auth id");
+    let login_id = ids
+        .get("TASK_LOGIN")
+        .and_then(Value::as_str)
+        .expect("login id");
+    let epic_auth_id = ids
+        .get("EPIC_AUTH")
+        .and_then(Value::as_str)
+        .expect("epic_auth id");
     let login_to_auth = edges.iter().any(|e| {
         e.get("source").and_then(Value::as_str) == Some(login_id)
             && e.get("target").and_then(Value::as_str) == Some(epic_auth_id)
@@ -263,7 +272,10 @@ async fn graph_nodes_carry_blocked_status_for_blocked_issues() {
     // surface in the graph node set so the frontend can
     // highlight them without a second `bd blocked` round-trip.
     let opt_id = ids.get("TASK_OPT").and_then(Value::as_str).expect("opt id");
-    let refac_id = ids.get("TASK_REFAC").and_then(Value::as_str).expect("refac id");
+    let refac_id = ids
+        .get("TASK_REFAC")
+        .and_then(Value::as_str)
+        .expect("refac id");
 
     let opt_status = nodes
         .iter()
@@ -279,8 +291,5 @@ async fn graph_nodes_carry_blocked_status_for_blocked_issues() {
         .and_then(|n| n.get("status"))
         .and_then(Value::as_str)
         .expect("REFAC node + status");
-    assert_eq!(
-        refac_status, "blocked",
-        "TASK_REFAC must be status=blocked"
-    );
+    assert_eq!(refac_status, "blocked", "TASK_REFAC must be status=blocked");
 }

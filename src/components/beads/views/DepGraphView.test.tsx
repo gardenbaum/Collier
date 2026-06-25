@@ -42,7 +42,8 @@ class ResizeObserverStub {
   }
 }
 beforeAll(() => {
-  globalThis.ResizeObserver = ResizeObserverStub as unknown as typeof ResizeObserver
+  globalThis.ResizeObserver =
+    ResizeObserverStub as unknown as typeof ResizeObserver
 })
 
 const { mockBdGraph } = vi.hoisted(() => ({
@@ -103,7 +104,10 @@ describe('DepGraphView', () => {
   })
 
   it('calls bdGraph with the provided cwd', async () => {
-    mockBdGraph.mockResolvedValue({ status: 'ok', data: { nodes: [], edges: [] } })
+    mockBdGraph.mockResolvedValue({
+      status: 'ok',
+      data: { nodes: [], edges: [] },
+    })
 
     const { DepGraphView } = await importSut()
     render(<DepGraphView cwd="/repo/path" onOpenIssue={() => undefined} />)
@@ -114,7 +118,10 @@ describe('DepGraphView', () => {
   })
 
   it('renders the empty state when the graph has zero nodes', async () => {
-    mockBdGraph.mockResolvedValue({ status: 'ok', data: { nodes: [], edges: [] } })
+    mockBdGraph.mockResolvedValue({
+      status: 'ok',
+      data: { nodes: [], edges: [] },
+    })
 
     const { DepGraphView } = await importSut()
     render(<DepGraphView cwd="/fake" onOpenIssue={() => undefined} />)
@@ -244,7 +251,9 @@ describe('DepGraphView', () => {
       expect(screen.getByTestId('graph-canvas')).toBeInTheDocument()
     })
 
-    const node = document.querySelector('[data-node-id="b"]') as HTMLElement | null
+    const node = document.querySelector(
+      '[data-node-id="b"]'
+    ) as HTMLElement | null
     expect(node).not.toBeNull()
     fireEvent.click(node as HTMLElement)
 
@@ -263,7 +272,9 @@ describe('DepGraphView', () => {
     await waitFor(() => {
       expect(screen.getByTestId('graph-error')).toBeInTheDocument()
     })
-    expect(screen.getByTestId('graph-error').textContent).toContain('no graph for you')
+    expect(screen.getByTestId('graph-error').textContent).toContain(
+      'no graph for you'
+    )
   })
 
   it('exposes the initial pan/zoom on the canvas data attributes', async () => {

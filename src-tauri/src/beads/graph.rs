@@ -55,10 +55,8 @@ pub async fn bd_graph(cwd: String) -> BdResult<Graph> {
             message: "missing 'data' field in JSON envelope".to_string(),
         })?
         .clone();
-    let issues: Vec<Issue> = serde_json::from_value(data).map_err(|e| {
-        BdError::ParseError {
-            message: format!("failed to parse Graph nodes from 'data' field: {e}"),
-        }
+    let issues: Vec<Issue> = serde_json::from_value(data).map_err(|e| BdError::ParseError {
+        message: format!("failed to parse Graph nodes from 'data' field: {e}"),
     })?;
 
     // De-dupe nodes by id via BTreeMap for stable iteration order
@@ -139,11 +137,20 @@ mod tests {
             edges: vec![edge],
         };
         let json = serde_json::to_value(&graph).expect("serialize");
-        let node_json = json.get("nodes").and_then(|v| v.as_array()).expect("nodes array");
-        let edge_json = json.get("edges").and_then(|v| v.as_array()).expect("edges array");
+        let node_json = json
+            .get("nodes")
+            .and_then(|v| v.as_array())
+            .expect("nodes array");
+        let edge_json = json
+            .get("edges")
+            .and_then(|v| v.as_array())
+            .expect("edges array");
         let first_node = node_json.first().expect("first node");
         // camelCase keys the React component expects:
-        assert!(first_node.get("issueType").is_some(), "expected issueType key");
+        assert!(
+            first_node.get("issueType").is_some(),
+            "expected issueType key"
+        );
         assert!(
             first_node.get("issue_type").is_none(),
             "rust field must rename to camelCase on the wire"

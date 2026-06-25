@@ -63,7 +63,7 @@ export interface LaidOutEdge {
    * end. Empty array means the edge was dropped by dagre (target
    * not in the node set) — the renderer should skip rendering.
    */
-  points: ReadonlyArray<{ x: number; y: number }>
+  points: readonly { x: number; y: number }[]
 }
 
 export interface LaidOutGraph {
@@ -200,10 +200,10 @@ export function computeLayout(graph: Graph): LaidOutGraph {
         v: edge.target,
         w: edge.source,
       })
-      const points = (dagreEdge?.points ?? []) as ReadonlyArray<{
+      const points = (dagreEdge?.points ?? []) as readonly {
         x: number
         y: number
-      }>
+      }[]
       return {
         // Swap so the output edges read "blocker → dependent" —
         // the SVG renderer uses source as the arrow's tail.
@@ -254,7 +254,7 @@ export function clampZoom(z: number): number {
 export function zoomAroundPoint(
   current: { panX: number; panY: number; zoom: number },
   cursor: { x: number; y: number },
-  deltaZoom: number,
+  deltaZoom: number
 ): { panX: number; panY: number; zoom: number } {
   const newZoom = clampZoom(current.zoom * deltaZoom)
   // If the clamp swallowed the delta (already at the cap), return
@@ -277,7 +277,7 @@ export function zoomAroundPoint(
  */
 export function centreOnLayout(
   layout: LaidOutGraph,
-  viewport: { width: number; height: number },
+  viewport: { width: number; height: number }
 ): { panX: number; panY: number; zoom: number } {
   if (layout.width === 0 || layout.height === 0) {
     return { panX: 0, panY: 0, zoom: 1 }

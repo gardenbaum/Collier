@@ -15,10 +15,10 @@ feature itself.
 Evaluated two libraries, mindful of the Tauri bundle (see
 `docs/developer/bundle-optimization.md`):
 
-| Library | Approx bundle cost | Pan/zoom | Custom nodes | License |
-|---|---|---|---|---|
-| `@xyflow/react` (React Flow) | ~150–200 KB min+gz, ships its own React renderer + d3-style internals | Built-in | Yes (React components) | MIT |
-| `dagre` + hand-rolled SVG + ~50 lines of pointer-events pan/zoom | ~30 KB min+gz, one pure-JS layout dep | Hand-rolled | Yes (SVG primitives) | MIT / similar |
+| Library                                                          | Approx bundle cost                                                    | Pan/zoom    | Custom nodes           | License       |
+| ---------------------------------------------------------------- | --------------------------------------------------------------------- | ----------- | ---------------------- | ------------- |
+| `@xyflow/react` (React Flow)                                     | ~150–200 KB min+gz, ships its own React renderer + d3-style internals | Built-in    | Yes (React components) | MIT           |
+| `dagre` + hand-rolled SVG + ~50 lines of pointer-events pan/zoom | ~30 KB min+gz, one pure-JS layout dep                                 | Hand-rolled | Yes (SVG primitives)   | MIT / similar |
 
 **Choice: dagre + SVG + hand-rolled pan/zoom.**
 
@@ -93,8 +93,8 @@ and assert the detail drawer mounts.
 ## Cards (bounded, dependency-ordered, dir: on feat/m3-depgraph)
 
 1. **m3-rust-graph** — Rust `bd_graph` command + specta types
-   + integration test on the fixture shape. (Foundation; no
-   UI.)
+   - integration test on the fixture shape. (Foundation; no
+     UI.)
 2. **m3-graph-view** — `DepGraphView` React component
    (dagre + SVG + pan/zoom), wired into `ViewsRouter` +
    sidebar + workspace store. Unit tests for layout / blocked
