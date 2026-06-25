@@ -68,6 +68,14 @@ function makeRow(
   // contract separate from each view's readable testid.
   el.setAttribute('data-kbd-nav', 'row')
   el.setAttribute('data-row-id', id)
+  // Make the row programmatically focusable in jsdom. In the
+  // real app `IssueListView` sets `tabIndex={isKeyboardSelected ?
+  // 0 : -1}` on the row; here we just need jsdom to treat the
+  // row as a focusable target so `row.element.focus()` actually
+  // moves `document.activeElement`. The exact tabindex value
+  // doesn't matter — jsdom honours focus on any tabindex-bearing
+  // element regardless of its in-tab-order status.
+  el.setAttribute('tabindex', '-1')
   if (testId === 'epic-row') {
     el.setAttribute('data-epic-id', id)
     el.setAttribute('data-expanded', 'true')
@@ -209,6 +217,52 @@ describe('useKeyboardNavigation', () => {
       pressKey('j')
 
       expect(useWorkspaceStore.getState().selectedRowId).toBeNull()
+    })
+
+    it('j from no cursor moves keyboard focus to the first row (roving tabindex)', () => {
+      // Without this, the cursor lands on row 1 (data-row-selected=true)
+      // but document.activeElement stays on body — the user could see
+      // the visual selection yet Enter wouldn't open the row. The
+      // keyboard hook is responsible for syncing DOM focus with the
+      // cursor because the row uses `tabIndex={0}` (roving tabindex),
+      // not `aria-activedescendant`.
+      const a = makeRow('A')
+      const b = makeRow('B')
+      renderHook(() => useKeyboardNavigation())
+
+      pressKey('j')
+
+      expect(useWorkspaceStore.getState().selectedRowId).toBe('A')
+      expect(document.activeElement).toBe(a)
+      expect(document.activeElement).not.toBe(b)
+    })
+
+    it('j from a stale cursor (no longer in the DOM) moves focus to the first row', () => {
+      // When the workspace re-renders and the previous cursor's row
+      // is unmounted, the next j/k from the keyboard hook should
+      // still focus the new target — not just update selectedRowId.
+      const a = makeRow('A')
+      const b = makeRow('B')
+      useWorkspaceStore.setState({ selectedRowId: 'STALE-NOT-IN-DOM' })
+      renderHook(() => useKeyboardNavigation())
+
+      pressKey('j')
+
+      expect(useWorkspaceStore.getState().selectedRowId).toBe('A')
+      expect(document.activeElement).toBe(a)
+      expect(document.activeElement).not.toBe(b)
+    })
+
+    it('k from no cursor moves keyboard focus to the LAST row', () => {
+      const a = makeRow('A')
+      const c = makeRow('C')
+      renderHook(() => useKeyboardNavigation())
+
+      pressKey('k')
+
+      expect(useWorkspaceStore.getState().selectedRowId).toBe('C')
+      expect(document.activeElement).toBe(c)
+      expect(document.activeElement).not.toBe(a)
     })
 
     it('anchors to the first row when the stored cursor is no longer in the DOM', () => {

@@ -220,7 +220,16 @@ function moveCursor(
     const first = rows[0]
     const last = rows[rows.length - 1]
     if (first === undefined || last === undefined) return null
-    return direction === 1 ? first.id : last.id
+    const target = direction === 1 ? first : last
+    // Sync the DOM focus with the cursor on the first navigation
+    // out of "no cursor" — without this the roving tabindex's
+    // active row would have visual selection (data-row-selected=true
+    // after the state update) but no keyboard focus, leaving the
+    // user unable to press Enter immediately after landing on it.
+    if (document.activeElement !== target.element) {
+      target.element.focus({ preventScroll: true })
+    }
+    return target.id
   }
   const next = index + direction
   if (next < 0 || next >= rows.length) return currentId
