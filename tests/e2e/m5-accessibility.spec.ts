@@ -69,10 +69,12 @@ describe('Collier M5 accessibility', () => {
   })
 
   it('exposes aria-sort on every column header (initial: none)', async () => {
+    // Query by role=columnheader — semantically equivalent and
+    // avoids combined attribute substring selectors, which WebKitGTK's
+    // WebDriver rejects (`[attr^=...][$=...]` returns "not a valid
+    // selector" even though querySelectorAll in the browser accepts it).
     const headers = await browser.execute(() =>
-      Array.from(
-        document.querySelectorAll('[data-testid^="sort-header-"][$="-column"]')
-      ).map(h => ({
+      Array.from(document.querySelectorAll('[role="columnheader"]')).map(h => ({
         sortKey: h.getAttribute('data-testid'),
         ariaSort: h.getAttribute('aria-sort'),
       }))

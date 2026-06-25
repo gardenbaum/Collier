@@ -39,3 +39,9 @@ coverage
 *.db
 .beads-credential-key
 .beads/proxieddb/
+
+# E2E screenshots and downloaded test artifacts (from CI / local wdio runs)
+Collier-*.png
+e2e-screenshots/
+*.spec-*.log
+wdio.log
