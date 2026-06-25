@@ -1,4 +1,5 @@
 pub mod detect;
+pub mod graph;
 pub mod jsonl;
 pub mod list;
 pub mod lock;
