@@ -132,21 +132,24 @@ export const useWorkspaceStore = create<WorkspaceState>()(
           if (path.length === 0) return
           const current = get().repoPath
           if (current === path) return
-          // Drop the OLD workspace's `['beads', ...]` query cache
-          // before flipping `repoPath` so the React components
-          // (which key their `useQuery` on the new path) don't see
-          // stale data from the previous workspace for a frame.
-          // Scope the removal to the OLD workspace's path so the
-          // NEW workspace's cached list (from when it was last
-          // active) survives the switch — without this, every
-          // workspace switch forces a fresh `bd list --json`
-          // subprocess call even when the target workspace's
-          // cache is already populated, which races the e2e
-          // spec's 10s budget under Dolt cold-start.
-          if (queryClient && current !== null) {
-            queryClient.removeQueries({ queryKey: ['beads', 'list', current] })
-            queryClient.removeQueries({ queryKey: ['beads', 'show', current] })
-          }
+          // Each workspace's beads list + show caches are keyed
+          // on its own path (`['beads', 'list', cwd, filters]` and
+          // `['beads', 'show', cwd, id]`), so a switch is naturally
+          // isolated by the queryKey — the OLD workspace's
+          // component re-renders with a new queryKey and TanStack
+          // Query discards it as garbage, the NEW workspace's
+          // component renders with its OWN queryKey and finds
+          // either a fresh cached list (if it was loaded before
+          // — instant render) or runs the queryFn (cold bd
+          // subprocess, ~1-2s on Dolt). The previous implementation
+          // called `removeQueries({ queryKey: ['beads'] })` which
+          // wiped every workspace's cache, forcing a fresh `bd
+          // list --json` subprocess on every switch and racing the
+          // e2e spec's 10s budget under Dolt cold-start (r9 test
+          // 5: 'can switch back to the first fixture and reload'
+          // failed with 'Received string: 0 issues' / 'Loading...').
+          // Keep `selectedIssueId: null` — the old issue is from
+          // a different workspace.
           set({
             repoPath: path,
             selectedIssueId: null,
