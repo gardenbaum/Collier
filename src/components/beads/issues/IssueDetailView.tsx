@@ -27,6 +27,7 @@ import type { Comment, HistoryEntry, Issue } from '@/lib/bindings'
 import { colors, space, type } from '@/lib/design-tokens'
 import { TypeIcon } from './badges/TypeIcon'
 import { LabelChip } from './badges/LabelChip'
+import { DependencyBadge } from './badges/DependencyBadge'
 import { DependencyListView } from '../dependencies/DependencyListView'
 import {
   InlineAssigneeEdit,
@@ -163,6 +164,11 @@ export function IssueDetailView({
                 <TypeIcon type={issue.issue_type} />
                 <InlineStatusEdit cwd={cwd} issue={issue} />
                 <InlineAssigneeEdit cwd={cwd} issue={issue} />
+                <DependencyBadge
+                  blockedBy={issue.dependency_count ?? 0}
+                  blocks={issue.dependent_count ?? 0}
+                  variant="header"
+                />
                 <span style={metaStyle}>
                   created: {formatDate(issue.created_at)}
                 </span>

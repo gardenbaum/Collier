@@ -25,6 +25,7 @@ import { EmptyState } from '@/components/atoms'
 import { StatusPill } from './badges/StatusPill'
 import { PriorityDot } from './badges/PriorityDot'
 import { TypeIcon } from './badges/TypeIcon'
+import { DependencyBadge } from './badges/DependencyBadge'
 
 export interface BlockedViewProps {
   /** Repository root. Hardcoded to '/fake' in the bootstrap pattern; the
@@ -152,6 +153,10 @@ function BlockedRow({ issue }: { issue: Issue }) {
       <TypeIcon type={issue.issue_type} />
       <StatusPill status={issue.status} />
       <span style={titleStyle}>{issue.title}</span>
+      <DependencyBadge
+        blockedBy={issue.dependency_count ?? 0}
+        blocks={issue.dependent_count ?? 0}
+      />
       <span style={idStyle}>{issue.id}</span>
     </li>
   )

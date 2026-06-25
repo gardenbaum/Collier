@@ -26,6 +26,7 @@ import { EmptyState } from '@/components/atoms'
 import { StatusPill } from './badges/StatusPill'
 import { PriorityDot } from './badges/PriorityDot'
 import { TypeIcon } from './badges/TypeIcon'
+import { DependencyBadge } from './badges/DependencyBadge'
 import { hasQueryOperator } from './search-syntax'
 
 const RECENT_KEY = 'collier-recent-searches'
@@ -352,6 +353,10 @@ function SearchRow({ issue, onClick }: { issue: Issue; onClick: () => void }) {
         <TypeIcon type={issue.issue_type} />
         <StatusPill status={issue.status} />
         <span style={titleStyle}>{issue.title}</span>
+        <DependencyBadge
+          blockedBy={issue.dependency_count ?? 0}
+          blocks={issue.dependent_count ?? 0}
+        />
       </button>
       <span style={idStyle}>{issue.id}</span>
     </li>
