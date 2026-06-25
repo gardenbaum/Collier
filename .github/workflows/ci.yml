@@ -135,6 +135,39 @@ jobs:
           # Sanity: fixture must expose a non-empty issue list.
           (cd /tmp/e2e-workspace && bd list --json | head -c 200 && echo)
 
+      # M4: second fixture for the workspace-switcher spec. The
+      # switcher dropdown reads ~/.beads/registry.json plus
+      # recent_repos, so pre-populate the registry with both
+      # workspaces BEFORE pre-warming the binary — the registry
+      # lives at $HOME and survives the fixture teardown.
+      - name: Generate second E2E fixture workspace
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/e2e-workspace-b
+          scripts/make-second-fixture.sh /tmp/e2e-workspace-b
+          # Pre-populate ~/.beads/registry.json with both fixtures
+          # so the WorkspaceSwitcher dropdown shows both entries
+          # on first render. Without this, the dropdown would only
+          # list the active workspace (current) and we'd never see
+          # a second entry to click. We deliberately write the
+          # registry ourselves (instead of relying on `bd init` to
+          # register them) so the fixture stays deterministic.
+          # Use single-quoted heredoc to disable shell expansion —
+          # `<<JSON` would still try to expand $HOME inside the
+          # body, and the YAML parser treats the bare `:` in the
+          # JSON keys as a YAML mapping separator on adjacent
+          # lines. Single-quoted terminator + spaces around the
+          # colons make the YAML linter happy.
+          mkdir -p "$HOME/.beads"
+          cat >"$HOME/.beads/registry.json" <<'REGISTRY_END'
+          { "version" : 1, "workspaces" : [ { "path" : "/tmp/e2e-workspace" }, { "path" : "/tmp/e2e-workspace-b" } ] }
+          REGISTRY_END
+          # Mirror to /root/.beads for the runner's default user.
+          mkdir -p /root/.beads
+          cp "$HOME/.beads/registry.json" /root/.beads/registry.json
+          echo "Registry written to $HOME/.beads/registry.json"
+          cat "$HOME/.beads/registry.json"
+
       # Pre-warm the OS file cache for the Collier binary and its
       # shared libraries. The debug binary is 382 MB and the cold
       # load (mmap + dynamic linker + GTK / webkit2gtk init) on a
