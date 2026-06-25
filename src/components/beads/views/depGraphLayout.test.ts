@@ -246,7 +246,7 @@ describe('computeLayout', () => {
 })
 
 describe('centreOnLayout', () => {
-  it('centres the layout box in the viewport at zoom=1', () => {
+  it('fits the layout into the viewport and centres it', () => {
     const layout = {
       nodes: [],
       edges: [],
@@ -255,10 +255,28 @@ describe('centreOnLayout', () => {
     }
     const viewport = { width: 1200, height: 800 }
     const result = centreOnLayout(layout, viewport)
-    expect(result.zoom).toBe(1)
-    // panX = (viewport.width - layout.width) / 2 = (1200-1000)/2 = 100
-    expect(result.panX).toBe(100)
-    expect(result.panY).toBe((800 - 500) / 2)
+    // Fit-zoom = min(1200/1000, 800/500) * 0.96 = 1.2 * 0.96 = 1.152
+    // (clamped to ZOOM_MAX=3, well within range). The layout is
+    // smaller than the viewport so the zoom is > 1 (zooming in).
+    expect(result.zoom).toBeCloseTo(1.152)
+    // visibleW = 1200 / 1.152 ≈ 1041.67, panX = (1000 - 1041.67) / 2 ≈ -20.83
+    expect(result.panX).toBeCloseTo(-20.83)
+    // visibleH = 800 / 1.152 ≈ 694.44, panY = (500 - 694.44) / 2 ≈ -97.22
+    expect(result.panY).toBeCloseTo(-97.22)
+  })
+
+  it('zooms out (zoom < 1) when the layout is wider/taller than the viewport', () => {
+    // Realistic fixture: very wide + short graph (the 25-issue
+    // fixture produces roughly 3848x240 layout coordinates).
+    const layout = { nodes: [], edges: [], width: 3848, height: 240 }
+    const viewport = { width: 1200, height: 800 }
+    const result = centreOnLayout(layout, viewport)
+    // fitZoom = min(1200/3848, 800/240) * 0.96 ≈ 0.2994
+    expect(result.zoom).toBeCloseTo(0.2994, 3)
+    // visibleW = 1200 / 0.2994 ≈ 4008.33, panX = (3848 - 4008.33) / 2 ≈ -80.17
+    expect(result.panX).toBeCloseTo(-80.17, 1)
+    // visibleH = 800 / 0.2994 ≈ 2672.22, panY = (240 - 2672.22) / 2 ≈ -1216.11
+    expect(result.panY).toBeCloseTo(-1216.11, 1)
   })
 
   it('returns the origin for a zero-sized layout (no centering move)', () => {
@@ -267,5 +285,27 @@ describe('centreOnLayout', () => {
       { width: 800, height: 600 }
     )
     expect(result).toEqual({ panX: 0, panY: 0, zoom: 1 })
+  })
+
+  it('returns the origin when the viewport is zero-sized', () => {
+    // Defensive: ResizeObserver fires synchronously on mount with
+    // the container's clientWidth/clientHeight, but the first
+    // layoutEffect could see 0x0 if the parent collapses. The
+    // helper returns a no-op pan/zoom in that case.
+    const result = centreOnLayout(
+      { nodes: [], edges: [], width: 1000, height: 500 },
+      { width: 0, height: 0 }
+    )
+    expect(result).toEqual({ panX: 0, panY: 0, zoom: 1 })
+  })
+
+  it('clamps the fit zoom to ZOOM_MIN for huge layouts', () => {
+    // Single-line 1000-issue workspace: layout is 200_000 x 56.
+    // Raw fit zoom would be ~0.006, well below ZOOM_MIN=0.2 — the
+    // clamp keeps click targets at a usable size.
+    const layout = { nodes: [], edges: [], width: 200_000, height: 56 }
+    const viewport = { width: 1200, height: 800 }
+    const result = centreOnLayout(layout, viewport)
+    expect(result.zoom).toBe(ZOOM_MIN)
   })
 })

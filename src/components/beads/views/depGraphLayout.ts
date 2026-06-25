@@ -271,9 +271,18 @@ export function zoomAroundPoint(
 }
 
 /**
- * Centre the viewport on the layout's bounding box. Used as the
- * initial pan on first render so the user lands on the graph,
- * not on (0,0) of an SVG that is otherwise off-screen.
+ * Centre the viewport on the layout's bounding box, picking a zoom
+ * that fits the layout into the viewport (with a small margin) so
+ * the user lands on the whole graph, not on (0,0) of an SVG that
+ * is otherwise off-screen. The returned `panX` / `panY` are the
+ * top-left of the viewBox in layout coordinates (i.e. they
+ * describe what the SVG should render, not a CSS transform).
+ *
+ * The zoom is clamped to ZOOM_MIN / ZOOM_MAX so pathological layouts
+ * (single-line graph, 500-issue workspace) don't end up at a
+ * fraction-of-a-pixel scale where click targets become too small
+ * for tauri-driver to hit. The 4% margin (0.96) keeps a thin
+ * border of empty space so nodes don't kiss the SVG edge.
  */
 export function centreOnLayout(
   layout: LaidOutGraph,
@@ -282,9 +291,22 @@ export function centreOnLayout(
   if (layout.width === 0 || layout.height === 0) {
     return { panX: 0, panY: 0, zoom: 1 }
   }
-  return {
-    panX: (viewport.width - layout.width) / 2,
-    panY: (viewport.height - layout.height) / 2,
-    zoom: 1,
+  if (viewport.width <= 0 || viewport.height <= 0) {
+    return { panX: 0, panY: 0, zoom: 1 }
   }
+  const fitZoom = clampZoom(
+    Math.min(
+      viewport.width / layout.width,
+      viewport.height / layout.height
+    ) * 0.96
+  )
+  // The viewBox that fits the layout into the viewport, expressed
+  // in layout coordinates: top-left = (panX, panY), size in layout
+  // units = (viewport / zoom). Centring math keeps the layout
+  // visually centred in the viewport.
+  const visibleW = viewport.width / fitZoom
+  const visibleH = viewport.height / fitZoom
+  const panX = (layout.width - visibleW) / 2
+  const panY = (layout.height - visibleH) / 2
+  return { panX, panY, zoom: fitZoom }
 }
