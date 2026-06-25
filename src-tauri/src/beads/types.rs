@@ -433,6 +433,17 @@ pub struct Issue {
     /// `owner` for unassigned issues. Default = `None`.
     #[serde(default)]
     pub owner: Option<String>,
+    /// `#[serde(default)]` because bd v1.0.4's `bd list --json`
+    /// output omits `labels` entirely for issues that have no
+    /// labels attached (verified against `BD_JSON_ENVELOPE=1` output
+    /// from the CLI). Default = empty `Vec`. The M4 R9 E2E spec's
+    /// `make-second-fixture.sh` seeds five label-less issues; without
+    /// this default the list view for `/tmp/e2e-workspace-b` raised
+    /// "failed to parse issues from 'data' field: missing field
+    /// `labels`" and the r10 real-time sync smoke spec timed out on
+    /// the post-switch reload. Surfaced as a `ParseError` from
+    /// `bd_list` (`extract_data` in `search_query.rs`).
+    #[serde(default)]
     pub labels: Vec<Label>,
     /// `#[serde(default)]` because bd v1.0.4's `bd list --json`
     /// output does NOT include a `dependencies` array — only the
@@ -1192,6 +1203,72 @@ mod tests {
         assert_eq!(
             opt_queries.dependencies[1].dependency_type,
             DependencyType::ParentChild
+        );
+    }
+
+    /// `bd list --json` (with `BD_JSON_ENVELOPE=1`) OMITS the `labels`
+    /// field entirely for issues that have no labels attached — it
+    /// doesn't emit `"labels": []`, the key is simply absent. The M4
+    /// R9 E2E spec's `make-second-fixture.sh` creates five label-less
+    /// issues, so without `#[serde(default)]` on `Issue.labels` the
+    /// `bd_list` command surfaced
+    /// `ParseError("failed to parse issues from 'data' field: missing field 'labels'")`
+    /// and the workspace switcher's reload timed out.
+    ///
+    /// Captured envelope: a single-issue fixture (M4 second
+    /// workspace, bd v1.0.4) with no `labels` key on the issue.
+    /// Before the fix this test failed with
+    /// `Err("missing field 'labels'")`; after the fix the issue
+    /// parses with `labels == Vec::new()`.
+    #[test]
+    fn test_real_bd_list_envelope_without_labels_field_parses() {
+        // Real envelope captured from `bd list --all --json` against
+        // /tmp/bd-test on bd v1.0.4 (a freshly-init'd repo with one
+        // task and no `--labels` flag). The issue object has NO
+        // `labels` key at all — bd's CLI never sets it for issues
+        // with no label attachments.
+        let envelope_json = r#"{
+  "data": [
+    {
+      "id": "bd-test-bdz",
+      "title": "no labels here",
+      "status": "open",
+      "priority": 2,
+      "issue_type": "task",
+      "owner": "fabian.baumgartner@dynasoft.ch",
+      "created_at": "2026-06-25T09:06:46Z",
+      "created_by": "Hermes Worker",
+      "updated_at": "2026-06-25T09:06:46Z",
+      "dependency_count": 0,
+      "dependent_count": 0,
+      "comment_count": 0
+    }
+  ],
+  "schema_version": 1
+}"#;
+
+        // Same envelope shape the runner hands to `extract_data`.
+        let envelope: serde_json::Value =
+            serde_json::from_str(envelope_json).expect("envelope is valid JSON");
+        let data = envelope
+            .get("data")
+            .and_then(|v| v.as_array())
+            .expect("envelope has a data array");
+        assert_eq!(data.len(), 1);
+
+        // The regression: parsing the issue with `Issue`'s
+        // deserialize impl used to fail with
+        // `Err("missing field 'labels'")`. With `#[serde(default)]`
+        // on `Issue.labels`, the issue parses and `labels` is empty.
+        let issues: Vec<Issue> = serde_json::from_value(serde_json::Value::Array(data.clone()))
+            .expect("bd list payload without 'labels' key should parse as Vec<Issue>");
+        assert_eq!(issues.len(), 1);
+        assert_eq!(issues[0].id, "bd-test-bdz");
+        assert_eq!(issues[0].title, "no labels here");
+        assert!(
+            issues[0].labels.is_empty(),
+            "missing 'labels' field should default to empty Vec, got {:?}",
+            issues[0].labels
         );
     }
 }
