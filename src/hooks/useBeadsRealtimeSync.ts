@@ -136,16 +136,32 @@ export function useBeadsRealtimeSync(): void {
     const activeRepoPath = (): string | null =>
       useWorkspaceStore.getState().repoPath
 
-    // -- beads-data-reset --
-    // Fires once per repo when the watcher first observes it.
-    // The watcher has no baseline yet, so per-issue events
-    // would just spam the React side with 25+ emits that don't
-    // correspond to actual changes (it's the *initial state*
-    // of the repo). Instead we do a single broad invalidation
-    // so the existing queries settle, then switch to targeted
-    // patches for every subsequent event.
+    // ponytail: E2E diagnostic counters under `import.meta.env.VITE_E2E` —
+    // see `src/main.tsx` for the gate. Counters track every event
+    // the React side processes (or drops on a repo_path mismatch)
+    // so a future E2E timeout points at the layer that lost the
+    // event without needing to attach a debugger.
+    //
+    // Returns the bumped counter (or undefined if the diag surface
+    // isn't exposed — production builds). The `bump` helper avoids
+    // `no-unused-expressions` and `no-non-null-assertion` rules by
+    // keeping the conditional inline.
+    const bump = (key: string): void => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const d = (globalThis as any).__collierDiag__ as
+        | Record<string, number>
+        | undefined
+      if (d !== undefined) {
+        d[key] = (d[key] ?? 0) + 1
+      }
+    }
+
     void setupListener<BeadsDataResetPayload>('beads-data-reset', payload => {
-      if (payload.repo_path !== activeRepoPath()) return
+      bump('dataReset')
+      if (payload.repo_path !== activeRepoPath()) {
+        bump('droppedRepoMismatch')
+        return
+      }
       logger.debug('beads-data-reset event received', {
         count: payload.count,
       })
@@ -154,13 +170,21 @@ export function useBeadsRealtimeSync(): void {
 
     // -- beads-issue-created --
     void setupListener<BeadsIssuePayload>('beads-issue-created', payload => {
-      if (payload.repo_path !== activeRepoPath()) return
+      bump('issueCreated')
+      if (payload.repo_path !== activeRepoPath()) {
+        bump('droppedRepoMismatch')
+        return
+      }
       patchIssueIntoLists(queryClient, payload.repo_path, payload.issue)
     })
 
     // -- beads-issue-updated --
     void setupListener<BeadsIssuePayload>('beads-issue-updated', payload => {
-      if (payload.repo_path !== activeRepoPath()) return
+      bump('issueUpdated')
+      if (payload.repo_path !== activeRepoPath()) {
+        bump('droppedRepoMismatch')
+        return
+      }
       logger.debug('beads-issue-updated', { id: payload.issue.id })
       patchIssueIntoLists(queryClient, payload.repo_path, payload.issue)
     })
@@ -169,7 +193,11 @@ export function useBeadsRealtimeSync(): void {
     void setupListener<BeadsIssueDeletedPayload>(
       'beads-issue-deleted',
       payload => {
-        if (payload.repo_path !== activeRepoPath()) return
+        bump('issueDeleted')
+        if (payload.repo_path !== activeRepoPath()) {
+          bump('droppedRepoMismatch')
+          return
+        }
         logger.debug('beads-issue-deleted', { id: payload.issue_id })
         removeIssueFromCaches(queryClient, payload.repo_path, payload.issue_id)
       }

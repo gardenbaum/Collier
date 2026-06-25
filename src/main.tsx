@@ -51,6 +51,24 @@ installQueryClient(queryClient)
 if (import.meta.env.VITE_E2E === '1') {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   ;(globalThis as any).__collierQueryClient__ = queryClient
+  // ponytail: diag surface — track every targeted watcher event
+  // the React side processes. `useBeadsRealtimeSync` increments
+  // these counters from its `beads-issue-updated` / `created` /
+  // `deleted` handlers so an E2E failure points at the layer
+  // that dropped the event (zero counters = watcher never
+  // fired vs. counter incremented but cache not patched = patch
+  // logic dropped the event on a repo_path mismatch). Counters
+  // are exposed on globalThis under the same VITE_E2E gate as
+  // the queryClient handle.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  ;(globalThis as any).__collierDiag__ = {
+    issueUpdated: 0,
+    issueCreated: 0,
+    issueDeleted: 0,
+    dataReset: 0,
+    dataChanged: 0,
+    droppedRepoMismatch: 0,
+  }
 }
 
 ReactDOM.createRoot(rootElement).render(

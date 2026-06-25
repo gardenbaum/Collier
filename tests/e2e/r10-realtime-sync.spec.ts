@@ -177,7 +177,7 @@ describe('Collier M4 R10 targeted real-time sync', () => {
     // watcher event (no row in cache vs. stale row in cache).
     // Costs ~10 ms per spec; only emitted when `targetId` is
     // known, i.e. after the cache is populated.
-    const diag = await browser.execute(() => {
+    const diagInit = await browser.execute(() => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const client = (globalThis as any).__collierQueryClient__
       if (!client) return { keys: [], exposed: false }
@@ -192,7 +192,7 @@ describe('Collier M4 R10 targeted real-time sync', () => {
       }
     })
     console.log(
-      `[e2e:r10] cache diag: exposed=${String(diag.exposed)} keys=${JSON.stringify(diag.keys)} targetId=${targetId}`
+      `[e2e:r10] cache diag: exposed=${String(diagInit.exposed)} keys=${JSON.stringify(diagInit.keys)} targetId=${targetId}`
     )
     expect(initial).not.toBeNull()
     originalStatus = String(initial?.status ?? '')
@@ -242,8 +242,18 @@ describe('Collier M4 R10 targeted real-time sync', () => {
       }
     )
     const elapsedMs = Date.now() - startedAt
+    // ponytail: E2E diagnostics — log the watcher event
+    // counters so a future timeout points at the layer that
+    // dropped the event (issueUpdated=0 = watcher never fired,
+    // issueUpdated>0 but droppedRepoMismatch=issueUpdated =
+    // repo_path mismatch, otherwise = patch logic issue).
+    const diagAfter = await browser.execute(() => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const d = (globalThis as any).__collierDiag__ ?? null
+      return d
+    })
     console.log(
-      `[e2e:r10] external bd update reflected in ${elapsedMs}ms (target <= 1500ms)`
+      `[e2e:r10] external bd update reflected in ${elapsedMs}ms (target <= 1500ms) diag=${JSON.stringify(diagAfter)}`
     )
   })
 
