@@ -295,10 +295,8 @@ export function centreOnLayout(
     return { panX: 0, panY: 0, zoom: 1 }
   }
   const fitZoom = clampZoom(
-    Math.min(
-      viewport.width / layout.width,
-      viewport.height / layout.height
-    ) * 0.96
+    Math.min(viewport.width / layout.width, viewport.height / layout.height) *
+      0.96
   )
   // The viewBox that fits the layout into the viewport, expressed
   // in layout coordinates: top-left = (panX, panY), size in layout
