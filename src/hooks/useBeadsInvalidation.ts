@@ -7,18 +7,28 @@ import { logger } from '@/lib/logger'
 import { useWorkspaceStore } from '@/store/workspace-store'
 
 /**
- * Hook that wires the Tauri-side `.beads/` fs-watch to TanStack Query.
+ * Hook that surfaces the legacy `beads-data-changed` Tauri event
+ * as a "Data refreshed" toast.
  *
- * Listens for the `beads-data-changed` event emitted by the Rust watcher
- * (src-tauri/src/beads/watcher.rs) and invalidates the `['beads']` query
- * key so every active beads query refetches against fresh disk state.
+ * R10 split the broadcast event into targeted per-issue events
+ * (`beads-issue-created`, `beads-issue-updated`,
+ * `beads-issue-deleted`) handled by `useBeadsRealtimeSync`. The
+ * watcher still emits `beads-data-changed` for every JSONL touch
+ * because the toast is a useful UX cue even when the targeted
+ * patch is invisible to the user (e.g. a comment added to an
+ * issue whose drawer is closed).
  *
- * Also re-invalidates on `window` focus, so swapping back to the app
- * catches changes made in an external editor or CLI.
+ * What this hook does:
+ *  - Listens for `beads-data-changed` and surfaces a debounced
+ *    toast (max 1/sec to avoid spamming during bursty activity).
+ *  - Re-fires the same toast on window focus so swapping back to
+ *    the app catches changes made in an external editor.
  *
- * A "data refreshed" toast is shown on every invalidation, but debounced
- * to at most one toast per second to avoid spamming the user during
- * bursty file activity (e.g. `bd sync` rewriting the JSONL).
+ * What this hook deliberately does NOT do anymore:
+ *  - Invalidate the `['beads']` query key. R10 moved that
+ *    responsibility to `useBeadsRealtimeSync`, which scopes the
+ *    invalidation to the affected rows (or to the broad key on
+ *    the one-shot `beads-data-reset` first-observation event).
  */
 export function useBeadsInvalidation(): void {
   const { t } = useTranslation()
@@ -57,11 +67,6 @@ export function useBeadsInvalidation(): void {
       }, 1000 - elapsed)
     }
 
-    const invalidate = () => {
-      queryClient.invalidateQueries({ queryKey: ['beads'] })
-      showRefreshToast()
-    }
-
     listen<{ repo_path: string; timestamp: number }>(
       'beads-data-changed',
       event => {
@@ -69,18 +74,26 @@ export function useBeadsInvalidation(): void {
           repo_path: event.payload.repo_path,
         })
         // Drop events from a different workspace than the one
-        // currently active. Single-workspace today, but the contract
-        // is in place for the v1.1 multi-workspace work (the Rust
-        // watcher already filters at the source — this is a
-        // belt-and-braces FE filter so cross-workspace invalidation
-        // can't sneak in via a misrouted event). Per AGENTS.md: read
-        // store state via `getState()` inside the callback so the
-        // effect doesn't have to re-subscribe on repo changes.
+        // currently active. The Rust watcher already filters at
+        // the source (it carries the repo_path of the repo it
+        // was attached to); this is a belt-and-braces FE filter
+        // so cross-workspace invalidation can't sneak in via a
+        // misrouted event. Per AGENTS.md: read store state via
+        // `getState()` inside the callback so the effect doesn't
+        // have to re-subscribe on repo changes.
         const activeRepoPath = useWorkspaceStore.getState().repoPath
         if (event.payload.repo_path !== activeRepoPath) {
           return
         }
-        invalidate()
+        // R10: the broad query invalidation has moved to
+        // `useBeadsRealtimeSync` (gated on the targeted
+        // per-issue events). All this hook does now is surface
+        // the toast. We still hold the queryClient reference
+        // because the focus-handler below keeps using it (the
+        // focus path is the one place where a broad invalidate
+        // is still appropriate — see the comment on
+        // `handleFocus`).
+        showRefreshToast()
       }
     )
       .then(unlistenFn => {
@@ -95,8 +108,17 @@ export function useBeadsInvalidation(): void {
       })
 
     const handleFocus = () => {
+      // Window focus is the legitimate "I don't know what
+      // changed while I was away, just refetch everything"
+      // trigger. External editors, sibling shells, or sync
+      // hooks all bypass the watcher (they don't go through
+      // Collier's IPC), so the only signal we get on return is
+      // the focus event. The targeted per-issue patches are
+      // nice-to-have while the window is visible; the focus
+      // path is the safety net for everything else.
       logger.debug('window focus — invalidating beads queries')
-      invalidate()
+      queryClient.invalidateQueries({ queryKey: ['beads'] })
+      showRefreshToast()
     }
     window.addEventListener('focus', handleFocus)
 
