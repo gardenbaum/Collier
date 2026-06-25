@@ -162,7 +162,7 @@ pub enum DependencyType {
     Supersedes,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
 pub struct Dependency {
     /// The target issue id (the issue being depended on, i.e. the
     /// "to" side of the relationship). The field is named
@@ -203,7 +203,7 @@ pub struct Dependency {
 /// the custom `Deserialize` impl below; serialization is unchanged
 /// (the `Label { name, color }` shape). The frontend bindings
 /// (specta-generated `bindings.ts`) keep the `Label` name.
-#[derive(Debug, Clone, Serialize, Type)]
+#[derive(Debug, Clone, PartialEq, Serialize, Type)]
 pub struct Label {
     pub name: String,
     pub color: Option<String>,
@@ -407,7 +407,7 @@ pub struct HistoryEntry {
 // Issue (main entity)
 // ============================================================================
 
-#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
 pub struct Issue {
     pub id: String,
     pub title: String,
