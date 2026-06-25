@@ -72,8 +72,18 @@ const containerStyle: CSSProperties = {
 }
 
 const svgStyle: CSSProperties = {
-  flex: 1,
-  minHeight: 0,
+  // Position the SVG absolutely inside the (position: relative,
+  // flex: 1) container so the SVG fills the remaining viewport
+  // height. Without `position: absolute` an SVG with a viewBox
+  // collapses to viewBox-aspect-ratio height once `width: 100%`
+  // has been applied — see CI screenshots of the M3 R7 E2E run:
+  // the canvas rendered ~68px tall in a 500px+ tall slot and
+  // the first graph node reported "element not interactable"
+  // because its bounding box was below WebDriver's hit-test
+  // floor. `inset: 0` makes the SVG fill the container
+  // regardless of viewBox aspect ratio.
+  position: 'absolute',
+  inset: 0,
   display: 'block',
   cursor: 'grab',
   touchAction: 'none',
