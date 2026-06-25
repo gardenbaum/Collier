@@ -63,6 +63,13 @@ const OVERSCAN = 5
 // Widths are tuned for a 1200px viewport: id + the 4 narrow columns
 // sum to ~470px, leaving ~730px for the title column.
 const GRID_TEMPLATE = '100px minmax(0, 1fr) 130px 64px 96px 140px'
+// M5 a11y: aria-colcount must match the number of columns in the
+// grid. Counting the columns in `GRID_TEMPLATE` would mean parsing
+// CSS at runtime; the integer constant is cheaper and obviously
+// correct as long as `GRID_TEMPLATE` and `IssueRow`'s cell rendering
+// stay in sync (verified by the unit test that walks every
+// `role="columnheader"` and asserts `aria-colcount`).
+const COLUMN_COUNT = 6
 
 export interface IssueListViewProps {
   /** Repository root passed to `bd list`. */
@@ -395,7 +402,11 @@ export function IssueListView({
   }
 
   return (
-    <section data-testid="issue-list-view" style={containerStyle}>
+    <section
+      data-testid="issue-list-view"
+      aria-label="Issues"
+      style={containerStyle}
+    >
       {hasAnyFilter ? (
         <div data-testid="filter-chips" style={chipsRowStyle}>
           {status.length > 0 ? (
@@ -450,13 +461,35 @@ export function IssueListView({
         </div>
       ) : null}
 
-      <ColumnHeaders sort={sort} onSortClick={onSortClick} />
-
+      {/* M5 a11y: the table is a real ARIA grid. Two rowgroups
+          inside — one for the column headers, one for the virtualized
+          body. The body rowgroup is the scroll container (rows beyond
+          the viewport are unmounted by `@tanstack/react-virtual`); the
+          header rowgroup sits above it as a sibling so it never
+          scrolls with the body. The grid's aria-activedescendant
+          mirrors the keyboard cursor from `useWorkspaceStore` so
+          screen-reader users hear the selected row's content as the
+          user walks with j/k. The roving `tabindex` (set on each
+          `IssueRow`) gives a single tab stop into the grid — Tab
+          lands on the cursor row, j/k walks within. */}
       <div
-        ref={scrollRef}
-        style={{ ...scrollContainerStyle, height: containerHeight }}
-        data-testid="issue-list-scroll"
+        role="grid"
+        aria-label="Issues"
+        aria-rowcount={total + 1}
+        aria-colcount={COLUMN_COUNT}
+        aria-activedescendant={
+          selectedRowId !== null ? `${selectedRowId}-row` : undefined
+        }
+        style={gridWrapperStyle}
       >
+        <ColumnHeaders sort={sort} onSortClick={onSortClick} />
+        <div
+          ref={scrollRef}
+          style={{ ...scrollContainerStyle, height: containerHeight }}
+          data-testid="issue-list-scroll"
+          role="rowgroup"
+          aria-label="Issue rows"
+        >
         {query.isLoading ? (
           <div data-testid="list-loading" style={statusStyle}>
             Loading…
@@ -473,10 +506,6 @@ export function IssueListView({
           </div>
         ) : null}
         {total > 0 ? (
-          // ponytail: the inner div's height is the *total* list
-          // height, so the scrollbar reflects the full list. Each
-          // virtual row is absolutely positioned at translateY(start)
-          // and only the visible ones (plus OVERSCAN) are mounted.
           <div
             data-testid="issue-list-inner"
             style={{
@@ -485,6 +514,11 @@ export function IssueListView({
               width: '100%',
             }}
           >
+            {/* ponytail: the inner div's height is the *total* list
+                height, so the scrollbar reflects the full list. Each
+                virtual row is absolutely positioned at
+                translateY(start) and only the visible ones (plus
+                OVERSCAN) are mounted. */}
             {rowVirtualizer.getVirtualItems().map(virtualItem => {
               const issue = issues[virtualItem.index]
               if (!issue) return null
@@ -495,6 +529,7 @@ export function IssueListView({
                   onClick={() => onOpenIssue(issue.id)}
                   cwd={cwd}
                   isKeyboardSelected={issue.id === selectedRowId}
+                  rowIndex={virtualItem.index}
                   positionStyle={{
                     position: 'absolute',
                     top: 0,
@@ -508,6 +543,7 @@ export function IssueListView({
             })}
           </div>
         ) : null}
+        </div>
       </div>
 
       <footer data-testid="list-footer" style={footerStyle}>
@@ -548,50 +584,60 @@ function ColumnHeaders({ sort, onSortClick }: ColumnHeadersProps) {
   }
 
   return (
-    <div data-testid="issue-list-headers" role="row" style={headerRowStyle}>
-      <SortableHeader
-        label="ID"
-        sortKey="id"
-        sort={sort}
-        onClick={onSortClick}
-        style={cellBase}
-        align="left"
-      />
-      <div role="columnheader" style={{ ...cellBase, cursor: 'default' }}>
-        Title
+    <div
+      role="rowgroup"
+      data-testid="issue-list-headers-group"
+      aria-label="Column headers"
+    >
+      <div data-testid="issue-list-headers" role="row" style={headerRowStyle}>
+        <SortableHeader
+          label="ID"
+          sortKey="id"
+          sort={sort}
+          onClick={onSortClick}
+          style={cellBase}
+          align="left"
+        />
+        <div
+          role="columnheader"
+          aria-sort="none"
+          style={{ ...cellBase, cursor: 'default' }}
+        >
+          Title
+        </div>
+        <SortableHeader
+          label="Status"
+          sortKey="status"
+          sort={sort}
+          onClick={onSortClick}
+          style={cellBase}
+          align="left"
+        />
+        <SortableHeader
+          label="Priority"
+          sortKey="priority"
+          sort={sort}
+          onClick={onSortClick}
+          style={cellBase}
+          align="left"
+        />
+        <SortableHeader
+          label="Type"
+          sortKey="type"
+          sort={sort}
+          onClick={onSortClick}
+          style={cellBase}
+          align="left"
+        />
+        <SortableHeader
+          label="Assignee"
+          sortKey="assignee"
+          sort={sort}
+          onClick={onSortClick}
+          style={cellBase}
+          align="left"
+        />
       </div>
-      <SortableHeader
-        label="Status"
-        sortKey="status"
-        sort={sort}
-        onClick={onSortClick}
-        style={cellBase}
-        align="left"
-      />
-      <SortableHeader
-        label="Priority"
-        sortKey="priority"
-        sort={sort}
-        onClick={onSortClick}
-        style={cellBase}
-        align="left"
-      />
-      <SortableHeader
-        label="Type"
-        sortKey="type"
-        sort={sort}
-        onClick={onSortClick}
-        style={cellBase}
-        align="left"
-      />
-      <SortableHeader
-        label="Assignee"
-        sortKey="assignee"
-        sort={sort}
-        onClick={onSortClick}
-        style={cellBase}
-        align="left"
-      />
     </div>
   )
 }
@@ -684,6 +730,14 @@ interface IssueRowProps {
    * within a single view.
    */
   isKeyboardSelected: boolean
+  /**
+   * M5 a11y: zero-based index of the row in the sorted/windowed
+   * array. Used to set `aria-rowindex` so screen-reader users can
+   * tell where they are in the list (the +1 offset for the header
+   * row is applied at the call site so this component stays
+   * agnostic of the grid layout).
+   */
+  rowIndex: number
 }
 
 function IssueRow({
@@ -692,13 +746,33 @@ function IssueRow({
   cwd,
   positionStyle,
   isKeyboardSelected,
+  rowIndex,
 }: IssueRowProps) {
   const [hovered, setHovered] = useState(false)
 
+  // ponytail: M5 a11y. The row is `role="row"` (structural, per the
+  // grid pattern), not `role="button"`. Row activation (Enter / Space
+  // to open the detail) lives on the row itself — it stays
+  // keyboard-operable — but the row no longer advertises itself as a
+  // button to assistive tech. The accessible name is composed from
+  // the row's content (`aria-label`) so screen-reader users hear
+  // "beads-7, Click me, status open, priority P1, type bug,
+  // unassigned" instead of just "button".
+  // Roving tabindex: only the cursor row is in the tab order, so
+  // Tab lands once into the grid and then j/k (the M5 vim-nav hook)
+  // walks within. Clicking a cell's inline-edit still works because
+  // the inline-edit `<select>` is its own tab stop and stops
+  // propagation (see `hostGuardProps` in InlineIssueEdit.tsx).
+  const rowLabel = `${issue.id}: ${issue.title}. Status ${issue.status}, priority ${String(issue.priority)}, type ${issue.issue_type}${issue.owner !== null ? `, assigned to ${issue.owner}` : ', unassigned'}.`
+
   return (
     <div
-      role="button"
-      tabIndex={0}
+      role="row"
+      aria-rowindex={rowIndex + 2}
+      aria-selected={isKeyboardSelected}
+      aria-label={rowLabel}
+      id={`${issue.id}-row`}
+      tabIndex={isKeyboardSelected ? 0 : -1}
       onClick={onClick}
       onKeyDown={e => {
         if (e.key === 'Enter' || e.key === ' ') {
@@ -717,7 +791,6 @@ function IssueRow({
       data-issue-type={issue.issue_type}
       data-issue-assignee={issue.owner ?? ''}
       data-row-selected={isKeyboardSelected ? 'true' : 'false'}
-      aria-selected={isKeyboardSelected}
       style={{
         ...rowStyle,
         ...(hovered ? rowHoverStyle : null),
@@ -725,10 +798,15 @@ function IssueRow({
         ...positionStyle,
       }}
     >
-      <span data-column="id" style={idCellStyle}>
+      <div role="gridcell" aria-colindex={1} data-column="id" style={idCellStyle}>
         {issue.id}
-      </span>
-      <span data-column="title" style={titleCellStyle}>
+      </div>
+      <div
+        role="gridcell"
+        aria-colindex={2}
+        data-column="title"
+        style={titleCellStyle}
+      >
         <span style={titleTextStyle}>{issue.title}</span>
         {issue.labels.length > 0 ? (
           <span style={labelsStyle}>
@@ -741,19 +819,39 @@ function IssueRow({
           blockedBy={issue.dependency_count ?? 0}
           blocks={issue.dependent_count ?? 0}
         />
-      </span>
-      <span data-column="status" style={badgeCellStyle}>
+      </div>
+      <div
+        role="gridcell"
+        aria-colindex={3}
+        data-column="status"
+        style={badgeCellStyle}
+      >
         <InlineStatusEdit cwd={cwd} issue={issue} swallowHostEvents />
-      </span>
-      <span data-column="priority" style={badgeCellStyle}>
+      </div>
+      <div
+        role="gridcell"
+        aria-colindex={4}
+        data-column="priority"
+        style={badgeCellStyle}
+      >
         <InlinePriorityEdit cwd={cwd} issue={issue} swallowHostEvents />
-      </span>
-      <span data-column="type" style={badgeCellStyle}>
+      </div>
+      <div
+        role="gridcell"
+        aria-colindex={5}
+        data-column="type"
+        style={badgeCellStyle}
+      >
         <TypeIcon type={issue.issue_type} />
-      </span>
-      <span data-column="assignee" style={assigneeCellStyle}>
+      </div>
+      <div
+        role="gridcell"
+        aria-colindex={6}
+        data-column="assignee"
+        style={assigneeCellStyle}
+      >
         <InlineAssigneeEdit cwd={cwd} issue={issue} swallowHostEvents />
-      </span>
+      </div>
     </div>
   )
 }
@@ -873,6 +971,19 @@ const headerRowStyle: CSSProperties = {
   borderBottom: `1px solid ${colors.mono7}`,
   backgroundColor: colors.mono8,
   borderRadius: radius.sm,
+}
+
+// ponytail: M5 a11y. The ARIA grid wrapper is a column flex box that
+// holds the header rowgroup and the body rowgroup. We deliberately
+// give it no border / no padding so it stays visually transparent —
+// the rowgroups inside carry the visual chrome (header background,
+// scroll border). The wrapper exists purely so screen readers see a
+// single `role="grid"` ancestor and so the parent <section>'s
+// aria-label is inherited by the column headers / column cells.
+const gridWrapperStyle: CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  minHeight: 0,
 }
 
 const headerButtonStyle: CSSProperties = {

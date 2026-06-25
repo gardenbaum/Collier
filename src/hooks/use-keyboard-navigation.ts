@@ -198,6 +198,15 @@ function cssEscape(value: string): string {
  * If `currentId` is not in the rendered slice (e.g. it was unmounted
  * by the virtualizer or is in a different view), we anchor on the
  * first rendered row so a stray j/k does not feel "stuck".
+ *
+ * The cursor and the keyboard focus stay in sync: when the row the
+ * cursor moves to is in the DOM, we focus it (without scrolling —
+ * the row was just rendered above/below, never off-screen, because
+ * the virtualizer keeps a 2*OVERSCAN window of neighbours). This is
+ * the half of the ARIA grid pattern that bridges the global
+ * keydown hook with the focus model — the grid's
+ * `aria-activedescendant` already mirrors `selectedRowId`, so AT
+ * users hear the new row's content the moment focus moves.
  */
 function moveCursor(
   currentId: string | null,
@@ -217,6 +226,15 @@ function moveCursor(
   if (next < 0 || next >= rows.length) return currentId
   const row = rows[next]
   if (row === undefined) return currentId
+  // Sync the DOM focus with the cursor. `focus({ preventScroll: true })`
+  // because we know the row is on-screen — the virtualizer already
+  // mounted the row immediately above or below the previous cursor.
+  // Without `preventScroll`, Safari would jump-scroll to the row even
+  // when the virtualizer's natural translateY already positions it
+  // correctly, fighting the smooth-scroll behaviour.
+  if (document.activeElement !== row.element) {
+    row.element.focus({ preventScroll: true })
+  }
   return row.id
 }
 
