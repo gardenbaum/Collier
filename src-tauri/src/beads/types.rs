@@ -443,12 +443,29 @@ pub struct Issue {
     /// label regression was fixed.
     #[serde(default)]
     pub dependencies: Vec<Dependency>,
+    /// Outgoing edges: issues that depend on THIS one (the
+    /// "blocks N" side). `bd show --json` emits these under
+    /// the `dependents` key as a list of nested issue objects
+    /// (each carries `dependency_type`), while `bd list --json`
+    /// omits the field entirely (the summary `dependent_count`
+    /// is sufficient for the list view). The R8 E2E spec
+    /// (`r8-dep-badges`) needs the detail drawer to surface
+    /// the "blocks N" chip for an issue that has zero incoming
+    /// blockers — TASK_REFAC is one — so the badge can render
+    /// with `dependent_count` derived from this array.
+    /// Default = empty `Vec`. Same `Dependency` shape as
+    /// `dependencies` (uses the `id` → `dependency_id` alias).
+    #[serde(default)]
+    pub dependents: Vec<Dependency>,
     /// `#[serde(default)]` because bd v1.0.4's `bd show --json`
     /// output omits `dependency_count` — the field is only present
     /// in `bd list --json`. Default = `0`. The R4 E2E spec needs
     /// the drawer to mount (which fails on `bd show` ParseError
-    /// without this default); the count is reconciled from
-    /// `dependencies.len()` if a future patch wants to backfill.
+    /// without this default). The R8 E2E spec backfills this from
+    /// `dependencies.len()` in `bd_show` (excluding parent-child
+    /// edges, mirroring `bd list`'s own count semantics — see
+    /// `show_history::bd_show`), so an issue that has no incoming
+    /// blockers but blocks others still renders the right chip.
     #[serde(default)]
     pub dependency_count: u32,
     /// `#[serde(default)]` because bd v1.0.4's `bd show --json`
@@ -846,8 +863,13 @@ mod tests {
                 dependency_type: DependencyType::Blocks,
                 blocked_by: Some(true),
             }],
+            dependents: vec![Dependency {
+                dependency_id: "beads-pqr".to_string(),
+                dependency_type: DependencyType::Blocks,
+                blocked_by: Some(false),
+            }],
             dependency_count: 1,
-            dependent_count: 0,
+            dependent_count: 1,
             comment_count: 2,
             parent: None,
             acceptance_criteria: Some("All tests pass".to_string()),

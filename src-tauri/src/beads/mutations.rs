@@ -1811,6 +1811,7 @@ mod tests {
             owner: owner.map(|s| s.to_string()),
             labels: vec![],
             dependencies: vec![],
+            dependents: vec![],
             dependency_count: 0,
             dependent_count: 0,
             comment_count: 0,

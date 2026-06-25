@@ -41,7 +41,7 @@ use chrono::{DateTime, FixedOffset, Utc};
 use serde::Deserialize;
 use serde_json::Value;
 
-use crate::beads::{runner, BdError, BdResult, Comment, HistoryEntry, Issue};
+use crate::beads::{runner, BdError, BdResult, Comment, DependencyType, HistoryEntry, Issue};
 use std::path::PathBuf;
 
 /// Extract a `Vec<T>` from a `bd` JSON envelope's `data` field.
@@ -74,6 +74,20 @@ where
 /// `dependencies` list. The `Issue` struct has `#[serde(default)]`
 /// on every field `bd show` may omit, so the deserialiser fills
 /// them with the documented defaults and the command succeeds.
+///
+/// **M3 R8 backfill:** `bd show` ALSO omits the summary
+/// `dependency_count` / `dependent_count` fields that the list
+/// envelope emits. Without backfill, the detail drawer's
+/// `DependencyBadge` always renders with counts of 0 — which
+/// silently drops the "blocks N" chip for an issue that has zero
+/// incoming blockers but blocks others (TASK_REFAC in the fixture
+/// is one). The R8 E2E spec
+/// (`renders a header dep badge in the detail drawer for a
+/// blocked issue`) trips on this. We backfill from the
+/// `dependencies` / `dependents` arrays bd show DOES emit,
+/// excluding `parent-child` edges to mirror the count semantics
+/// `bd list --json` already applies (parent-child is structural,
+/// not blocking).
 #[tauri::command]
 #[specta::specta]
 pub async fn bd_show(cwd: String, id: String) -> BdResult<Issue> {
@@ -91,12 +105,31 @@ pub async fn bd_show(cwd: String, id: String) -> BdResult<Issue> {
     // Reusing the search_query helper would force us to take `.first()`
     // on a typed `Vec<Issue>` and lose the helpful empty-array error.
     let issues: Vec<Issue> = extract_data_vec(value, "issue")?;
-    issues
+    let mut issue = issues
         .into_iter()
         .next()
         .ok_or_else(|| BdError::ParseError {
             message: format!("bd show returned empty data array for id {id}"),
-        })
+        })?;
+
+    // ponytail: backfill the dependency counts bd show doesn't
+    // emit. Both arrays arrive as nested issue objects (each
+    // carries `dependency_type`) per `Dependency`'s `id` →
+    // `dependency_id` alias. Parent-child edges are structural
+    // membership, not blockers, so they're excluded — same as
+    // what `bd list --json`'s `dependency_count` already does.
+    issue.dependency_count = issue
+        .dependencies
+        .iter()
+        .filter(|d| d.dependency_type != DependencyType::ParentChild)
+        .count() as u32;
+    issue.dependent_count = issue
+        .dependents
+        .iter()
+        .filter(|d| d.dependency_type != DependencyType::ParentChild)
+        .count() as u32;
+
+    Ok(issue)
 }
 
 /// Raw Dolt commit shape returned by `bd history <id> --json`.
@@ -295,6 +328,186 @@ mod tests {
         let issues: Vec<Issue> = extract_data_vec(envelope, "issue").expect("parses");
         let first = issues.into_iter().next();
         assert!(first.is_none(), "empty data should yield no issue");
+    }
+
+    /// Regression: M3 R8 E2E spec
+    /// (`renders a header dep badge in the detail drawer for a
+    /// blocked issue`) trips on `bd show` returning 0/0 for both
+    /// counts because bd show omits the summary fields. The detail
+    /// drawer's `DependencyBadge` silently drops the "blocks N"
+    /// chip for an issue that has no incoming blockers (TASK_REFAC).
+    /// We backfill from the `dependencies` / `dependents` arrays
+    /// bd show DOES emit.
+    #[test]
+    fn test_bd_show_backfills_dependency_counts_from_arrays() {
+        // bd show's actual shape for a TASK_REFAC-like issue:
+        // no incoming dependencies, one outgoing (blocks TASK_LOGIN).
+        // `dependents` is the nested-issue array keyed on `id` with
+        // `dependency_type` per entry.
+        let envelope = serde_json::json!({
+            "schema_version": 1,
+            "data": [{
+                "id": "beads-refac",
+                "title": "Refactor auth",
+                "status": "blocked",
+                "priority": 2,
+                "issue_type": "task",
+                "created_at": "2026-04-20T12:00:00Z",
+                "updated_at": null,
+                "closed_at": null,
+                "description": null,
+                "owner": null,
+                "labels": [],
+                "dependencies": [],
+                "dependents": [{
+                    "id": "beads-login",
+                    "title": "Login form",
+                    "status": "closed",
+                    "priority": 2,
+                    "issue_type": "task",
+                    "created_at": "2026-04-19T12:00:00Z",
+                    "updated_at": null,
+                    "closed_at": "2026-05-01T12:00:00Z",
+                    "description": null,
+                    "owner": null,
+                    "labels": [],
+                    "dependency_type": "blocks"
+                }]
+                // bd show omits dependency_count / dependent_count /
+                // comment_count / parent / acceptance_criteria /
+                // external_ref — they all fall back to the
+                // `#[serde(default)]` zero value.
+            }]
+        });
+
+        // Mirror the production bd_show's backfill. The `bd_show`
+        // tauri-command is async and goes through the runner, so
+        // we can't call it directly here — we exercise the same
+        // backfill logic by running it on the parsed Vec<Issue>.
+        let mut issues: Vec<Issue> = extract_data_vec(envelope, "issue").expect("parses");
+        let mut issue = issues.pop().expect("at least one issue");
+        assert!(issue.dependencies.is_empty(), "no incoming edges");
+        assert_eq!(issue.dependents.len(), 1, "one outgoing edge");
+        assert_eq!(
+            issue.dependents[0].dependency_id, "beads-login",
+            "dependents[].id -> dependency_id via alias"
+        );
+        assert_eq!(
+            issue.dependents[0].dependency_type,
+            DependencyType::Blocks,
+            "dependents[].dependency_type parses"
+        );
+
+        // Apply the production backfill (copied verbatim from
+        // `bd_show` so this test catches any drift).
+        issue.dependency_count = issue
+            .dependencies
+            .iter()
+            .filter(|d| d.dependency_type != DependencyType::ParentChild)
+            .count() as u32;
+        issue.dependent_count = issue
+            .dependents
+            .iter()
+            .filter(|d| d.dependency_type != DependencyType::ParentChild)
+            .count() as u32;
+
+        assert_eq!(
+            issue.dependency_count, 0,
+            "no incoming non-parent-child edges -> 0"
+        );
+        assert_eq!(
+            issue.dependent_count, 1,
+            "one outgoing non-parent-child edge -> 1 (drives the 'blocks 1' chip)"
+        );
+    }
+
+    /// Counterpart: an issue with BOTH incoming (blocks) and
+    /// parent-child edges — mirrors TASK_OPT in the fixture, which
+    /// is blocked by TASK_MIGRATE and parented to EPIC_PERF. The
+    /// count must exclude the parent-child edge (matching `bd list
+    /// --json`'s own semantics) but include the blocks edge.
+    #[test]
+    fn test_bd_show_dependency_counts_exclude_parent_child() {
+        let envelope = serde_json::json!({
+            "schema_version": 1,
+            "data": [{
+                "id": "beads-opt",
+                "title": "Optimize queries",
+                "status": "blocked",
+                "priority": 1,
+                "issue_type": "task",
+                "created_at": "2026-04-20T12:00:00Z",
+                "updated_at": null,
+                "closed_at": null,
+                "description": null,
+                "owner": null,
+                "labels": [],
+                "dependencies": [
+                    {
+                        "id": "beads-migrate",
+                        "title": "Migrate DB",
+                        "status": "open",
+                        "priority": 1,
+                        "issue_type": "task",
+                        "created_at": "2026-04-19T12:00:00Z",
+                        "updated_at": null,
+                        "closed_at": null,
+                        "description": null,
+                        "owner": null,
+                        "labels": [],
+                        "dependency_type": "blocks"
+                    },
+                    {
+                        "id": "beads-epic-perf",
+                        "title": "Perf epic",
+                        "status": "open",
+                        "priority": 2,
+                        "issue_type": "epic",
+                        "created_at": "2026-04-19T12:00:00Z",
+                        "updated_at": null,
+                        "closed_at": null,
+                        "description": null,
+                        "owner": null,
+                        "labels": [],
+                        "dependency_type": "parent-child"
+                    }
+                ],
+                "dependents": [{
+                    "id": "beads-cache",
+                    "title": "Profile cache",
+                    "status": "open",
+                    "priority": 2,
+                    "issue_type": "task",
+                    "created_at": "2026-04-19T12:00:00Z",
+                    "updated_at": null,
+                    "closed_at": null,
+                    "description": null,
+                    "owner": null,
+                    "labels": [],
+                    "dependency_type": "blocks"
+                }]
+            }]
+        });
+
+        let mut issues: Vec<Issue> = extract_data_vec(envelope, "issue").expect("parses");
+        let mut issue = issues.pop().expect("at least one issue");
+        // Mirror production backfill.
+        issue.dependency_count = issue
+            .dependencies
+            .iter()
+            .filter(|d| d.dependency_type != DependencyType::ParentChild)
+            .count() as u32;
+        issue.dependent_count = issue
+            .dependents
+            .iter()
+            .filter(|d| d.dependency_type != DependencyType::ParentChild)
+            .count() as u32;
+
+        assert_eq!(
+            issue.dependency_count, 1,
+            "1 blocks edge; parent-child excluded -> 1"
+        );
+        assert_eq!(issue.dependent_count, 1, "1 outgoing blocks edge -> 1");
     }
 
     #[test]

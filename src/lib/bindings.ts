@@ -708,6 +708,20 @@ async bdNotify(title: string, body: string) : Promise<Result<null, BdError>> {
  * `dependencies` list. The `Issue` struct has `#[serde(default)]`
  * on every field `bd show` may omit, so the deserialiser fills
  * them with the documented defaults and the command succeeds.
+ * 
+ * **M3 R8 backfill:** `bd show` ALSO omits the summary
+ * `dependency_count` / `dependent_count` fields that the list
+ * envelope emits. Without backfill, the detail drawer's
+ * `DependencyBadge` always renders with counts of 0 — which
+ * silently drops the "blocks N" chip for an issue that has zero
+ * incoming blockers but blocks others (TASK_REFAC in the fixture
+ * is one). The R8 E2E spec
+ * (`renders a header dep badge in the detail drawer for a
+ * blocked issue`) trips on this. We backfill from the
+ * `dependencies` / `dependents` arrays bd show DOES emit,
+ * excluding `parent-child` edges to mirror the count semantics
+ * `bd list --json` already applies (parent-child is structural,
+ * not blocking).
  */
 async bdShow(cwd: string, id: string) : Promise<Result<Issue, BdError>> {
     try {
@@ -1085,12 +1099,30 @@ owner?: string | null; labels: Label[];
  */
 dependencies?: Dependency[]; 
 /**
+ * Outgoing edges: issues that depend on THIS one (the
+ * "blocks N" side). `bd show --json` emits these under
+ * the `dependents` key as a list of nested issue objects
+ * (each carries `dependency_type`), while `bd list --json`
+ * omits the field entirely (the summary `dependent_count`
+ * is sufficient for the list view). The R8 E2E spec
+ * (`r8-dep-badges`) needs the detail drawer to surface
+ * the "blocks N" chip for an issue that has zero incoming
+ * blockers — TASK_REFAC is one — so the badge can render
+ * with `dependent_count` derived from this array.
+ * Default = empty `Vec`. Same `Dependency` shape as
+ * `dependencies` (uses the `id` → `dependency_id` alias).
+ */
+dependents?: Dependency[]; 
+/**
  * `#[serde(default)]` because bd v1.0.4's `bd show --json`
  * output omits `dependency_count` — the field is only present
  * in `bd list --json`. Default = `0`. The R4 E2E spec needs
  * the drawer to mount (which fails on `bd show` ParseError
- * without this default); the count is reconciled from
- * `dependencies.len()` if a future patch wants to backfill.
+ * without this default). The R8 E2E spec backfills this from
+ * `dependencies.len()` in `bd_show` (excluding parent-child
+ * edges, mirroring `bd list`'s own count semantics — see
+ * `show_history::bd_show`), so an issue that has no incoming
+ * blockers but blocks others still renders the right chip.
  */
 dependency_count?: number; 
 /**

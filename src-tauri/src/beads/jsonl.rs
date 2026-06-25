@@ -146,6 +146,7 @@ mod tests {
             owner: None,
             labels: vec![],
             dependencies: vec![],
+            dependents: vec![],
             dependency_count: 0,
             dependent_count: 0,
             comment_count: 0,
