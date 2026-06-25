@@ -365,16 +365,19 @@ pub fn spawn_watcher(
     let snapshot = WatcherSnapshot::new();
     let snapshot_for_task = snapshot.clone();
     let repo_path_for_task = repo_path.clone();
+    // Clone `app` once so the debouncer closure can hold its own
+    // handle without moving the function parameter.
+    let app_for_debouncer = app.clone();
 
     let mut debouncer = new_debouncer(
         Duration::from_millis(250),
         move |result: DebounceEventResult| match result {
             Ok(events) => {
-                if !is_jsonl_event(&events) {
+                if !is_beads_change_event(&events) {
                     return;
                 }
                 handle_change(
-                    app.clone(),
+                    app_for_debouncer.clone(),
                     repo_path_for_task.clone(),
                     repo_path_str.clone(),
                     snapshot_for_task.clone(),
@@ -391,6 +394,49 @@ pub fn spawn_watcher(
         .map_err(|e| format!("failed to watch {}: {e}", watch_dir.display()))?;
 
     log::info!("Watching beads directory: {}", watch_dir.display());
+
+    // Seed the snapshot asynchronously at attach time so the FIRST
+    // `bd update …` after attach emits a targeted
+    // `beads-issue-updated` event instead of `beads-data-reset` +
+    // broad cache invalidation. Without this, the very first
+    // external mutation after a workspace switch triggers a full
+    // list refetch (which races the 1 s end-to-end target under
+    // CI cold-start and flakes the r10 spec).
+    //
+    // Source of truth: `bd list --all --json`, NOT `.beads/issues.jsonl`.
+    // bd 1.0.x with the Dolt backend (default since 1.0) does NOT rewrite
+    // `.beads/issues.jsonl` on every update — the JSONL is exported
+    // lazily (often only at `bd create` or explicit `bd export`) and
+    // stays stale otherwise. We discovered this empirically while
+    // debugging r10 flakiness: `bd update --status=closed` mutates the
+    // Dolt store but the JSONL file's mtime and content stay frozen,
+    // so `read_jsonl` returned the pre-update payload and the diff
+    // against the baseline was empty. Going through `bd list` on
+    // every change adds ~100 ms vs the JSONL fast path, but that's
+    // well within the 1 s end-to-end budget and the diff is now
+    // actually correct on Dolt workspaces. The same call is what the
+    // React list query already runs, so the subprocess overhead is
+    // already paid on the page (we just double as a warm-up for the
+    // first user query). The diff_snapshot path is a no-op when the
+    // baseline isn't seeded yet, so this is safe to do
+    // unconditionally.
+    let snapshot_for_seed = snapshot.clone();
+    let repo_path_for_seed = repo_path.clone();
+    let app_for_seed = app.clone();
+    tauri::async_runtime::spawn(async move {
+        let issues: Vec<Issue> = read_issues_via_bd(&repo_path_for_seed).await;
+        let count = issues.len();
+        let _ = diff_snapshot(&snapshot_for_seed, &issues);
+        log::info!(
+            "Seeded beads watcher baseline with {count} issues from {}",
+            repo_path_for_seed.display()
+        );
+        // Drop the app handle once seeding is done so the
+        // closure doesn't keep a ref-counted handle alive past
+        // its useful scope.
+        drop(app_for_seed);
+    });
+
     Ok(WatcherHandle {
         _debouncer: debouncer,
         snapshot,
@@ -426,64 +472,120 @@ fn handle_change(
 
     let app_for_task = app.clone();
     tauri::async_runtime::spawn(async move {
-        match crate::beads::jsonl::read_jsonl(&repo_path).await {
-            Ok(read_result) => {
-                let was_seeded = snapshot.is_seeded();
-                let changes = diff_snapshot(&snapshot, &read_result.issues);
-                if !was_seeded {
-                    // First observation of this repo — let the
-                    // React side invalidate the broad cache once so
-                    // its existing queries settle. The targeted
-                    // events skip this tick intentionally; the
-                    // baseline is seeded but no per-issue events
-                    // fire (we just observed what's already on
-                    // disk).
-                    let reset = BeadsDataResetPayload {
-                        repo_path: repo_path_str.clone(),
-                        count: read_result.issues.len(),
-                    };
-                    if let Err(e) = app_for_task.emit("beads-data-reset", reset) {
-                        log::warn!("Failed to emit beads-data-reset: {e}");
-                    }
-                    return;
-                }
-                for change in changes {
-                    match change {
-                        IssueChange::Created(issue) => {
-                            let payload = BeadsIssuePayload {
-                                repo_path: repo_path_str.clone(),
-                                issue,
-                            };
-                            if let Err(e) = app_for_task.emit("beads-issue-created", payload) {
-                                log::warn!("Failed to emit beads-issue-created: {e}");
-                            }
-                        }
-                        IssueChange::Updated(issue) => {
-                            let payload = BeadsIssuePayload {
-                                repo_path: repo_path_str.clone(),
-                                issue,
-                            };
-                            if let Err(e) = app_for_task.emit("beads-issue-updated", payload) {
-                                log::warn!("Failed to emit beads-issue-updated: {e}");
-                            }
-                        }
-                        IssueChange::Deleted(issue) => {
-                            let payload = BeadsIssueDeletedPayload {
-                                repo_path: repo_path_str.clone(),
-                                issue_id: issue.id,
-                            };
-                            if let Err(e) = app_for_task.emit("beads-issue-deleted", payload) {
-                                log::warn!("Failed to emit beads-issue-deleted: {e}");
-                            }
-                        }
-                    }
-                }
+        // Source of truth: `bd list --all --json`. See the comment
+        // in `spawn_watcher` for why we don't trust `.beads/issues.jsonl`
+        // on Dolt-backed workspaces — bd 1.0.x doesn't rewrite it
+        // on every update, so `read_jsonl` returns stale data and
+        // the diff comes up empty. The subprocess call is the same
+        // one the React list query already runs, so the OS page
+        // cache is warm by the time we get here.
+        let issues: Vec<Issue> = read_issues_via_bd(&repo_path).await;
+        let was_seeded = snapshot.is_seeded();
+        let changes = diff_snapshot(&snapshot, &issues);
+        if !was_seeded {
+            // First observation of this repo — let the
+            // React side invalidate the broad cache once so
+            // its existing queries settle. The targeted
+            // events skip this tick intentionally; the
+            // baseline is seeded but no per-issue events
+            // fire (we just observed what's already on
+            // disk).
+            let reset = BeadsDataResetPayload {
+                repo_path: repo_path_str.clone(),
+                count: issues.len(),
+            };
+            if let Err(e) = app_for_task.emit("beads-data-reset", reset) {
+                log::warn!("Failed to emit beads-data-reset: {e}");
             }
-            Err(e) => {
-                log::warn!("Failed to read JSONL for diff: {e:?}");
+            return;
+        }
+        for change in changes {
+            match change {
+                IssueChange::Created(issue) => {
+                    let payload = BeadsIssuePayload {
+                        repo_path: repo_path_str.clone(),
+                        issue,
+                    };
+                    if let Err(e) = app_for_task.emit("beads-issue-created", payload) {
+                        log::warn!("Failed to emit beads-issue-created: {e}");
+                    }
+                }
+                IssueChange::Updated(issue) => {
+                    let payload = BeadsIssuePayload {
+                        repo_path: repo_path_str.clone(),
+                        issue,
+                    };
+                    if let Err(e) = app_for_task.emit("beads-issue-updated", payload) {
+                        log::warn!("Failed to emit beads-issue-updated: {e}");
+                    }
+                }
+                IssueChange::Deleted(issue) => {
+                    let payload = BeadsIssueDeletedPayload {
+                        repo_path: repo_path_str.clone(),
+                        issue_id: issue.id,
+                    };
+                    if let Err(e) = app_for_task.emit("beads-issue-deleted", payload) {
+                        log::warn!("Failed to emit beads-issue-deleted: {e}");
+                    }
+                }
             }
         }
     });
+}
+
+/// Read the canonical issue list for `repo_path` via `bd list --all
+/// --json`. This is the source of truth for the watcher's diff
+/// stage on Dolt-backed workspaces (bd 1.0.x's default since 1.0).
+///
+/// Why we don't trust `.beads/issues.jsonl` here: bd only rewrites
+/// the JSONL export lazily — on `bd create`, on explicit `bd
+/// export`, and at the end of `bd sync`. A bare `bd update
+/// --status=…` mutates the Dolt store (which notify WILL detect
+/// because `.beads/last-touched` + `.beads/embeddeddolt/...` are
+/// touched) but the JSONL file's mtime and content stay frozen,
+/// so `read_jsonl` returns the pre-update payload and the diff
+/// against the baseline is empty. We discovered this empirically
+/// while debugging r10 flakiness on PR #13 (e2e run 28186532811
+/// reported `row e2e-workspace-5nw status never reflected external
+/// bd update within 3000ms` for the very first mutation after
+/// attach).
+///
+/// Trade-off: this costs a subprocess + ~100 ms per change tick
+/// instead of an in-process file read (~10 ms). That's well within
+/// the 1 s end-to-end budget, and the React list query already
+/// runs the same `bd list --all --json` command when the cache is
+/// stale, so the OS page cache + Dolt connection pool are warm by
+/// the time the watcher fires its diff. Returns an empty `Vec` on
+/// any error so the watcher still emits `beads-data-changed`
+/// (legacy toast) — better a missed diff than a wedged watcher.
+async fn read_issues_via_bd(repo_path: &Path) -> Vec<Issue> {
+    let argv: [&str; 3] = ["list", "--all", "--json"];
+    match crate::beads::runner::run_bd(&argv, repo_path).await {
+        Ok(crate::beads::runner::BdOutput::Json { value }) => {
+            crate::beads::search_query::extract_data(value).unwrap_or_else(|e| {
+                log::warn!(
+                    "read_issues_via_bd: parse failed for {}: {e:?}",
+                    repo_path.display()
+                );
+                Vec::new()
+            })
+        }
+        Ok(crate::beads::runner::BdOutput::Text { value }) => {
+            log::warn!(
+                "read_issues_via_bd: expected JSON, got text for {}: {}",
+                repo_path.display(),
+                value.chars().take(200).collect::<String>()
+            );
+            Vec::new()
+        }
+        Err(e) => {
+            log::warn!(
+                "read_issues_via_bd: bd list failed for {}: {e:?}",
+                repo_path.display()
+            );
+            Vec::new()
+        }
+    }
 }
 
 /// Spawn a tokio task that polls `<repo>/.beads/` every 2 s and,
@@ -547,22 +649,73 @@ pub async fn attach_watch_repo(
     state.attach(app, PathBuf::from(repo_path))
 }
 
-/// Returns true if any event in `events` targets a `*.jsonl` file.
+/// Returns true if any event in `events` targets a file whose
+/// change is meaningful for the watcher.
 ///
-/// The watcher is already scoped to the `.beads/` directory, so we
-/// only filter on the extension and the file type. We intentionally
-/// do NOT compare the event's `parent()` to the watch directory: on
-/// platforms that resolve symlinks (e.g. macOS `/tmp` →
-/// `/private/tmp`), `notify` reports the resolved path while the
-/// caller passed the unresolved one, and a string comparison would
-/// miss every event.
-fn is_jsonl_event(events: &[notify_debouncer_mini::DebouncedEvent]) -> bool {
+/// The watcher's data source is `bd list --all --json`, not
+/// `.beads/issues.jsonl` (see `read_issues_via_bd` for why — bd
+/// 1.0.x's Dolt backend rewrites the JSONL lazily, so a bare
+/// `bd update` only touches `.beads/last-touched` +
+/// `.beads/embeddeddolt/...`). We DO react to events on
+/// `.beads/last-touched` (the canonical "something changed"
+/// marker bd updates after every command) and on any `.jsonl`
+/// in `.beads/` (in case the user has a JSONL-only workspace or
+/// bd eventually flushes), but we SKIP the embedded Dolt store
+/// (`.beads/embeddeddolt/**`). The embedded Dolt directory is
+/// chatty — Dolt touches a dozen internal files (manifest,
+/// journal.idx, vvvvvvvvvvvv, temptf/...) on every commit, so
+/// reacting to each one fires the watcher 5-10 times per bd
+/// command, each fire triggering a `bd list` subprocess
+/// (~500 ms cold). That cascading storm — observed on CI run
+/// 28197764540 (`diag={"issueUpdated":3,"dataReset":1,
+/// "dataChanged":0}` with the cache update landing at
+/// 43321 ms instead of the 3000 ms budget) — is the exact
+/// regression this filter prevents. `last-touched` is touched
+/// exactly once per bd command, so it's the canonical signal.
+/// The watcher is already scoped to the `.beads/` directory, so
+/// we don't re-check the path prefix here — on platforms that
+/// resolve symlinks (e.g. macOS `/tmp` → `/private/tmp`) `notify`
+/// reports the resolved path while the caller passed the
+/// unresolved one, and a string comparison would miss every
+/// event.
+fn is_beads_change_event(events: &[notify_debouncer_mini::DebouncedEvent]) -> bool {
     events.iter().any(|e| {
-        e.path
-            .extension()
-            .map(|ext| ext == "jsonl")
-            .unwrap_or(false)
-            && e.path.is_file()
+        if !e.path.is_file() {
+            return false;
+        }
+        let name = match e.path.file_name().and_then(|n| n.to_str()) {
+            Some(n) => n,
+            None => return false,
+        };
+        // Skip the embedded Dolt store entirely — see the
+        // function-level doc for why (chatty internal files
+        // would otherwise cascade the watcher into a `bd list`
+        // subprocess storm).
+        if e.path.components().any(|c| c.as_os_str() == "embeddeddolt") {
+            return false;
+        }
+        // Accept the canonical signal files only: the bd-touched
+        // marker (`last-touched`) and any `*.jsonl` in the
+        // `.beads/` root (covers both the standard
+        // `issues.jsonl` export and any Dolt-disabled workspace
+        // that still keeps a JSONL file).
+        if name == "last-touched" {
+            return true;
+        }
+        if name.ends_with(".jsonl") {
+            return true;
+        }
+        // Skip editor swap/temp artefacts so saving the JSONL in
+        // vim or VS Code doesn't double-fire the watcher.
+        if name.ends_with(".swp")
+            || name.ends_with(".swo")
+            || name.ends_with('~')
+            || name.ends_with(".tmp")
+            || name.starts_with(".#")
+        {
+            return false;
+        }
+        false
     })
 }
 
@@ -649,7 +802,7 @@ mod tests {
             Duration::from_millis(250),
             move |result: DebounceEventResult| {
                 if let Ok(events) = result {
-                    if is_jsonl_event(&events) {
+                    if is_beads_change_event(&events) {
                         on_event();
                     }
                 }

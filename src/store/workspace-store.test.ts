@@ -136,13 +136,21 @@ describe('useWorkspaceStore', () => {
       expect(useWorkspaceStore.getState().selectedIssueId).toBeNull()
     })
 
-    it('drops the old workspace beads query cache', () => {
+    it("keeps each workspace's beads cache independent (no removeQueries call)", () => {
+      // The previous implementation called `removeQueries({ queryKey:
+      // ['beads'] })` on every switch which wiped every workspace's
+      // cache. With the per-workspace queryKey (`['beads', 'list',
+      // cwd, filters]`), TanStack Query isolates the caches by
+      // key, so an explicit remove is unnecessary and forced a fresh
+      // `bd list --json` subprocess on every switch — racing the
+      // e2e spec's 10s budget under Dolt cold-start (r9 test 5).
       useWorkspaceStore.getState().setRepoPath('/old')
-      const client = getQueryClient()
-      expect(client).not.toBeNull()
-      const removeSpy = vi.spyOn(client as QueryClient, 'removeQueries')
+      const client = getQueryClient() as QueryClient
+      const removeSpy = vi.spyOn(client, 'removeQueries')
       useWorkspaceStore.getState().switchWorkspace('/new')
-      expect(removeSpy).toHaveBeenCalledWith({ queryKey: ['beads'] })
+      expect(removeSpy).not.toHaveBeenCalled()
+      // state must be replaced
+      expect(useWorkspaceStore.getState().repoPath).toBe('/new')
     })
 
     it('is a no-op when path equals current repoPath', () => {

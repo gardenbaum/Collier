@@ -132,16 +132,24 @@ export const useWorkspaceStore = create<WorkspaceState>()(
           if (path.length === 0) return
           const current = get().repoPath
           if (current === path) return
-          // Drop the OLD workspace's `['beads', ...]` query cache
-          // before flipping `repoPath` so the React components
-          // (which key their `useQuery` on the new path) don't see
-          // stale data from the previous workspace for a frame.
-          // We use `removeQueries` rather than `invalidateQueries`
-          // because the data is from a different workspace — there's
-          // no "stale → fresh" relationship to model.
-          if (queryClient) {
-            queryClient.removeQueries({ queryKey: ['beads'] })
-          }
+          // Each workspace's beads list + show caches are keyed
+          // on its own path (`['beads', 'list', cwd, filters]` and
+          // `['beads', 'show', cwd, id]`), so a switch is naturally
+          // isolated by the queryKey — the OLD workspace's
+          // component re-renders with a new queryKey and TanStack
+          // Query discards it as garbage, the NEW workspace's
+          // component renders with its OWN queryKey and finds
+          // either a fresh cached list (if it was loaded before
+          // — instant render) or runs the queryFn (cold bd
+          // subprocess, ~1-2s on Dolt). The previous implementation
+          // called `removeQueries({ queryKey: ['beads'] })` which
+          // wiped every workspace's cache, forcing a fresh `bd
+          // list --json` subprocess on every switch and racing the
+          // e2e spec's 10s budget under Dolt cold-start (r9 test
+          // 5: 'can switch back to the first fixture and reload'
+          // failed with 'Received string: 0 issues' / 'Loading...').
+          // Keep `selectedIssueId: null` — the old issue is from
+          // a different workspace.
           set({
             repoPath: path,
             selectedIssueId: null,
