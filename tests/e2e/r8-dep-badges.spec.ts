@@ -169,6 +169,15 @@ describe('Collier M3 R8 dependency badges everywhere', () => {
     await headerBadge.waitForDisplayed({ timeout: 5_000 })
     const variant = await headerBadge.getAttribute('data-variant')
     expect(variant).toBe('header')
+
+    // ponytail: clean up the drawer so the next test's sidebar
+    // click (sidebar-view-blocked) isn't intercepted by the
+    // drawer's `fixed inset-0` backdrop. Same pattern as
+    // r3-inline-edit.spec.ts and r4-detail.spec.ts.
+    const closeButton = await $('[data-testid="close-button"]')
+    await closeButton.waitForDisplayed({ timeout: 5_000 })
+    await closeButton.click()
+    await detail.waitForDisplayed({ timeout: 1_000, reverse: true })
   })
 
   it('surfaces a dep badge on every row in the Blocked view', async () => {
