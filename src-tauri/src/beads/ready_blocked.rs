@@ -6,7 +6,7 @@
 
 use serde_json::Value;
 
-use crate::beads::{runner, BdError, BdResult, Issue};
+use crate::beads::{runner, BdError, BdResult, Issue, IssueStatus};
 
 /// Extract the `data` field from a JSON envelope, mapping any parse errors
 /// to `BdError::ParseError`.
@@ -40,11 +40,23 @@ pub async fn bd_ready(cwd: String) -> BdResult<Vec<Issue>> {
 }
 
 /// Run `bd blocked --json` in `cwd` and return the list of blocked issues.
+///
+/// **Implementation note (M3 R8):** `bd blocked --json` returns a
+/// sparser shape than `bd list --json` — it omits `dependency_count`
+/// and `dependent_count`, only emitting `blocked_by_count` and
+/// `blocked_by` (array of IDs). Without those counts, every row's
+/// `DependencyBadge` renders with counts of 0, which silently
+/// drops the "blocks N" chip for an issue that has zero incoming
+/// blockers but blocks others (TASK_REFAC in the fixture is one).
+/// We delegate to `bd list --json` and filter to the same set
+/// `bd blocked` would have returned: issues whose status is
+/// `blocked` (manually-marked) OR that have at least one open
+/// blocker (`dependency_count > 0`).
 #[tauri::command]
 #[specta::specta]
 pub async fn bd_blocked(cwd: String) -> BdResult<Vec<Issue>> {
     let path = std::path::PathBuf::from(&cwd);
-    let output = runner::run_bd(&["blocked", "--json"], &path).await?;
+    let output = runner::run_bd(&["list", "--json"], &path).await?;
     let value = match output {
         runner::BdOutput::Json { value } => value,
         runner::BdOutput::Text { value } => {
@@ -53,7 +65,11 @@ pub async fn bd_blocked(cwd: String) -> BdResult<Vec<Issue>> {
             });
         }
     };
-    extract_data(value)
+    let issues: Vec<Issue> = extract_data(value)?;
+    Ok(issues
+        .into_iter()
+        .filter(|i| i.status == IssueStatus::Blocked || i.dependency_count > 0)
+        .collect())
 }
 
 #[cfg(test)]
@@ -117,5 +133,110 @@ mod tests {
 
         let result = extract_data(envelope);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_bd_blocked_filter_keeps_status_blocked_and_open_blockers() {
+        // ponytail: bd_blocked delegates to bd list + filter. The
+        // filter must keep (a) issues whose status is `blocked`
+        // even when they have no open blockers (TASK_REFAC in the
+        // fixture), AND (b) issues with at least one open blocker
+        // even when their status is open (TASK_OPT's child CACHE).
+        let envelope = serde_json::json!({
+            "schema_version": 1,
+            "data": [
+                {
+                    "id": "beads-status-blocked-no-deps",
+                    "title": "manually blocked",
+                    "status": "blocked",
+                    "priority": 2,
+                    "issue_type": "task",
+                    "created_at": "2026-04-20T12:00:00Z",
+                    "updated_at": null,
+                    "closed_at": null,
+                    "description": null,
+                    "owner": null,
+                    "labels": [],
+                    "dependencies": [],
+                    "dependency_count": 0,
+                    "dependent_count": 1,
+                    "comment_count": 0,
+                    "parent": null,
+                    "acceptance_criteria": null,
+                    "external_ref": null
+                },
+                {
+                    "id": "beads-open-with-blocker",
+                    "title": "blocked by upstream",
+                    "status": "open",
+                    "priority": 2,
+                    "issue_type": "task",
+                    "created_at": "2026-04-20T12:00:00Z",
+                    "updated_at": null,
+                    "closed_at": null,
+                    "description": null,
+                    "owner": null,
+                    "labels": [],
+                    "dependencies": [],
+                    "dependency_count": 1,
+                    "dependent_count": 0,
+                    "comment_count": 0,
+                    "parent": null,
+                    "acceptance_criteria": null,
+                    "external_ref": null
+                },
+                {
+                    "id": "beads-ready",
+                    "title": "ready to work",
+                    "status": "open",
+                    "priority": 2,
+                    "issue_type": "task",
+                    "created_at": "2026-04-20T12:00:00Z",
+                    "updated_at": null,
+                    "closed_at": null,
+                    "description": null,
+                    "owner": null,
+                    "labels": [],
+                    "dependencies": [],
+                    "dependency_count": 0,
+                    "dependent_count": 0,
+                    "comment_count": 0,
+                    "parent": null,
+                    "acceptance_criteria": null,
+                    "external_ref": null
+                },
+                {
+                    "id": "beads-closed",
+                    "title": "shipped",
+                    "status": "closed",
+                    "priority": 2,
+                    "issue_type": "task",
+                    "created_at": "2026-04-20T12:00:00Z",
+                    "updated_at": null,
+                    "closed_at": null,
+                    "description": null,
+                    "owner": null,
+                    "labels": [],
+                    "dependencies": [],
+                    "dependency_count": 0,
+                    "dependent_count": 0,
+                    "comment_count": 0,
+                    "parent": null,
+                    "acceptance_criteria": null,
+                    "external_ref": null
+                }
+            ]
+        });
+
+        let issues = extract_data(envelope).expect("should parse");
+        let kept: Vec<&Issue> = issues
+            .iter()
+            .filter(|i| i.status == IssueStatus::Blocked || i.dependency_count > 0)
+            .collect();
+        let ids: Vec<&str> = kept.iter().map(|i| i.id.as_str()).collect();
+        assert_eq!(
+            ids,
+            vec!["beads-status-blocked-no-deps", "beads-open-with-blocker"]
+        );
     }
 }

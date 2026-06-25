@@ -183,6 +183,33 @@ describe('DepGraphView', () => {
     expect(edge.getAttribute('data-kind')).toBe('blocker')
   })
 
+  it('emits parent_child dep_type as data-dep-type="parent-child" (kebab)', async () => {
+    // The DependencyType enum is serialised in snake_case by Rust
+    // serde; the E2E spec matches the CLI's kebab-case form on the
+    // DOM attribute (`data-dep-type="parent-child"`). The conversion
+    // lives next to the edge renderer so the wire format stays
+    // snake_case (no contract change for TS consumers) while the
+    // test attribute mirrors what `bd dep add --type` accepts.
+    const graph: Graph = {
+      nodes: [makeNode({ id: 'epic' }), makeNode({ id: 'task' })],
+      edges: [
+        makeEdge({ source: 'task', target: 'epic', depType: 'parent_child' }),
+      ],
+    }
+    mockBdGraph.mockResolvedValue({ status: 'ok', data: graph })
+
+    const { DepGraphView } = await importSut()
+    render(<DepGraphView cwd="/fake" onOpenIssue={() => undefined} />)
+
+    await waitFor(() => {
+      expect(screen.getByTestId('graph-canvas')).toBeInTheDocument()
+    })
+
+    const edge = screen.getAllByTestId('graph-edge')[0] as HTMLElement
+    expect(edge.getAttribute('data-dep-type')).toBe('parent-child')
+    expect(edge.getAttribute('data-kind')).toBe('parent')
+  })
+
   it('marks blocked nodes with data-blocked=true and surfaces the count', async () => {
     const graph: Graph = {
       nodes: [
@@ -255,7 +282,13 @@ describe('DepGraphView', () => {
       '[data-node-id="b"]'
     ) as HTMLElement | null
     expect(node).not.toBeNull()
-    fireEvent.click(node as HTMLElement)
+    // The click handler lives on the inner <rect> (production:
+    // WebKitWebDriver's hit-testing for an SVG <g> is unreliable;
+    // a <rect> with a known fill paints predictably). Fire the
+    // click on the rect so the synthetic event reaches it directly.
+    const rect = node?.querySelector('rect') as SVGRectElement | null
+    expect(rect).not.toBeNull()
+    fireEvent.click(rect as unknown as HTMLElement)
 
     expect(onOpenIssue).toHaveBeenCalledWith('b')
   })

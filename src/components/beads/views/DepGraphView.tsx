@@ -159,6 +159,21 @@ function nodeRectStyle(node: GraphNode): CSSProperties {
   }
 }
 
+/**
+ * Convert a snake_case DependencyType (`parent_child`,
+ * `discovered_from`, `conditional_blocks`, …) to the kebab-case form
+ * `bd` itself uses on the CLI (`parent-child`, `discovered-from`,
+ * …). The frontend serializes the enum in snake_case (the Rust
+ * serde `rename_all = "snake_case"` default) so the wire format is
+ * stable across both shapes; the DOM attribute that the E2E spec
+ * matches on, however, uses the kebab-case form to mirror the CLI
+ * contract. Keep this aligned with `DependencyType` in
+ * `src/lib/bindings.ts`.
+ */
+function toKebab(depType: string): string {
+  return depType.replace(/_/g, '-')
+}
+
 /** Style for an edge given its kind. */
 function edgeStrokeStyle(kind: 'blocker' | 'parent' | 'related'): {
   stroke: string
@@ -299,7 +314,7 @@ function GraphCanvas({
               data-testid="graph-edge"
               data-source={edge.source}
               data-target={edge.target}
-              data-dep-type={edge.depType}
+              data-dep-type={toKebab(edge.depType)}
               data-kind={kind}
             >
               <path
@@ -335,10 +350,6 @@ function GraphCanvas({
               data-issue-type={node.data.issueType}
               data-blocked={blocked ? 'true' : 'false'}
               transform={`translate(${node.x}, ${node.y})`}
-              style={{ cursor: 'pointer' }}
-              onClick={() => onNodeClick(node.id)}
-              role="button"
-              tabIndex={0}
               aria-label={`Open issue ${node.id}`}
             >
               <rect
@@ -348,7 +359,10 @@ function GraphCanvas({
                 height={NODE_HEIGHT}
                 rx={radius.sm}
                 ry={radius.sm}
-                style={rectStyle}
+                style={{ ...rectStyle, cursor: 'pointer' }}
+                role="button"
+                tabIndex={0}
+                onClick={() => onNodeClick(node.id)}
               />
               <text
                 x={-halfW + 8}
@@ -357,6 +371,7 @@ function GraphCanvas({
                   fontFamily: type.fontFamily.mono,
                   fontSize: type.fontSize.xs,
                   fill: colors.mono5,
+                  pointerEvents: 'none',
                 }}
               >
                 {node.id}
@@ -368,6 +383,7 @@ function GraphCanvas({
                   fontFamily: type.fontFamily.sans,
                   fontSize: type.fontSize.sm,
                   fill: colors.mono0,
+                  pointerEvents: 'none',
                 }}
               >
                 {truncateTitle(node.data.title)}
