@@ -172,6 +172,28 @@ describe('Collier M4 R10 targeted real-time sync', () => {
     //    DOM) so the test is robust against the virtualizer
     //    unmounting the row.
     const initial = await getCachedIssue(targetId)
+    // ponytail: E2E diagnostics — log the cache contents so
+    // a CI failure points at the layer that dropped the
+    // watcher event (no row in cache vs. stale row in cache).
+    // Costs ~10 ms per spec; only emitted when `targetId` is
+    // known, i.e. after the cache is populated.
+    const diag = await browser.execute(() => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const client = (globalThis as any).__collierQueryClient__
+      if (!client) return { keys: [], exposed: false }
+      const queries = client.getQueryCache().getAll()
+      return {
+        keys: queries.map((q: { queryKey: readonly unknown[] }) =>
+          q.queryKey.map((k: unknown) =>
+            typeof k === 'string' ? k : JSON.stringify(k)
+          )
+        ),
+        exposed: true,
+      }
+    })
+    console.log(
+      `[e2e:r10] cache diag: exposed=${String(diag.exposed)} keys=${JSON.stringify(diag.keys)} targetId=${targetId}`
+    )
     expect(initial).not.toBeNull()
     originalStatus = String(initial?.status ?? '')
     mutatedRowId = targetId
