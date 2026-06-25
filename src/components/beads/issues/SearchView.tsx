@@ -208,6 +208,16 @@ export function SearchView({ cwd, onOpenIssue }: SearchViewProps) {
   // view stays decoupled from the hook's internals.
   const inputRef = useRef<HTMLInputElement>(null)
   useEffect(() => {
+    // Auto-focus on mount. The keyboard hook dispatches
+    // `collier:focus-search-input` synchronously after
+    // `setActiveView('search')` — but that event fires before
+    // this component has rendered and registered its listener,
+    // so the dispatch is lost on the first `/`. Focusing on
+    // mount closes that race and matches the user expectation:
+    // pressing `/` always lands focus on the search input.
+    inputRef.current?.focus()
+  }, [])
+  useEffect(() => {
     const handler = (): void => {
       inputRef.current?.focus()
     }
