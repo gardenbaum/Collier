@@ -38,6 +38,8 @@ import { ErrorBoundary } from './components/ErrorBoundary'
 import { BdNotInPath, RepoSelection } from './components/beads/bootstrap'
 import { useSquareCornersEffect } from './hooks/useSquareCornersEffect'
 import { useWorkspaceStore } from './store/workspace-store'
+import { attachToWorkspaceStore as attachFilterToWorkspace } from './store/issue-filter-store'
+import { attachToWorkspaceStore as attachScrollToWorkspace } from './store/scroll-position-store'
 
 /**
  * Run the Tauri updater flow. Lifted to a module-level function so
@@ -153,6 +155,21 @@ function App() {
   const { t } = useTranslation()
   const repoPath = useWorkspaceStore(s => s.repoPath)
   const setRepoPath = useWorkspaceStore(s => s.setRepoPath)
+
+  // M4: wire the per-workspace stores (filter + scroll position)
+  // to the workspace-store so a `switchWorkspace` / `setRepoPath`
+  // call swaps the active filter / scroll offset to the new repo's
+  // saved values. Idempotent — both `attach*` helpers replace any
+  // previous subscription. Runs on mount only; we don't tear down
+  // for the session lifetime.
+  useEffect(() => {
+    const u1 = attachFilterToWorkspace(useWorkspaceStore)
+    const u2 = attachScrollToWorkspace(useWorkspaceStore)
+    return () => {
+      u1()
+      u2()
+    }
+  }, [])
 
   // The startup effect reads `t` through a ref so the effect body
   // stays cheap to re-run if we ever need to (e.g. on language
