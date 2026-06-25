@@ -341,17 +341,16 @@ function GraphCanvas({
           const rectStyle = nodeRectStyle(node.data)
           const halfW = NODE_WIDTH / 2
           const halfH = NODE_HEIGHT / 2
+          // The <rect> is the click target — it carries the
+          // data attributes + onClick + role/aria so WebDriver's
+          // hit-testing lands on a paintable element instead of
+          // an SVG <g> (which WebKitWebDriver treats as
+          // non-interactable; see CI run 28147868610). The <g>
+          // stays as a layout container for the rect + text
+          // children so the transform applies to all three at
+          // once.
           return (
-            <g
-              key={node.id}
-              data-testid="graph-node"
-              data-node-id={node.id}
-              data-status={node.data.status}
-              data-issue-type={node.data.issueType}
-              data-blocked={blocked ? 'true' : 'false'}
-              transform={`translate(${node.x}, ${node.y})`}
-              aria-label={`Open issue ${node.id}`}
-            >
+            <g key={node.id} transform={`translate(${node.x}, ${node.y})`}>
               <rect
                 x={-halfW}
                 y={-halfH}
@@ -360,8 +359,14 @@ function GraphCanvas({
                 rx={radius.sm}
                 ry={radius.sm}
                 style={{ ...rectStyle, cursor: 'pointer' }}
+                data-testid="graph-node"
+                data-node-id={node.id}
+                data-status={node.data.status}
+                data-issue-type={node.data.issueType}
+                data-blocked={blocked ? 'true' : 'false'}
                 role="button"
                 tabIndex={0}
+                aria-label={`Open issue ${node.id}`}
                 onClick={() => onNodeClick(node.id)}
               />
               <text

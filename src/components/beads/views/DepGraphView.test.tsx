@@ -282,13 +282,14 @@ describe('DepGraphView', () => {
       '[data-node-id="b"]'
     ) as HTMLElement | null
     expect(node).not.toBeNull()
-    // The click handler lives on the inner <rect> (production:
-    // WebKitWebDriver's hit-testing for an SVG <g> is unreliable;
-    // a <rect> with a known fill paints predictably). Fire the
-    // click on the rect so the synthetic event reaches it directly.
-    const rect = node?.querySelector('rect') as SVGRectElement | null
-    expect(rect).not.toBeNull()
-    fireEvent.click(rect as unknown as HTMLElement)
+    // The click handler + data attributes live on the inner
+    // <rect> (production: WebKitWebDriver's hit-testing for an
+    // SVG <g> is unreliable; the <rect> is the paintable
+    // element WebDriver can interact with — picked up from
+    // CI run 28147868610). Fire the click on the node itself,
+    // which is now the rect, so the synthetic event reaches the
+    // handler directly.
+    fireEvent.click(node as unknown as HTMLElement)
 
     expect(onOpenIssue).toHaveBeenCalledWith('b')
   })
