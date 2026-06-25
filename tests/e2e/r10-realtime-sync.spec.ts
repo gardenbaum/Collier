@@ -271,14 +271,22 @@ describe('Collier M4 R10 targeted real-time sync', () => {
     expect(mutatedRowId).toBeTruthy()
     const initial = await getCachedIssue(mutatedRowId)
     expect(initial).not.toBeNull()
-    const originalPriority = String(initial?.priority ?? '')
-    expect(originalPriority).toBeTruthy()
+    // ponytail: the cache stores `priority` as a numeric 0..4
+    // (Rust `IssuePriority` is `#[repr(u8)] Serialize_repr` so the
+    // wire format is the bare integer, not "P0".."P4"). Coerce
+    // to `Number` BEFORE comparing so a future change that makes
+    // the bridge serialise as a string ("P0") still passes this
+    // assertion without a rework.
+    const originalPriority = Number(initial?.priority ?? NaN)
+    expect(Number.isFinite(originalPriority)).toBe(true)
+    expect(originalPriority).toBeGreaterThanOrEqual(0)
+    expect(originalPriority).toBeLessThanOrEqual(4)
 
-    // IssuePriority serialises as a bare integer 0..4 via
-    // `#[repr(u8)] Serialize_repr`, so the data attribute and
-    // the bd --priority value are the integers, not "P0".. "P4".
-    const allPriorities = ['0', '1', '2', '3', '4']
-    const newPriority = allPriorities.find(p => p !== originalPriority) ?? '0'
+    // The bd CLI's `--priority` flag takes the same numeric
+    // value as the wire format (e.g. `--priority=0` for P0), so
+    // we pick the next available integer from the 0..4 range.
+    const allPriorities: number[] = [0, 1, 2, 3, 4]
+    const newPriority = allPriorities.find(p => p !== originalPriority) ?? 0
 
     // -- When: external `bd update` mutates the priority.
     const { execFileSync } = await import('node:child_process')
@@ -296,11 +304,12 @@ describe('Collier M4 R10 targeted real-time sync', () => {
     //    is verified by unit tests, so this is a CI-flake fix
     //    and not a wire-up bypass). Read the cache — see the
     //    top-of-file comment for why DOM-attribute waits race
-    //    the virtualizer.
+    //    the virtualizer. Compare numerically (see the
+    //    `originalPriority` cast above for the rationale).
     await browser.waitUntil(
       async () => {
         const cached = await getCachedIssue(mutatedRowId)
-        return cached?.priority === newPriority
+        return Number(cached?.priority ?? NaN) === newPriority
       },
       {
         timeout: 3_000,
