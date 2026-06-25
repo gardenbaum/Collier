@@ -58,7 +58,7 @@ export function LabelManager({ cwd, issue }: LabelManagerProps) {
   // `Label` struct carries `{ name, color? }`; we only need the
   // name for the chip text and the remove call.
   const currentLabelNames = useMemo(
-    () => issue.labels.map(l => l.name),
+    () => (issue.labels ?? []).map(l => l.name),
     [issue.labels]
   )
 

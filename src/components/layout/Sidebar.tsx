@@ -34,10 +34,10 @@ import { commands } from '@/lib/tauri-bindings'
 import type {
   AssigneeWithCount,
   IssuePriority,
-  IssueStatus,
   IssueType,
   LabelWithCount,
 } from '@/lib/bindings'
+import { useStatusCatalog } from '@/hooks/useStatusCatalog'
 
 const VIEW_LABELS: Record<WorkspaceView, string> = {
   list: 'List',
@@ -53,19 +53,25 @@ const VIEW_LABELS: Record<WorkspaceView, string> = {
   raw: 'Raw',
 }
 
-/** All known lifecycle statuses. Beads allows user-defined custom
- * statuses in v2; until then, this closed set is the source of truth.
- * Sorted in lifecycle order (matching `IssueListView`'s sort) so the
- * sidebar reads the same way the user expects to see the list.
- * (T17 stores them as a set; ordering only affects the sidebar chip
- * layout.) */
-const ALL_STATUSES: readonly IssueStatus[] = [
-  'open',
-  'in_progress',
-  'blocked',
-  'deferred',
-  'closed',
-]
+/**
+ * Known built-in status labels (Title Case). Custom statuses fall
+ * back to their raw `bd`-emitted name — no Title Case mapping
+ * exists for them. The `useStatusCatalog` hook drives the chip
+ * list (built-ins first, customs appended alphabetically) so a
+ * workspace with `bd config set status.custom "review:wip"` gets
+ * a "Review" chip without code changes.
+ */
+const BUILTIN_STATUS_LABEL: Record<string, string> = {
+  open: 'Open',
+  in_progress: 'In progress',
+  blocked: 'Blocked',
+  deferred: 'Deferred',
+  closed: 'Closed',
+}
+
+function statusLabelFor(name: string): string {
+  return BUILTIN_STATUS_LABEL[name] ?? name
+}
 
 /** All priorities P0..P4. Closed enum per the constitution. */
 const ALL_PRIORITIES: readonly IssuePriority[] = ['P0', 'P1', 'P2', 'P3', 'P4']
@@ -84,14 +90,6 @@ const ALL_TYPES: readonly IssueType[] = [
 /** User-facing label for each enum value — lowercase kebab on the
  * wire, Title Case on screen. Kept in one place so the chip
  * wording can be localised later without touching every chip. */
-const STATUS_LABEL: Record<IssueStatus, string> = {
-  open: 'Open',
-  in_progress: 'In progress',
-  blocked: 'Blocked',
-  deferred: 'Deferred',
-  closed: 'Closed',
-}
-
 const PRIORITY_LABEL: Record<IssuePriority, string> = {
   P0: 'P0',
   P1: 'P1',
@@ -149,6 +147,15 @@ export function Sidebar() {
     },
     enabled: repoPath !== null,
   })
+
+  // ponytail: same parallel query for status catalog — `bd`
+  // exposes built-in + custom statuses via `bd statuses --json`
+  // (the StatusCatalog Rust command). The catalog is the
+  // authoritative source for the sidebar's status chip list,
+  // driven by the constitution's "no hardcoded 5-status arrays"
+  // rule. The hook falls back to the v1 built-ins while the
+  // query is pending so the UI is never blank.
+  const statusCatalog = useStatusCatalog(repoPath)
 
   // ponytail: same parallel query for assignees — `bd` has no
   // dedicated "assignee list-all" subcommand, so the Rust side
@@ -239,11 +246,11 @@ export function Sidebar() {
           count={status.length}
         >
           <ChipRow testidPrefix="sidebar-filter-status" active={status}>
-            {ALL_STATUSES.map(s => (
+            {statusCatalog.statusNames.map(s => (
               <ToggleChip
                 key={s}
                 value={s}
-                label={STATUS_LABEL[s]}
+                label={statusLabelFor(s)}
                 isActive={status.includes(s)}
                 onToggle={() => toggleStatus(s)}
                 testidPrefix="sidebar-filter-status"

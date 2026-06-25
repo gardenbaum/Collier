@@ -801,10 +801,41 @@ async bdAddComment(cwd: string, id: string, body: string) : Promise<Result<null,
 }
 },
 /**
- * Tauri command: replace the live beads watcher with one rooted at
- * `repo_path`. Called from the React side whenever the active repo
- * changes so `beads-data-changed` events carry the right `repo_path`
- * payload (the frontend filters on
+ * Run `bd statuses --json` in `cwd` and return the merged catalog.
+ * 
+ * Beads has no dedicated `--cwd` arg — the CLI auto-discovers
+ * `.beads/` from the working directory. We hand it the repo path
+ * directly (per the constitution's "bd is the single source of
+ * truth" rule) so a multi-workspace switcher's `cwd` propagates
+ * to the catalog query without each component re-deriving it.
+ */
+async bdStatuses(cwd: string) : Promise<Result<StatusCatalog, BdError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("bd_statuses", { cwd }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Run `bd gate list [--all] --json` in `cwd` and return the parsed
+ * entries. Default scope is open gates (matching the CLI's own
+ * default); pass `include_closed: true` to opt into the full
+ * history view.
+ */
+async bdGateList(cwd: string, includeClosed: boolean | null) : Promise<Result<GateEntry[], BdError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("bd_gate_list", { cwd, includeClosed }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
+ * Tauri command: replace the live beads watcher with one rooted
+ * at `repo_path`. Called from the React side whenever the active
+ * repo changes so `beads-issue-*` events carry the right
+ * `repo_path` payload (the frontend filters on
  * `event.payload.repo_path === activeRepoPath`).
  */
 async attachWatchRepo(repoPath: string) : Promise<Result<null, string>> {
@@ -1031,6 +1062,22 @@ export type DependencyType = "blocks" |
  */
 "parent_child" | "conditional_blocks" | "waits_for" | "related" | "tracks" | "discovered_from" | "caused_by" | "validates" | "supersedes"
 /**
+ * One row of the `bd gate list --json` response.
+ * 
+ * The CLI (1.0.5) emits the same `{ id, title, status, priority,
+ * issue_type, ... }` shape that `bd list --json` uses, just
+ * filtered to `issue_type == "gate"`. We accept the full Issue
+ * schema so the gates view can render every column the issue
+ * list exposes (title, status pill, priority dot, age) without a
+ * second IPC round-trip.
+ * 
+ * `is_closed` is derived on the Rust side from the status string
+ * (via [`crate::beads::issue_status_is_closed`]) so the
+ * frontend's open/closed toggle (a future follow-up) can branch
+ * on a single boolean instead of string-matching `"closed"`.
+ */
+export type GateEntry = { issue: Issue; isClosed: boolean }
+/**
  * The full graph payload. `nodes` are de-duplicated by id;
  * `edges` is the multiset of dependency rows from `bd list`
  * (with the source side filled in from the enclosing `Issue`).
@@ -1048,7 +1095,7 @@ export type GraphEdge = { source: string; target: string; depType: DependencyTyp
  * frontend to render a labelled card and colour it by status /
  * type without another round-trip.
  */
-export type GraphNode = { id: string; title: string; status: IssueStatus; priority: IssuePriority; issueType: IssueType }
+export type GraphNode = { id: string; title: string; status: string; priority: IssuePriority; issueType: IssueType }
 /**
  * One entry from an issue's version history.
  * 
@@ -1094,7 +1141,7 @@ actor: string | null;
  * the status. Helps the History tab render a useful one-liner.
  */
 details?: string | null }
-export type Issue = { id: string; title: string; status: IssueStatus; priority: IssuePriority; issue_type: IssueType; created_at: string; 
+export type Issue = { id: string; title: string; status: string; priority: IssuePriority; issue_type: IssueType; created_at: string; 
 /**
  * `#[serde(default)]` because bd v1.0.4's `bd list --json`
  * omits `updated_at` for issues that have never been updated
@@ -1116,7 +1163,20 @@ description?: string | null;
  * `#[serde(default)]` because bd v1.0.4's list output omits
  * `owner` for unassigned issues. Default = `None`.
  */
-owner?: string | null; labels: Label[]; 
+owner?: string | null; 
+/**
+ * `#[serde(default)]` because bd v1.0.4's `bd list --json`
+ * output omits `labels` entirely for issues that have no
+ * labels attached (verified against `BD_JSON_ENVELOPE=1` output
+ * from the CLI). Default = empty `Vec`. The M4 R9 E2E spec's
+ * `make-second-fixture.sh` seeds five label-less issues; without
+ * this default the list view for `/tmp/e2e-workspace-b` raised
+ * "failed to parse issues from 'data' field: missing field
+ * `labels`" and the r10 real-time sync smoke spec timed out on
+ * the post-switch reload. Surfaced as a `ParseError` from
+ * `bd_list` (`extract_data` in `search_query.rs`).
+ */
+labels?: Label[]; 
 /**
  * `#[serde(default)]` because bd v1.0.4's `bd list --json`
  * output does NOT include a `dependencies` array — only the
@@ -1185,7 +1245,6 @@ acceptance_criteria?: string | null;
  */
 external_ref?: string | null }
 export type IssuePriority = "P0" | "P1" | "P2" | "P3" | "P4"
-export type IssueStatus = "open" | "in_progress" | "blocked" | "closed" | "deferred"
 export type IssueType = "bug" | "feature" | "task" | "epic" | "chore" | "decision" | "gate"
 export type JsonValue = null | boolean | number | string | JsonValue[] | Partial<{ [key in string]: JsonValue }>
 export type JsonlResult = { issues: Issue[]; skipped_lines: ([number, string])[] }
@@ -1231,7 +1290,7 @@ export type ListFilters = {
 /**
  * Filter by lifecycle status. Maps to `bd list --status` (repeatable).
  */
-status?: IssueStatus[] | null; 
+status?: string[] | null; 
 /**
  * Filter by priority. Maps to `bd list --priority` (repeatable,
  * bare integer 0..4 — `IssuePriority` uses `Serialize_repr`).
@@ -1311,6 +1370,31 @@ source?: string | null }
  */
 export type PropagationReport = { added: number; skipped: number; errors: string[] }
 /**
+ * The merged catalog. `builtin` keeps the CLI's lifecycle order
+ * (open → in_progress → blocked → deferred → closed → pinned →
+ * hooked) and `custom` is appended alphabetically by `name` so
+ * the frontend renders a deterministic order without re-sorting.
+ * 
+ * `status_names` is the flat ordered list — every status the user
+ * can pick from — produced by concatenating `builtin + custom`.
+ * The frontend's `<select>` / sidebar chip row iterate over this
+ * directly; the `KNOWN_STATUS_ORDER` arrays previously sprinkled
+ * across components are replaced by reading this list.
+ */
+export type StatusCatalog = { builtin: StatusMeta[]; custom: StatusMeta[]; statusNames: string[] }
+/**
+ * One status the frontend renders — merged across the built-in and
+ * custom halves of the catalog. `is_builtin` lets the UI render
+ * built-ins with their canonical palette + i18n key while custom
+ * statuses fall back to a neutral style + raw label.
+ * 
+ * `category` is the bd taxonomy (`active`, `wip`, `frozen`,
+ * `done`) — surfaced verbatim to the frontend so a future
+ * palette variant can key off it (e.g. tint frozen statuses with
+ * a frost-blue).
+ */
+export type StatusMeta = { name: string; category: string; icon?: string | null; description?: string | null; isBuiltin: boolean }
+/**
  * Input struct for `bd update <id> <flags> --json`.
  * 
  * Every field is `Option<T>`. The semantics: a `None` field is "don't
@@ -1357,7 +1441,7 @@ priority?: IssuePriority | null;
  * New lifecycle status. Maps to `bd update --status` (bare enum
  * name, e.g. `"in_progress"`).
  */
-status?: IssueStatus | null; 
+status?: string | null; 
 /**
  * New assignee. Maps to `bd update --assignee` (the CLI uses
  * `--assignee`, not `--owner`, even though the Rust `Issue` struct

@@ -4,8 +4,8 @@ pub mod types;
 
 pub fn generate_bindings() -> Builder<tauri::Wry> {
     use crate::beads::{
-        detect, graph, jsonl, list, mutations, ready_blocked, runner, search_query, show_history,
-        watcher,
+        detect, gates, graph, jsonl, list, mutations, ready_blocked, runner, search_query,
+        show_history, statuses, watcher,
     };
     use crate::commands::{
         diagnostic_log, notifications, preferences, quick_pane, recent_repos, recovery,
@@ -61,6 +61,8 @@ pub fn generate_bindings() -> Builder<tauri::Wry> {
         show_history::bd_history,
         show_history::bd_comments,
         show_history::bd_add_comment,
+        statuses::bd_statuses,
+        gates::bd_gate_list,
         watcher::attach_watch_repo,
     ])
 }

@@ -42,7 +42,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { BarChart3 } from 'lucide-react'
 import { commands } from '@/lib/tauri-bindings'
-import type { Issue, IssueStatus } from '@/lib/bindings'
+import type { Issue } from '@/lib/bindings'
 import { colors, palette, radius, space, type } from '@/lib/design-tokens'
 import { EmptyState } from '@/components/atoms'
 import { useWorkspaceStore } from '@/store/workspace-store'
@@ -53,9 +53,14 @@ export interface StatusOverviewViewProps {
   cwd: string
 }
 
-/** Lifecycle order for the 5 known statuses — matches IssueListView
- * `statusRank` so the overview reads the same way as the list. */
-const KNOWN_STATUS_ORDER: readonly IssueStatus[] = [
+/**
+ * Lifecycle order for the canonical v1 statuses — matches
+ * IssueListView's `statusRank` so the overview reads the same way
+ * as the list. Stored as a `string[]` because `IssueStatus` is
+ * now a plain string on the wire (custom statuses are first-class
+ * per `docs/CONSTITUTION.md §3`).
+ */
+const KNOWN_STATUS_ORDER: readonly string[] = [
   'open',
   'in_progress',
   'blocked',
@@ -63,9 +68,12 @@ const KNOWN_STATUS_ORDER: readonly IssueStatus[] = [
   'closed',
 ]
 
-/** Default palette color per known status. Custom statuses fall
- * back to `palette.textMuted` so they still render readably. */
-const STATUS_COLOR: Record<IssueStatus, string> = {
+/**
+ * Default palette color per canonical v1 status. Custom statuses
+ * fall back to `palette.textMuted` so they still render readably
+ * even though we have no opinion about their colour.
+ */
+const STATUS_COLOR: Record<string, string> = {
   open: palette.statusOpen,
   in_progress: palette.statusInProgress,
   blocked: palette.statusBlocked,
@@ -73,10 +81,10 @@ const STATUS_COLOR: Record<IssueStatus, string> = {
   closed: palette.statusClosed,
 }
 
-/** i18n key suffix per known status — maps to `beads.status.<key>`
- * in every locale. Custom statuses get their raw string as the
- * label. */
-const STATUS_I18N_KEY: Record<IssueStatus, string> = {
+/** i18n key suffix per canonical v1 status — maps to
+ * `beads.status.<key>` in every locale. Custom statuses get their
+ * raw string as the label (no i18n entry). */
+const STATUS_I18N_KEY: Record<string, string> = {
   open: 'open',
   in_progress: 'inProgress',
   blocked: 'blocked',
@@ -224,7 +232,7 @@ interface StatusCard {
 function computeCards(
   issues: Issue[],
   total: number,
-  labelFor: (status: IssueStatus) => string
+  labelFor: (status: string) => string
 ): StatusCard[] {
   const counts = new Map<string, number>()
   for (const issue of issues) {
@@ -236,14 +244,14 @@ function computeCards(
     return {
       key: status,
       label: labelFor(status),
-      color: STATUS_COLOR[status],
+      color: STATUS_COLOR[status] ?? palette.textMuted,
       count,
       percent: total === 0 ? 0 : Math.round((count / total) * 100),
     }
   })
 
   const customKeys = Array.from(counts.keys())
-    .filter(k => !KNOWN_STATUS_ORDER.includes(k as IssueStatus))
+    .filter(k => !(KNOWN_STATUS_ORDER as readonly string[]).includes(k))
     .sort()
 
   const customCards: StatusCard[] = customKeys.map(key => {
@@ -277,7 +285,7 @@ export function StatusOverviewView({ cwd }: StatusOverviewViewProps) {
   const cards = useMemo<StatusCard[]>(
     () =>
       computeCards(data ?? [], data?.length ?? 0, status =>
-        t(`beads.status.${STATUS_I18N_KEY[status]}`)
+        t(`beads.status.${STATUS_I18N_KEY[status] ?? status}`)
       ),
     [data, t]
   )
@@ -359,8 +367,8 @@ export function StatusOverviewView({ cwd }: StatusOverviewViewProps) {
               for (const s of current) {
                 if (s !== card.key) setStatus(s)
               }
-              if (!current.includes(card.key as IssueStatus)) {
-                setStatus(card.key as IssueStatus)
+              if (!current.includes(card.key)) {
+                setStatus(card.key)
               }
               setActiveView('list')
             }}

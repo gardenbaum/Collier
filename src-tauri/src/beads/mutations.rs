@@ -690,7 +690,9 @@ fn parse_dep_vec(value: Value, cmd_name: &str) -> BdResult<Vec<Dependency>> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::beads::{IssuePriority, IssueStatus, IssueType};
+    use crate::beads::{
+        IssuePriority, IssueType, ISSUE_STATUS_CLOSED, ISSUE_STATUS_IN_PROGRESS, ISSUE_STATUS_OPEN,
+    };
 
     /// Confirms the create command's argv starts with the `create`
     /// subcommand, includes the title flag, and ends with `--json`.
@@ -747,7 +749,7 @@ mod tests {
         let issue = parse_issue_or_array(envelope, "bd create").expect("parses");
         assert_eq!(issue.id, "beads-99");
         assert_eq!(issue.title, "Created");
-        assert_eq!(issue.status, IssueStatus::Open);
+        assert_eq!(issue.status, ISSUE_STATUS_OPEN.to_string());
         assert_eq!(issue.priority, IssuePriority::P2);
         assert_eq!(issue.issue_type, IssueType::Task);
     }
@@ -893,7 +895,7 @@ mod tests {
         let issue = parse_issue_or_array(envelope, "bd update").expect("parses");
         assert_eq!(issue.id, "beads-99");
         assert_eq!(issue.title, "Renamed");
-        assert_eq!(issue.status, IssueStatus::InProgress);
+        assert_eq!(issue.status, ISSUE_STATUS_IN_PROGRESS.to_string());
         assert_eq!(issue.priority, IssuePriority::P1);
         assert_eq!(issue.issue_type, IssueType::Bug);
     }
@@ -905,7 +907,7 @@ mod tests {
     fn test_bd_update_argv_shape_with_priority_and_status() {
         let input = UpdateInput {
             priority: Some(IssuePriority::P1),
-            status: Some(IssueStatus::InProgress),
+            status: Some(ISSUE_STATUS_IN_PROGRESS.to_string()),
             ..Default::default()
         };
         let mut owned_args: Vec<String> = input.to_args();
@@ -971,7 +973,7 @@ mod tests {
         });
         let issue = parse_issue_or_array(envelope, "bd close").expect("parses");
         assert_eq!(issue.id, "beads-42");
-        assert_eq!(issue.status, IssueStatus::Closed);
+        assert_eq!(issue.status, ISSUE_STATUS_CLOSED.to_string());
         assert!(issue.closed_at.is_some(), "closed_at should be populated");
     }
 
@@ -1004,7 +1006,7 @@ mod tests {
         });
         let issue = parse_issue_or_array(envelope, "bd close").expect("parses");
         assert_eq!(issue.id, "beads-43");
-        assert_eq!(issue.status, IssueStatus::Closed);
+        assert_eq!(issue.status, ISSUE_STATUS_CLOSED.to_string());
     }
 
     /// Empty `data: []` from close is a `ParseError` — should not
@@ -1061,7 +1063,7 @@ mod tests {
         });
         let issue = parse_issue_or_array(envelope, "bd reopen").expect("parses");
         assert_eq!(issue.id, "beads-42");
-        assert_eq!(issue.status, IssueStatus::Open);
+        assert_eq!(issue.status, ISSUE_STATUS_OPEN.to_string());
         assert!(
             issue.closed_at.is_none(),
             "closed_at should be null after reopen"
@@ -1096,7 +1098,7 @@ mod tests {
         });
         let issue = parse_issue_or_array(envelope, "bd reopen").expect("parses");
         assert_eq!(issue.id, "beads-43");
-        assert_eq!(issue.status, IssueStatus::Open);
+        assert_eq!(issue.status, ISSUE_STATUS_OPEN.to_string());
     }
 
     /// Empty `data: []` from reopen is a `ParseError`.
@@ -1797,11 +1799,11 @@ mod tests {
     /// because the helper only touches `owner`. Keeping the
     /// builder centralised prevents drift across the test cases.
     fn make_issue_with_owner(owner: Option<&str>) -> Issue {
-        use crate::beads::{IssuePriority, IssueStatus, IssueType};
+        use crate::beads::{IssuePriority, IssueType, ISSUE_STATUS_OPEN};
         Issue {
             id: "beads-test".to_string(),
             title: "x".to_string(),
-            status: IssueStatus::Open,
+            status: ISSUE_STATUS_OPEN.to_string(),
             priority: IssuePriority::P2,
             issue_type: IssueType::Task,
             created_at: chrono::Utc::now(),

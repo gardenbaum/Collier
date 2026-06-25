@@ -32,11 +32,11 @@ import { commands } from '@/lib/tauri-bindings'
 import type {
   Issue,
   IssuePriority,
-  IssueStatus,
   IssueType,
   UpdateInput,
 } from '@/lib/bindings'
 import { useDialogA11y } from '@/hooks/useDialogA11y'
+import { useStatusCatalog } from '@/hooks/useStatusCatalog'
 
 export interface IssueUpdatePanelProps {
   /** Repository root. Passed to `commands.bdUpdate`. */
@@ -61,13 +61,10 @@ const ISSUE_TYPES: IssueType[] = [
 
 const PRIORITIES: IssuePriority[] = ['P0', 'P1', 'P2', 'P3', 'P4']
 
-const STATUSES: IssueStatus[] = [
-  'open',
-  'in_progress',
-  'blocked',
-  'closed',
-  'deferred',
-]
+// Status set is read from `useStatusCatalog` (which reads
+// `bd statuses --json`) — the M6 contract. A workspace with
+// custom statuses via `bd config set status.custom` surfaces
+// them in this dropdown without code changes.
 
 const inputClass =
   'border border-mono-3 bg-mono-9 px-2 py-2 font-sans text-sm text-mono-0 outline-none'
@@ -93,6 +90,7 @@ export function IssueUpdatePanel({
   onUpdated,
 }: IssueUpdatePanelProps) {
   const { t } = useTranslation()
+  const statusCatalog = useStatusCatalog(cwd)
   // ponytail: pre-populate from the issue prop. We keep the original
   // `issue` reference (not a snapshot copy) so the dirty check is a
   // plain equality compare against live fields.
@@ -100,7 +98,7 @@ export function IssueUpdatePanel({
   const [description, setDescription] = useState(issue.description ?? '')
   const [issueType, setIssueType] = useState<IssueType>(issue.issue_type)
   const [priority, setPriority] = useState<IssuePriority>(issue.priority)
-  const [status, setStatus] = useState<IssueStatus>(issue.status)
+  const [status, setStatus] = useState<string>(issue.status)
   const [assignee, setAssignee] = useState(issue.owner ?? '')
   const [externalRef, setExternalRef] = useState(issue.external_ref ?? '')
 
@@ -266,10 +264,10 @@ export function IssueUpdatePanel({
             <select
               data-testid="update-status"
               value={status}
-              onChange={e => setStatus(e.target.value as IssueStatus)}
+              onChange={e => setStatus(e.target.value)}
               className={selectClass}
             >
-              {STATUSES.map(s => (
+              {statusCatalog.statusNames.map(s => (
                 <option key={s} value={s}>
                   {s}
                 </option>

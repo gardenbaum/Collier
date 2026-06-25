@@ -183,9 +183,9 @@ export function IssueDetailView({
                   </span>
                 ) : null}
               </div>
-              {issue.labels.length > 0 ? (
+              {(issue.labels ?? []).length > 0 ? (
                 <div style={labelsRowStyle}>
-                  {issue.labels.map(l => (
+                  {(issue.labels ?? []).map(l => (
                     <LabelChip key={l.name} label={l.name} />
                   ))}
                 </div>

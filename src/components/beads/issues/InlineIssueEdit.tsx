@@ -51,28 +51,17 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { useTranslation } from 'react-i18next'
 import { commands } from '@/lib/tauri-bindings'
-import type {
-  Issue,
-  IssuePriority,
-  IssueStatus,
-  UpdateInput,
-} from '@/lib/bindings'
+import type { Issue, IssuePriority, UpdateInput } from '@/lib/bindings'
+import { useStatusCatalog } from '@/hooks/useStatusCatalog'
 import { logger } from '@/lib/logger'
 import { colors, radius, space, type } from '@/lib/design-tokens'
 import { PriorityDot } from './badges/PriorityDot'
 import { StatusPill } from './badges/StatusPill'
 
-/** Beads lifecycle statuses. Beads allows user-defined custom
- *  statuses in v2; until then, this closed set is the source of truth.
- *  Sorted in lifecycle order so the dropdown reads the way the user
- *  thinks about issue progress. */
-const ALL_STATUSES: readonly IssueStatus[] = [
-  'open',
-  'in_progress',
-  'blocked',
-  'deferred',
-  'closed',
-]
+// Status set comes from `useStatusCatalog` (which reads
+// `bd statuses --json`) — the M6 contract. Hardcoding the 5
+// built-ins here would silently drop any custom status a
+// workspace has configured (`bd config set status.custom`).
 
 // ponytail: `IssuePriority` is `#[repr(u8)] Serialize_repr` on the
 // Rust side, so `bd list --json` emits priority as the bare
@@ -153,7 +142,7 @@ interface InlineCellBaseProps {
  * made and toast the error.
  */
 type Field =
-  | { kind: 'status'; value: IssueStatus }
+  | { kind: 'status'; value: string }
   | { kind: 'priority'; value: IssuePriority }
   | { kind: 'assignee'; value: string | null }
 
@@ -319,6 +308,7 @@ export function InlineStatusEdit({
   const mutation = useInlineUpdate({ cwd, issueId: issue.id })
   const [hovered, setHovered] = useState(false)
   const guard = hostGuardProps(swallowHostEvents)
+  const statusCatalog = useStatusCatalog(cwd)
 
   // ponytail: native <select> inside a CSS-grid row can stretch
   // beyond the cell — we cap it to the cell width and let the
@@ -326,7 +316,7 @@ export function InlineStatusEdit({
   // positioned at 0/0 with width:100% so it covers the pill on
   // hover; opacity 0 keeps the pill visible by default.
   const handleChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const next = e.target.value as IssueStatus
+    const next = e.target.value
     if (next === issue.status) return
     mutation.mutate({ kind: 'status', value: next })
     toast.success(
@@ -360,7 +350,7 @@ export function InlineStatusEdit({
           opacity: hovered || mutation.isPending ? 1 : 0,
         }}
       >
-        {ALL_STATUSES.map(s => (
+        {statusCatalog.statusNames.map(s => (
           <option key={s} value={s}>
             {s}
           </option>
