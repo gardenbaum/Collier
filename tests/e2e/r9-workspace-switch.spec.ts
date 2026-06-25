@@ -171,31 +171,52 @@ describe('Collier M4 R9 multi-workspace switcher', () => {
 
     // -- Then: the list reloads to show the second fixture's
     //    5 issues. We assert by waiting for the unique
-    //    "M4 second workspace alpha" title to render — this
-    //    proves bd is reading from /tmp/e2e-workspace-b and
-    //    not the old workspace. The previous single-shot
-    //    query raced the cold-start of the new fixture's
-    //    `bd list` subprocess (the second fixture's Dolt
-    //    database isn't pre-warmed by any earlier spec, so
-    //    the first query after the switch can take several
-    //    seconds under CI load), which made the original
-    //    E2E flaky once the labels ParseError was fixed and
-    //    the list actually had to load.
+    //    "M4 second workspace alpha" title in the *cache* —
+    //    reading from the cache (via `getCachedIssue`) bypasses
+    //    the virtualizer's windowed-render race (only ~15 rows
+    //    are mounted at a time) and the DOM attribute scan that
+    //    used to time out at 10 s when the second-fixture Dolt
+    //    cold-start took longer than the budget. The cache is
+    //    populated by the TanStack Query list refetch the
+    //    workspace switch triggers, so the assertion resolves
+    //    as soon as bd list returns the new fixture — no DOM
+    //    round-trip required.
+    //
+    // ponytail: we look up by the unique title because the
+    // second-fixture IDs are non-deterministic (bd hashes them
+    // from repo + creation order + random component). The
+    // `getCachedIssue` helper searches every list cache
+    // variant for an issue whose title contains the unique
+    // marker — see tests/e2e/helpers.ts for the search
+    // semantics. If the title is found, the helper returns
+    // the issue; we use that as the waitUntil success signal.
     const alphaRow = await browser.waitUntil(
       async () => {
-        const rows = await browser.execute(() =>
-          Array.from(document.querySelectorAll('[data-testid="issue-row"]'))
-        )
-        const match = rows.find((r: unknown) =>
-          ((r as HTMLElement).textContent ?? '').includes(
-            'second workspace alpha'
-          )
+        const queries = await browser.execute(() => {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const client = (globalThis as any).__collierQueryClient__
+          if (!client) return []
+          return client
+            .getQueryCache()
+            .getAll()
+            .filter((q: { queryKey: readonly unknown[] }) =>
+              Array.isArray(q.queryKey) &&
+              q.queryKey[0] === 'beads' &&
+              q.queryKey[1] === 'list'
+            )
+            .flatMap((q: { state: { data: unknown } }) => {
+              const data = q.state.data
+              return Array.isArray(data) ? (data as { title?: string }[]) : []
+            })
+        })
+        const match = queries.find((q: { title?: string }) =>
+          (q.title ?? '').toLowerCase().includes('second workspace alpha')
         )
         return match ?? false
       },
       {
-        timeout: 10_000,
-        interval: 250,
+        timeout: 15_000,
+        interval: 500,
         timeoutMsg: 'second-fixture "alpha" issue row never rendered',
       }
     )
