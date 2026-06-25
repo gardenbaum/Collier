@@ -25,7 +25,7 @@
  * the frontend does not coordinate locking. Same reasoning as
  * `IssueCreateForm`.
  */
-import { useState, type FormEvent } from 'react'
+import { useRef, useState, type FormEvent } from 'react'
 import { useMutation } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { commands } from '@/lib/tauri-bindings'
@@ -36,6 +36,7 @@ import type {
   IssueType,
   UpdateInput,
 } from '@/lib/bindings'
+import { useDialogA11y } from '@/hooks/useDialogA11y'
 
 export interface IssueUpdatePanelProps {
   /** Repository root. Passed to `commands.bdUpdate`. */
@@ -148,15 +149,29 @@ export function IssueUpdatePanel({
     updateMutation.mutate(input)
   }
 
+  // M5 a11y: focus trap + restoration shared by every modal dialog.
+  // The hook restores focus to the row that opened the panel when
+  // it unmounts, so the user doesn't lose their place in the list.
+  const panelRef = useRef<HTMLElement>(null)
+  const titleRef = useRef<HTMLInputElement>(null)
+  useDialogA11y({
+    panelRef,
+    initialFocusRef: titleRef,
+    onClose,
+  })
+
   return (
     <div
       data-testid="update-panel-overlay"
       className="fixed inset-0 z-50 flex justify-end bg-black/40"
     >
       <aside
+        ref={panelRef}
         data-testid="update-panel"
         role="dialog"
+        aria-modal="true"
         aria-label={t('beads.issueUpdatePanel.editIssue', 'Edit issue')}
+        tabIndex={-1}
         className="flex h-full w-[560px] max-w-[90vw] flex-col overflow-hidden border-l border-mono-7 bg-mono-9 font-sans text-sm leading-normal text-mono-0"
       >
         <header className="flex flex-col gap-2 border-b border-mono-7 p-4">
@@ -184,6 +199,7 @@ export function IssueUpdatePanel({
         >
           <Field label={t('beads.issueUpdatePanel.title', 'Title')}>
             <input
+              ref={titleRef}
               type="text"
               data-testid="update-title"
               value={title}
