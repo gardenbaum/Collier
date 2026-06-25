@@ -649,23 +649,35 @@ pub async fn attach_watch_repo(
     state.attach(app, PathBuf::from(repo_path))
 }
 
-/// Returns true if any event in `events` targets a file under
-/// `<repo>/.beads/` whose change is meaningful for the watcher.
+/// Returns true if any event in `events` targets a file whose
+/// change is meaningful for the watcher.
 ///
 /// The watcher's data source is `bd list --all --json`, not
 /// `.beads/issues.jsonl` (see `read_issues_via_bd` for why — bd
 /// 1.0.x's Dolt backend rewrites the JSONL lazily, so a bare
 /// `bd update` only touches `.beads/last-touched` +
-/// `.beads/embeddeddolt/...`). We accept events on any regular
-/// file under `.beads/` (so last-touched + the embedded Dolt
-/// store both fire the watcher) but skip tmp/swap files (`.swp`,
-/// `~`, `.tmp`) and directories so we don't churn on editor
-/// noise. The watcher is already scoped to the `.beads/`
-/// directory, so we don't re-check the path prefix here — on
-/// platforms that resolve symlinks (e.g. macOS `/tmp` →
-/// `/private/tmp`) `notify` reports the resolved path while the
-/// caller passed the unresolved one, and a string comparison
-/// would miss every event.
+/// `.beads/embeddeddolt/...`). We DO react to events on
+/// `.beads/last-touched` (the canonical "something changed"
+/// marker bd updates after every command) and on any `.jsonl`
+/// in `.beads/` (in case the user has a JSONL-only workspace or
+/// bd eventually flushes), but we SKIP the embedded Dolt store
+/// (`.beads/embeddeddolt/**`). The embedded Dolt directory is
+/// chatty — Dolt touches a dozen internal files (manifest,
+/// journal.idx, vvvvvvvvvvvv, temptf/...) on every commit, so
+/// reacting to each one fires the watcher 5-10 times per bd
+/// command, each fire triggering a `bd list` subprocess
+/// (~500 ms cold). That cascading storm — observed on CI run
+/// 28197764540 (`diag={"issueUpdated":3,"dataReset":1,
+/// "dataChanged":0}` with the cache update landing at
+/// 43321 ms instead of the 3000 ms budget) — is the exact
+/// regression this filter prevents. `last-touched` is touched
+/// exactly once per bd command, so it's the canonical signal.
+/// The watcher is already scoped to the `.beads/` directory, so
+/// we don't re-check the path prefix here — on platforms that
+/// resolve symlinks (e.g. macOS `/tmp` → `/private/tmp`) `notify`
+/// reports the resolved path while the caller passed the
+/// unresolved one, and a string comparison would miss every
+/// event.
 fn is_beads_change_event(events: &[notify_debouncer_mini::DebouncedEvent]) -> bool {
     events.iter().any(|e| {
         if !e.path.is_file() {
@@ -675,6 +687,24 @@ fn is_beads_change_event(events: &[notify_debouncer_mini::DebouncedEvent]) -> bo
             Some(n) => n,
             None => return false,
         };
+        // Skip the embedded Dolt store entirely — see the
+        // function-level doc for why (chatty internal files
+        // would otherwise cascade the watcher into a `bd list`
+        // subprocess storm).
+        if e.path.components().any(|c| c.as_os_str() == "embeddeddolt") {
+            return false;
+        }
+        // Accept the canonical signal files only: the bd-touched
+        // marker (`last-touched`) and any `*.jsonl` in the
+        // `.beads/` root (covers both the standard
+        // `issues.jsonl` export and any Dolt-disabled workspace
+        // that still keeps a JSONL file).
+        if name == "last-touched" {
+            return true;
+        }
+        if name.ends_with(".jsonl") {
+            return true;
+        }
         // Skip editor swap/temp artefacts so saving the JSONL in
         // vim or VS Code doesn't double-fire the watcher.
         if name.ends_with(".swp")
@@ -685,7 +715,7 @@ fn is_beads_change_event(events: &[notify_debouncer_mini::DebouncedEvent]) -> bo
         {
             return false;
         }
-        true
+        false
     })
 }
 
