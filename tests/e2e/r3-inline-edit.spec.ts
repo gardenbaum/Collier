@@ -176,6 +176,22 @@ describe('Collier M1 R3 inline editing', () => {
     r3RowId = rowId
     r3OriginalStatus = originalStatus ?? ''
     expect(rowId).toBeTruthy()
+    // ponytail: scroll the row into the virtualizer's slice so
+    // the after-hook (which runs after tests 2 and 3 mutate it)
+    // can still locate the row by `r3RowId` without chasing a
+    // stale WebDriver handle. Without this the after-hook's
+    // `row.isExisting()` returns false on a viewport that
+    // happened to scroll past the first 10 rows after the
+    // mutations in test 3 (detail drawer open/close fires
+    // window-focus events that the focus-handler treats as a
+    // broad cache invalidation; the virtualizer's slice can
+    // shift during the refetch and the row goes out of DOM).
+    try {
+      await firstRow.scrollIntoView()
+    } catch {
+      // see r10 spec — wdio 9 may not expose scrollIntoView on
+      // every element type; safe to ignore if it throws.
+    }
     // Pick a status different from the current one so we can
     // verify the change.
     const allStatuses = ['open', 'in_progress', 'blocked', 'deferred', 'closed']
