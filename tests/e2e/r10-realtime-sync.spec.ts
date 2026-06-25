@@ -106,18 +106,20 @@ describe('Collier M4 R10 targeted real-time sync', () => {
     // sees the original status in the rendered list (a
     // background mutation while r3's first waitUntil runs
     // would race against r3's row-selector query).
+    //
+    // ponytail: same browser.execute pattern as the test above
+    // — see that comment for why we can't use wdio's
+    // `$()` + `getAttribute` chain.
     await browser.waitUntil(
       async () => {
-        try {
-          const row = await $(
-            `[data-testid="issue-row"][data-issue-id="${mutatedRowId}"]`
+        const status = await browser.execute((id: string) => {
+          const row = document.querySelector(
+            `[data-testid="issue-row"][data-issue-id="${CSS.escape(id)}"]`
           )
-          return (
-            (await row.getAttribute('data-issue-status')) === originalStatus
-          )
-        } catch {
-          return false
-        }
+          if (!row) return null
+          return row.getAttribute('data-issue-status')
+        }, mutatedRowId)
+        return status === originalStatus
       },
       {
         timeout: 5_000,
@@ -193,12 +195,28 @@ describe('Collier M4 R10 targeted real-time sync', () => {
     //    1500 ms upper bound leaves headroom for the watcher's
     //    250 ms debounce + the React commit under CI
     //    cold-start.
+    //
+    // ponytail: read the attribute via `browser.execute` so a
+    // transient React/virtualizer remount between iterations
+    // returns `false` (retry) instead of throwing a stale
+    // `element wasn't found` from the WebDriver server. With
+    // a small viewport the virtualizer unmounts the target row
+    // for a frame after the watcher patches the cache, then
+    // re-mounts it with the new status. The W3C `GET_ATTRIBUTE`
+    // command on a stale wdio handle throws and aborts the
+    // waitUntil instead of retrying — that's what surfaced as
+    // "Can't call getAttribute on element ... because element
+    // wasn't found" on flaky CI runs.
     await browser.waitUntil(
       async () => {
-        const r = await $(
-          `[data-testid="issue-row"][data-issue-id="${targetId}"]`
-        )
-        return (await r.getAttribute('data-issue-status')) === newStatus
+        const status = await browser.execute((id: string) => {
+          const row = document.querySelector(
+            `[data-testid="issue-row"][data-issue-id="${CSS.escape(id)}"]`
+          )
+          if (!row) return null
+          return row.getAttribute('data-issue-status')
+        }, targetId)
+        return status === newStatus
       },
       {
         timeout: 1_500,
@@ -245,12 +263,20 @@ describe('Collier M4 R10 targeted real-time sync', () => {
 
     // -- Then: the row's `data-issue-priority` flips within
     //    ~1 s. Same 1500 ms ceiling as the status test.
+    //
+    // ponytail: same browser.execute pattern as the status test
+    // above — see that comment for why we can't use the wdio
+    // `$()` + `getAttribute` chain here.
     await browser.waitUntil(
       async () => {
-        const r = await $(
-          `[data-testid="issue-row"][data-issue-id="${mutatedRowId}"]`
-        )
-        return (await r.getAttribute('data-issue-priority')) === newPriority
+        const priority = await browser.execute((id: string) => {
+          const row = document.querySelector(
+            `[data-testid="issue-row"][data-issue-id="${CSS.escape(id)}"]`
+          )
+          if (!row) return null
+          return row.getAttribute('data-issue-priority')
+        }, mutatedRowId)
+        return priority === newPriority
       },
       {
         timeout: 1_500,

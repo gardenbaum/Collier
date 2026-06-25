@@ -86,10 +86,34 @@ describe('Collier M4 R9 multi-workspace switcher', () => {
     // -- Then: the current entry is rendered with the "current"
     //    marker and the second fixture's path is in the
     //    items list.
-    const current = await $('[data-testid="workspace-switcher-current"]')
-    await current.waitForDisplayed({ timeout: 5_000 })
-    const currentName = await current.getText()
-    expect(currentName.toLowerCase()).toContain('e2e-workspace')
+    //
+    // ponytail: read the `data-testid` element text via
+    // `browser.execute` rather than the wdio `$().getText()`
+    // chain. With Radix DropdownMenu's portal the element is
+    // briefly re-mounted while the open animation settles; a
+    // wdio element handle captured mid-mount has a stale
+    // WebDriver reference and returns an empty string for
+    // `getText()`. Page-context DOM lookup re-queries on every
+    // iteration, so a transient remount just returns empty and
+    // we retry until the row stabilises. The `waitUntil` resolves
+    // with `true` (and we use that as the assertion's success
+    // signal) once the text contains the expected substring.
+    await browser.waitUntil(
+      async () => {
+        const text = await browser.execute(
+          () =>
+            document
+              .querySelector('[data-testid="workspace-switcher-current"]')
+              ?.textContent?.toLowerCase() ?? null
+        )
+        return text !== null && text.includes('e2e-workspace')
+      },
+      {
+        timeout: 5_000,
+        interval: 100,
+        timeoutMsg: 'workspace-switcher-current text never resolved',
+      }
+    )
 
     // Both fixtures should be reachable as rows (current + recents
     // or current + registry, depending on whether recent_repos

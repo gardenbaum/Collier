@@ -39,6 +39,12 @@ import { browser, $, $$ } from '@wdio/globals'
  * displayed so callers can assert against its contents without a race.
  */
 export async function openWorkspaceSwitcher(): Promise<void> {
+  // ponytail: read `data-state` and trigger via `browser.execute`
+  // so the click happens in the page context — WebDriver's
+  // `element.click()` refuses to fire when the Radix portal
+  // overlays the trigger and the centre point is owned by the
+  // menu, not the trigger button. We still gate on the trigger's
+  // `data-state` so we don't *toggle* an already-open menu shut.
   const alreadyOpen = await browser.execute(
     () =>
       document
@@ -53,8 +59,26 @@ export async function openWorkspaceSwitcher(): Promise<void> {
       trigger?.click()
     })
   }
-  const menu = await $('[data-testid="workspace-switcher-menu"]')
-  await menu.waitForDisplayed({ timeout: 5_000 })
+  // Wait for the menu via `browser.execute` rather than wdio's
+  // `$().waitForDisplayed`. The Radix portal sometimes re-mounts
+  // the menu during the open animation; a wdio element handle
+  // captured mid-mount has a stale WebDriver reference and
+  // `waitForDisplayed` reports `still not displayed after 5000ms`.
+  // Page-context DOM lookup re-queries on every iteration so a
+  // transient remount just retries until the menu stabilises.
+  await browser.waitUntil(
+    async () =>
+      (await browser.execute(
+        () =>
+          document.querySelector('[data-testid="workspace-switcher-menu"]') !==
+          null
+      )) === true,
+    {
+      timeout: 5_000,
+      interval: 100,
+      timeoutMsg: 'workspace-switcher-menu did not appear within 5000ms',
+    }
+  )
 }
 
 /**

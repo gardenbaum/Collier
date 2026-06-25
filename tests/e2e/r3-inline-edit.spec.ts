@@ -130,15 +130,28 @@ describe('Collier M1 R3 inline editing', () => {
     // cache variant with the returned issue, so by the time we
     // return the rendered `data-issue-status` reflects the
     // server's truth, not the optimistic guess.
+    //
+    // ponytail: same browser.execute pattern as r10 — read the
+    // attribute via page-context DOM lookup so a transient
+    // React/virtualizer remount between iterations returns
+    // `false` (retry) instead of throwing a stale wdio handle.
     await browser.pause(1500)
     await browser.waitUntil(
       async () => {
-        const r = await $(
-          `[data-testid="issue-row"][data-issue-id="${r3RowId}"]`
-        )
+        const result = await browser.execute((id: string) => {
+          const row = document.querySelector(
+            `[data-testid="issue-row"][data-issue-id="${CSS.escape(id)}"]`
+          )
+          if (!row) return null
+          return {
+            status: row.getAttribute('data-issue-status'),
+            priority: row.getAttribute('data-issue-priority'),
+          }
+        }, r3RowId)
         return (
-          (await r.getAttribute('data-issue-status')) === r3OriginalStatus &&
-          (await r.getAttribute('data-issue-priority')) === r3OriginalPriority
+          result !== null &&
+          result.status === r3OriginalStatus &&
+          result.priority === r3OriginalPriority
         )
       },
       {
