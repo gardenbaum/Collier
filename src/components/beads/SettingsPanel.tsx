@@ -21,10 +21,17 @@
  * badge per AC-14; the panel is informational and stays on the
  * mono scale. `design-tokens` is the single source of truth.
  */
-import { useEffect, useState, type CSSProperties, type FormEvent } from 'react'
+import {
+  useEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type FormEvent,
+} from 'react'
 import { commands, type AppPreferences } from '@/lib/tauri-bindings'
 import { colors, space, type } from '@/lib/design-tokens'
 import { logger } from '@/lib/logger'
+import { useDialogA11y } from '@/hooks/useDialogA11y'
 
 export interface SettingsPanelProps {
   /**
@@ -116,6 +123,20 @@ export function SettingsPanel({ open, onClose, onSaved }: SettingsPanelProps) {
     }
   }, [open])
 
+  // M5 a11y: focus trap + restoration. The hook is gated on
+  // `open` so the trigger-snapshot / focus-restore only happens
+  // when the panel is actually mounted. When the panel closes
+  // (open → false → unmount), the hook's cleanup restores focus
+  // to whatever element opened the settings dialog.
+  const panelRef = useRef<HTMLFormElement>(null)
+  const firstFieldRef = useRef<HTMLInputElement>(null)
+  useDialogA11y({
+    panelRef,
+    initialFocusRef: firstFieldRef,
+    onClose,
+    enabled: open,
+  })
+
   if (!open) return null
 
   const handleSubmit = async (e: FormEvent) => {
@@ -160,6 +181,7 @@ export function SettingsPanel({ open, onClose, onSaved }: SettingsPanelProps) {
       style={overlayStyle}
     >
       <form
+        ref={panelRef}
         data-testid="settings-form"
         onSubmit={handleSubmit}
         style={panelStyle}
@@ -171,6 +193,7 @@ export function SettingsPanel({ open, onClose, onSaved }: SettingsPanelProps) {
           bd path override
         </label>
         <input
+          ref={firstFieldRef}
           id="settings-bd-path"
           data-testid="settings-bd-path"
           type="text"

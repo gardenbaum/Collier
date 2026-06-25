@@ -1050,4 +1050,252 @@ describe('IssueListView', () => {
     expect(badge4?.textContent).toContain('blocked by 1')
     expect(badge4?.textContent).toContain('blocks 1')
   })
+
+  // ponytail: M5 a11y — the issue table is a real ARIA grid. These
+  // tests verify the structural semantics (role/aria-rowcount/etc.)
+  // without touching visual styling. They live in this file rather
+  // than a separate spec because the assertions are tightly coupled
+  // to IssueListView's render tree and the same `render`/`mockBdList`
+  // harness as the rest of the suite.
+  describe('ARIA grid semantics', () => {
+    it('renders a role="grid" wrapper with row/col counts and an accessible label', async () => {
+      mockBdList.mockResolvedValue({
+        status: 'ok',
+        data: [
+          makeIssue({ id: 'beads-1', title: 'Alpha' }),
+          makeIssue({ id: 'beads-2', title: 'Beta' }),
+        ],
+      })
+
+      const { IssueListView } = await importSut()
+      render(
+        <IssueListView
+          cwd="/fake"
+          onOpenIssue={vi.fn()}
+          containerHeight={200}
+        />
+      )
+
+      await waitFor(() => {
+        expect(screen.getAllByTestId('issue-row')).toHaveLength(2)
+      })
+
+      // The grid wrapper sits inside the section and exposes the
+      // structural counts that screen readers announce.
+      const grid = screen.getByRole('grid', { name: 'Issues' })
+      expect(grid).toBeInTheDocument()
+      expect(grid).toHaveAttribute('aria-rowcount', '3') // 1 header + 2 body
+      expect(grid).toHaveAttribute('aria-colcount', '6')
+      // No cursor yet → no activedescendant.
+      expect(grid).not.toHaveAttribute('aria-activedescendant')
+    })
+
+    it('marks body rows as role="row" with aria-rowindex and a gridcell for each column', async () => {
+      mockBdList.mockResolvedValue({
+        status: 'ok',
+        data: [
+          makeIssue({ id: 'beads-1', title: 'Alpha' }),
+          makeIssue({ id: 'beads-2', title: 'Beta' }),
+        ],
+      })
+
+      const { IssueListView } = await importSut()
+      render(
+        <IssueListView
+          cwd="/fake"
+          onOpenIssue={vi.fn()}
+          containerHeight={200}
+        />
+      )
+
+      await waitFor(() => {
+        expect(screen.getAllByTestId('issue-row')).toHaveLength(2)
+      })
+
+      const rows = screen.getAllByTestId('issue-row')
+      // Header row is aria-rowindex=1, body rows are 2 and 3.
+      expect(rows[0]).toHaveAttribute('aria-rowindex', '2')
+      expect(rows[1]).toHaveAttribute('aria-rowindex', '3')
+      expect(rows[0]).toHaveAttribute('id', 'beads-1-row')
+
+      // Every row carries exactly six gridcells, one per column.
+      const cells = rows[0]?.querySelectorAll('[role="gridcell"]')
+      expect(cells).toHaveLength(6)
+      expect(cells?.[0]).toHaveAttribute('aria-colindex', '1')
+      expect(cells?.[5]).toHaveAttribute('aria-colindex', '6')
+    })
+
+    it('exposes the sort direction via aria-sort on the columnheader', async () => {
+      mockBdList.mockResolvedValue({
+        status: 'ok',
+        data: [makeIssue({ id: 'beads-1' })],
+      })
+
+      const { IssueListView } = await importSut()
+      render(
+        <IssueListView
+          cwd="/fake"
+          onOpenIssue={vi.fn()}
+          containerHeight={200}
+        />
+      )
+
+      await waitFor(() => {
+        expect(screen.getAllByTestId('issue-row')).toHaveLength(1)
+      })
+
+      // Sort is null initially — every columnheader is aria-sort="none".
+      const idHeader = screen.getByTestId('sort-header-id-column')
+      expect(idHeader).toHaveAttribute('aria-sort', 'none')
+      const titleHeader = screen
+        .getAllByRole('columnheader')
+        .find(h => h.textContent === 'Title')
+      expect(titleHeader).toHaveAttribute('aria-sort', 'none')
+
+      // Click the ID header to sort asc → aria-sort flips to
+      // "ascending" on the ID columnheader only.
+      await act(async () => {
+        screen.getByTestId('sort-header-id').click()
+      })
+      expect(screen.getByTestId('sort-header-id-column')).toHaveAttribute(
+        'aria-sort',
+        'ascending'
+      )
+      // Other columns stay "none".
+      expect(screen.getByTestId('sort-header-status-column')).toHaveAttribute(
+        'aria-sort',
+        'none'
+      )
+
+      // Click again → desc.
+      await act(async () => {
+        screen.getByTestId('sort-header-id').click()
+      })
+      expect(screen.getByTestId('sort-header-id-column')).toHaveAttribute(
+        'aria-sort',
+        'descending'
+      )
+    })
+
+    it('implements roving tabindex: only the cursor row is tabbable', async () => {
+      mockBdList.mockResolvedValue({
+        status: 'ok',
+        data: [
+          makeIssue({ id: 'beads-1', title: 'Alpha' }),
+          makeIssue({ id: 'beads-2', title: 'Beta' }),
+          makeIssue({ id: 'beads-3', title: 'Gamma' }),
+        ],
+      })
+
+      const { IssueListView } = await importSut()
+      const { rerender } = render(
+        <IssueListView
+          cwd="/fake"
+          onOpenIssue={vi.fn()}
+          containerHeight={200}
+        />
+      )
+
+      await waitFor(() => {
+        expect(screen.getAllByTestId('issue-row')).toHaveLength(3)
+      })
+
+      // No cursor initially → all rows are tabbable=false
+      // (tabindex=-1) so Tab lands on the next focusable element
+      // outside the grid.
+      const rows = screen.getAllByTestId('issue-row')
+      for (const r of rows) {
+        expect(r).toHaveAttribute('tabindex', '-1')
+      }
+
+      // Move the cursor to row 2 via the workspace store, then
+      // re-render — row 2 should be the only tabbable row.
+      const { useWorkspaceStore } = await import('@/store/workspace-store')
+      act(() => {
+        useWorkspaceStore.getState().setSelectedRowId('beads-2')
+      })
+      rerender(
+        <IssueListView
+          cwd="/fake"
+          onOpenIssue={vi.fn()}
+          containerHeight={200}
+        />
+      )
+
+      const after = screen.getAllByTestId('issue-row')
+      const tabbable = after.filter(r => r.getAttribute('tabindex') === '0')
+      expect(tabbable).toHaveLength(1)
+      expect(tabbable[0]).toHaveAttribute('data-issue-id', 'beads-2')
+      // And the grid's activedescendant now points at the cursor row.
+      const grid = screen.getByRole('grid', { name: 'Issues' })
+      expect(grid).toHaveAttribute('aria-activedescendant', 'beads-2-row')
+    })
+
+    it('exposes an accessible name on each row assembled from id + status + assignee', async () => {
+      mockBdList.mockResolvedValue({
+        status: 'ok',
+        data: [
+          makeIssue({ id: 'beads-7', title: 'Ship T15b', owner: 'alice' }),
+          makeIssue({ id: 'beads-8', title: 'Unassigned task', owner: null }),
+        ],
+      })
+
+      const { IssueListView } = await importSut()
+      render(
+        <IssueListView
+          cwd="/fake"
+          onOpenIssue={vi.fn()}
+          containerHeight={200}
+        />
+      )
+
+      await waitFor(() => {
+        expect(screen.getAllByTestId('issue-row')).toHaveLength(2)
+      })
+
+      const rows = screen.getAllByTestId('issue-row')
+      expect(rows[0]?.getAttribute('aria-label')).toContain('beads-7')
+      expect(rows[0]?.getAttribute('aria-label')).toContain('Ship T15b')
+      expect(rows[0]?.getAttribute('aria-label')).toContain('alice')
+      // The second row has no owner → announces "unassigned".
+      expect(rows[1]?.getAttribute('aria-label')).toContain('Unassigned task')
+      expect(rows[1]?.getAttribute('aria-label')).toContain('unassigned')
+    })
+
+    it('filter chips expose their action via aria-label and the count via text', async () => {
+      mockBdList.mockResolvedValue({ status: 'ok', data: [] })
+
+      useIssueFilterStore.getState().toggleStatus('open')
+      useIssueFilterStore.getState().toggleStatus('closed')
+
+      const { IssueListView } = await importSut()
+      render(<IssueListView cwd="/fake" onOpenIssue={vi.fn()} />)
+
+      await waitFor(() => {
+        expect(screen.getByTestId('list-empty')).toBeInTheDocument()
+      })
+
+      // The × on each chip carries the dimension-specific aria-label
+      // so screen readers announce "Remove Status filter" rather
+      // than just "× button".
+      const removeBtn = screen.getByTestId('filter-chip-status-remove')
+      expect(removeBtn).toHaveAttribute('aria-label', 'Remove Status filter')
+    })
+
+    it('clear-all chip carries an accessible label independent of the visible ×', async () => {
+      mockBdList.mockResolvedValue({ status: 'ok', data: [] })
+
+      useIssueFilterStore.getState().toggleStatus('open')
+
+      const { IssueListView } = await importSut()
+      render(<IssueListView cwd="/fake" onOpenIssue={vi.fn()} />)
+
+      await waitFor(() => {
+        expect(screen.getByTestId('list-empty')).toBeInTheDocument()
+      })
+
+      const clearAll = screen.getByTestId('filter-clear-all')
+      expect(clearAll).toHaveAttribute('aria-label', 'Clear all filters')
+    })
+  })
 })

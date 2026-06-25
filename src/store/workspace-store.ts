@@ -58,10 +58,24 @@ interface WorkspaceState {
   repoPath: string | null
   activeView: WorkspaceView
   selectedIssueId: string | null
+  /**
+   * M5 keyboard navigation: the issue id of the row highlighted
+   * by j/k in the active list view. Distinct from `selectedIssueId`
+   * (which tracks the currently-open detail drawer). Cleared on
+   * workspace switch, repo path change, and when Escape is pressed
+   * without an open drawer.
+   */
+  selectedRowId: string | null
 
   setRepoPath: (path: string | null) => void
   setActiveView: (view: WorkspaceView) => void
   setSelectedIssueId: (id: string | null) => void
+  /**
+   * M5 keyboard navigation: move the keyboard cursor to the given
+   * row id. No-op when the value is unchanged. Always a UI-only
+   * mutation — never affects `selectedIssueId` or the open drawer.
+   */
+  setSelectedRowId: (id: string | null) => void
   openIssue: (id: string) => void
   closeIssue: () => void
   reset: () => void
@@ -111,15 +125,20 @@ export const useWorkspaceStore = create<WorkspaceState>()(
         repoPath: null,
         activeView: 'list',
         selectedIssueId: null,
+        selectedRowId: null,
 
         setRepoPath: path =>
           set(state =>
             state.repoPath === path
               ? state
-              : { repoPath: path, selectedIssueId: null }
+              : { repoPath: path, selectedIssueId: null, selectedRowId: null }
           ),
         setActiveView: view => set({ activeView: view }),
         setSelectedIssueId: id => set({ selectedIssueId: id }),
+        setSelectedRowId: id =>
+          set(state =>
+            state.selectedRowId === id ? state : { selectedRowId: id }
+          ),
         openIssue: id => set({ selectedIssueId: id }),
         closeIssue: () => set({ selectedIssueId: null }),
         reset: () =>
@@ -127,6 +146,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
             repoPath: null,
             activeView: 'list',
             selectedIssueId: null,
+            selectedRowId: null,
           }),
         switchWorkspace: path => {
           if (path.length === 0) return
@@ -149,10 +169,13 @@ export const useWorkspaceStore = create<WorkspaceState>()(
           // 5: 'can switch back to the first fixture and reload'
           // failed with 'Received string: 0 issues' / 'Loading...').
           // Keep `selectedIssueId: null` — the old issue is from
-          // a different workspace.
+          // a different workspace. Same applies to `selectedRowId`:
+          // the keyboard cursor points at a row in the previous
+          // workspace's list, which is no longer rendered.
           set({
             repoPath: path,
             selectedIssueId: null,
+            selectedRowId: null,
           })
         },
       }),

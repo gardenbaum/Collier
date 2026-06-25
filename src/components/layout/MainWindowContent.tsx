@@ -17,6 +17,7 @@ import { Plus } from 'lucide-react'
 import { useWorkspaceStore } from '@/store/workspace-store'
 import { useBeadsInvalidation } from '@/hooks/useBeadsInvalidation'
 import { useBeadsRealtimeSync } from '@/hooks/useBeadsRealtimeSync'
+import { useKeyboardNavigation } from '@/hooks/use-keyboard-navigation'
 import { ViewsRouter } from '@/components/beads/ViewsRouter'
 import { IssueDetailDrawer } from '@/components/beads/IssueDetailDrawer'
 import { Button } from '@/components/ui/button'
@@ -53,6 +54,11 @@ export function MainWindowContent() {
   //     window-focus broad-invalidation safety net
   useBeadsRealtimeSync()
   useBeadsInvalidation()
+  // M5 keyboard navigation: j/k/Enter/Escape/h/l/`/` wired up
+  // here so the active view's rows are navigable from anywhere
+  // in the main window. The hook handles its own overlay guards
+  // (drawer + command palette).
+  useKeyboardNavigation()
 
   if (repoPath === null) {
     // Defensive: MainWindow is only rendered once a repo is chosen,

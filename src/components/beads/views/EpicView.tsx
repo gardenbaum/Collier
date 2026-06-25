@@ -41,6 +41,7 @@ import { ChevronDown, ChevronRight, Layers } from 'lucide-react'
 import { commands } from '@/lib/tauri-bindings'
 import type { Issue } from '@/lib/bindings'
 import { colors, palette, radius, space, type } from '@/lib/design-tokens'
+import { useWorkspaceStore } from '@/store/workspace-store'
 import { EmptyState } from '@/components/atoms'
 import { StatusPill } from '../issues/badges/StatusPill'
 import { PriorityDot } from '../issues/badges/PriorityDot'
@@ -190,6 +191,20 @@ const childRowStyle: CSSProperties = {
   textAlign: 'start',
 }
 
+// ponytail: M5 keyboard cursor indicator. A slightly stronger
+// background + a 2px left-edge ring keep the active row visible
+// without the brand blue (reserved for destructive + P0 per AC-14).
+const childRowSelectedStyle: CSSProperties = {
+  backgroundColor: 'rgba(94, 106, 210, 0.18)',
+  borderColor: 'rgb(94, 106, 210)',
+  boxShadow: 'inset 2px 0 0 0 rgb(94, 106, 210)',
+}
+
+const epicRowSelectedStyle: CSSProperties = {
+  backgroundColor: 'rgba(94, 106, 210, 0.10)',
+  boxShadow: 'inset 2px 0 0 0 rgb(94, 106, 210)',
+}
+
 const childTitleStyle: CSSProperties = {
   flex: 1,
   minWidth: 0,
@@ -269,6 +284,10 @@ export function EpicView({ cwd, onOpenIssue }: EpicViewProps) {
       throw result.error
     },
   })
+  // M5 keyboard navigation: the cursor highlights the active epic
+  // (or epic child) so `j`/`k` give visible feedback and `h`/`l`
+  // can collapse/expand the selected epic.
+  const selectedRowId = useWorkspaceStore(s => s.selectedRowId)
 
   // Build the tree client-side. Epics are top-level (no parent, type=epic).
   // Children are grouped by `parent` so each epic can render its subtree.
@@ -383,13 +402,22 @@ export function EpicView({ cwd, onOpenIssue }: EpicViewProps) {
       style={containerStyle}
       aria-label={t('beads.views.epic.title')}
     >
-      <ul data-testid="epic-tree" style={listStyle}>
-        {epics.map(epic => (
+      <ul
+        data-testid="epic-tree"
+        role="tree"
+        aria-label={t('beads.views.epic.title')}
+        style={listStyle}
+      >
+        {epics.map((epic, idx) => (
           <EpicTreeRow
             key={epic.id}
             epic={epic}
             epicChildren={tree.childrenByParent.get(epic.id) ?? []}
             isExpanded={expanded.has(epic.id)}
+            isKeyboardSelected={selectedRowId === epic.id}
+            selectedRowId={selectedRowId}
+            epicIndex={idx + 1}
+            epicCount={epics.length}
             onToggle={() => toggle(epic.id)}
             onOpenIssue={onOpenIssue}
           />
@@ -403,6 +431,29 @@ interface EpicTreeRowProps {
   epic: Issue
   epicChildren: Issue[]
   isExpanded: boolean
+  /**
+   * M5 keyboard navigation: highlights the active epic so the user
+   * can see which row `h`/`l` would collapse/expand. Selected at
+   * the outer `<li>` so the children list picks up the indicator
+   * for free when an epic is collapsed.
+   */
+  isKeyboardSelected: boolean
+  /**
+   * M5 keyboard navigation: forwarded to the children list so an
+   * expanded epic's child rows can also show their selection
+   * state. Cheap because it's a single string equality check per
+   * child — no extra store subscription needed here.
+   */
+  selectedRowId: string | null
+  /**
+   * M5 a11y: 1-based position of this epic within the visible
+   * tree, used to set `aria-posinset` on the treeitem. Required
+   * by the ARIA tree pattern so screen-reader users know "I am at
+   * item 2 of 5 in this level".
+   */
+  epicIndex: number
+  /** M5 a11y: total number of top-level epics, for `aria-setsize`. */
+  epicCount: number
   onToggle: () => void
   onOpenIssue: (id: string) => void
 }
@@ -411,6 +462,10 @@ function EpicTreeRow({
   epic,
   epicChildren,
   isExpanded,
+  isKeyboardSelected,
+  selectedRowId,
+  epicIndex,
+  epicCount,
   onToggle,
   onOpenIssue,
 }: EpicTreeRowProps) {
@@ -422,10 +477,37 @@ function EpicTreeRow({
 
   return (
     <li
+      role="treeitem"
+      aria-level={1}
+      aria-expanded={isExpanded}
+      aria-posinset={epicIndex}
+      aria-setsize={epicCount}
+      aria-selected={isKeyboardSelected}
+      aria-label={`${t('beads.views.epic.openIssue')}: ${epic.title}`}
       data-testid="epic-row"
+      data-kbd-nav="row"
+      data-row-id={epic.id}
       data-epic-id={epic.id}
       data-expanded={isExpanded}
-      style={epicRowStyle}
+      data-row-selected={isKeyboardSelected ? 'true' : 'false'}
+      tabIndex={isKeyboardSelected ? 0 : -1}
+      id={`${epic.id}-treeitem`}
+      onKeyDown={e => {
+        // The global keyboard hook already routes Enter on the
+        // selected row to `openIssue`, but if the user explicitly
+        // Tabs onto the treeitem and presses Enter, the row's own
+        // keydown handler is what fires first. Keep it in sync
+        // so the treeitem is self-contained when focused via the
+        // roving tabindex path.
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault()
+          onOpenIssue(epic.id)
+        }
+      }}
+      style={{
+        ...epicRowStyle,
+        ...(isKeyboardSelected ? epicRowSelectedStyle : null),
+      }}
     >
       <div style={epicHeaderStyle}>
         <button
@@ -494,6 +576,7 @@ function EpicTreeRow({
       {isExpanded ? (
         <ChildrenList
           epicChildren={epicChildren}
+          selectedRowId={selectedRowId}
           onOpenIssue={onOpenIssue}
           emptyLabel={t('beads.views.epic.noChildren')}
         />
@@ -504,15 +587,24 @@ function EpicTreeRow({
 
 interface ChildrenListProps {
   epicChildren: Issue[]
+  /** M5 keyboard navigation: highlight the row matching this id. */
+  selectedRowId: string | null
   onOpenIssue: (id: string) => void
   emptyLabel: string
 }
 
 function ChildrenList({
   epicChildren,
+  selectedRowId,
   onOpenIssue,
   emptyLabel,
 }: ChildrenListProps) {
+  // ponytail: ChildrenList is rendered inside EpicTreeRow, which
+  // also reads `t`, but we re-call the hook here so the
+  // childrenGroupLabel translation is owned by the component that
+  // actually renders it. Each useTranslation instance is cheap
+  // (i18next memoises), so the duplication is fine.
+  const { t } = useTranslation()
   if (epicChildren.length === 0) {
     return (
       <div data-testid="epic-children-empty" style={noChildrenStyle}>
@@ -521,24 +613,50 @@ function ChildrenList({
     )
   }
   return (
-    <ul data-testid="epic-children" style={childrenListStyle}>
-      {epicChildren.map(child => (
-        <li key={child.id}>
-          <button
-            type="button"
+    <ul
+      data-testid="epic-children"
+      role="group"
+      aria-label={t('beads.views.epic.childrenGroupLabel', 'Epic children')}
+      style={childrenListStyle}
+    >
+      {epicChildren.map((child, idx) => {
+        const isSelected = child.id === selectedRowId
+        return (
+          <li
+            key={child.id}
+            role="treeitem"
+            aria-level={2}
+            aria-posinset={idx + 1}
+            aria-setsize={epicChildren.length}
+            aria-selected={isSelected}
+            aria-label={child.title}
             data-testid="epic-child-row"
+            data-kbd-nav="row"
+            data-row-id={child.id}
             data-issue-id={child.id}
             data-issue-status={child.status}
+            data-row-selected={isSelected ? 'true' : 'false'}
+            tabIndex={isSelected ? 0 : -1}
+            id={`${child.id}-treeitem`}
             onClick={() => onOpenIssue(child.id)}
-            style={childRowStyle}
+            onKeyDown={e => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault()
+                onOpenIssue(child.id)
+              }
+            }}
+            style={{
+              ...childRowStyle,
+              ...(isSelected ? childRowSelectedStyle : null),
+            }}
           >
             <StatusPill status={child.status} />
             <PriorityDot priority={child.priority} />
             <span style={childTitleStyle}>{child.title}</span>
             <span style={childIdStyle}>{child.id}</span>
-          </button>
-        </li>
-      ))}
+          </li>
+        )
+      })}
     </ul>
   )
 }

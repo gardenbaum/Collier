@@ -1,11 +1,9 @@
-import { useEffect, useRef } from 'react'
+import { useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { X } from 'lucide-react'
 import { IssueDetailView } from './issues/IssueDetailView'
 import { Button } from '@/components/ui/button'
-
-const FOCUSABLE_SELECTOR =
-  'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), [tabindex]:not([tabindex="-1"])'
+import { useDialogA11y } from '@/hooks/useDialogA11y'
 
 export interface IssueDetailDrawerProps {
   cwd: string
@@ -23,45 +21,17 @@ export function IssueDetailDrawer({
   const { t } = useTranslation()
   const panelRef = useRef<HTMLDivElement>(null)
   const closeButtonRef = useRef<HTMLButtonElement>(null)
-  const previouslyFocusedRef = useRef<HTMLElement | null>(null)
 
-  useEffect(() => {
-    previouslyFocusedRef.current = document.activeElement as HTMLElement | null
-    closeButtonRef.current?.focus()
-    return () => {
-      previouslyFocusedRef.current?.focus()
-    }
-  }, [])
-
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        e.preventDefault()
-        onClose()
-        return
-      }
-      if (e.key !== 'Tab') return
-      const panel = panelRef.current
-      if (panel === null) return
-      const focusable = panel.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)
-      if (focusable.length === 0) {
-        e.preventDefault()
-        return
-      }
-      const first = focusable.item(0)
-      const last = focusable.item(focusable.length - 1)
-      const active = document.activeElement as HTMLElement | null
-      if (e.shiftKey && (active === first || active === panel)) {
-        e.preventDefault()
-        last.focus()
-      } else if (!e.shiftKey && active === last) {
-        e.preventDefault()
-        first.focus()
-      }
-    }
-    window.addEventListener('keydown', handler)
-    return () => window.removeEventListener('keydown', handler)
-  }, [onClose])
+  // M5 a11y: focus trap + restoration + Escape handling. The hook
+  // mirrors what the inline implementation used to do — capture the
+  // trigger on mount, focus the close button, trap Tab inside the
+  // drawer, Escape closes, restore focus to the trigger on unmount —
+  // but is now shared by every modal dialog in the app.
+  useDialogA11y({
+    panelRef,
+    initialFocusRef: closeButtonRef,
+    onClose,
+  })
 
   return (
     <div

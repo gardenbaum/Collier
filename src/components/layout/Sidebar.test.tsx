@@ -420,4 +420,105 @@ describe('Sidebar — chip payload shape (AND composition proof)', () => {
     expect(projected.labels).toBeUndefined()
     expect(projected.assignees).toBeUndefined()
   })
+
+  // ponytail: M5 a11y — the sidebar's toggle chips carry
+  // `aria-pressed` mirroring `data-active` so screen-reader users
+  // hear whether each chip is currently filtering. The label /
+  // assignee lists do the same. These tests verify the
+  // bidirectional sync between `data-active` and `aria-pressed`
+  // (cheap to keep in lock-step).
+  describe('M5 a11y: aria-pressed on toggle chips', () => {
+    it('marks every status chip with aria-pressed=false initially', () => {
+      render(<Sidebar />)
+      const open = screen.getByTestId('sidebar-filter-status-open')
+      const closed = screen.getByTestId('sidebar-filter-status-closed')
+      expect(open).toHaveAttribute('aria-pressed', 'false')
+      expect(closed).toHaveAttribute('aria-pressed', 'false')
+    })
+
+    it('flips aria-pressed to true when a chip is active', () => {
+      act(() => {
+        useIssueFilterStore.getState().toggleStatus('open')
+      })
+      render(<Sidebar />)
+      expect(screen.getByTestId('sidebar-filter-status-open')).toHaveAttribute(
+        'aria-pressed',
+        'true'
+      )
+      // Other status chips stay false.
+      expect(
+        screen.getByTestId('sidebar-filter-status-closed')
+      ).toHaveAttribute('aria-pressed', 'false')
+    })
+
+    it('marks assignee toggles with aria-pressed', async () => {
+      mockBdAssigneeListAll.mockResolvedValue({
+        status: 'ok',
+        data: [
+          { assignee: 'alice', count: 3 },
+          { assignee: 'bob', count: 1 },
+        ] satisfies AssigneeWithCount[],
+      })
+      useWorkspaceStore.setState({
+        repoPath: '/fake',
+      })
+      act(() => {
+        useIssueFilterStore.getState().toggleAssignee('alice')
+      })
+      render(<Sidebar />)
+      // ponytail: `findByTestId` waits for the async TanStack
+      // Query to resolve and the label list to mount, instead of
+      // asserting on a not-yet-rendered element.
+      expect(
+        await screen.findByTestId('sidebar-filter-assignee-alice')
+      ).toHaveAttribute('aria-pressed', 'true')
+      expect(
+        await screen.findByTestId('sidebar-filter-assignee-bob')
+      ).toHaveAttribute('aria-pressed', 'false')
+    })
+
+    it('marks label toggles with aria-pressed', async () => {
+      mockBdLabelListAll.mockResolvedValue({
+        status: 'ok',
+        data: [
+          { label: 'urgent', count: 2 },
+          { label: 'nice-to-have', count: 5 },
+        ] satisfies LabelWithCount[],
+      })
+      useWorkspaceStore.setState({
+        repoPath: '/fake',
+      })
+      act(() => {
+        useIssueFilterStore.getState().toggleLabel('urgent')
+      })
+      render(<Sidebar />)
+      expect(await screen.findByTestId('sidebar-label-urgent')).toHaveAttribute(
+        'aria-pressed',
+        'true'
+      )
+      expect(
+        await screen.findByTestId('sidebar-label-nice-to-have')
+      ).toHaveAttribute('aria-pressed', 'false')
+    })
+
+    it('chip aria-label distinguishes active vs inactive state', () => {
+      act(() => {
+        useIssueFilterStore.getState().toggleStatus('open')
+      })
+      render(<Sidebar />)
+      const open = screen.getByTestId('sidebar-filter-status-open')
+      const closed = screen.getByTestId('sidebar-filter-status-closed')
+      expect(open.getAttribute('aria-label')).toContain('active')
+      expect(closed.getAttribute('aria-label')).not.toContain('active')
+    })
+
+    it('clear-all button carries an explicit aria-label', () => {
+      act(() => {
+        useIssueFilterStore.getState().toggleStatus('open')
+      })
+      render(<Sidebar />)
+      const clearAll = screen.getByTestId('sidebar-filter-clear-all')
+      expect(clearAll).toHaveAttribute('aria-label', 'Clear all filters')
+    })
+  })
 })

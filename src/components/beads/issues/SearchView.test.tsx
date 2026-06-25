@@ -360,4 +360,22 @@ describe('SearchView', () => {
     expect(badge?.textContent).toContain('blocked by 2')
     expect(badge?.textContent).toContain('blocks 1')
   })
+
+  it('auto-focuses the search input on mount', async () => {
+    // The keyboard hook dispatches `collier:focus-search-input`
+    // synchronously after `setActiveView('search')`. That event
+    // races with SearchView's mount: the view's listener is not
+    // registered until its first useEffect runs, so the dispatch
+    // is lost on the first `/`. Auto-focusing on mount closes the
+    // race so the user lands in the input every time.
+    mockBdSearch.mockResolvedValue({ status: 'ok', data: [] })
+
+    const { SearchView } = await importSut()
+    render(<SearchView cwd="/fake" />)
+
+    const input = screen.getByTestId('search-input') as HTMLInputElement
+    await waitFor(() => {
+      expect(document.activeElement).toBe(input)
+    })
+  })
 })

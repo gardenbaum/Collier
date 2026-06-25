@@ -20,11 +20,12 @@
  * coordinate locking here. The plan's T21 spec mentioned WriteLock;
  * it's automatic via the runner, not exposed in the UI.
  */
-import { useState, type FormEvent } from 'react'
+import { useRef, useState, type FormEvent } from 'react'
 import { useMutation } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { commands } from '@/lib/tauri-bindings'
 import type { CreateInput, IssuePriority, IssueType } from '@/lib/bindings'
+import { useDialogA11y } from '@/hooks/useDialogA11y'
 
 export interface IssueCreateFormProps {
   /** Repository root. Passed to `commands.bdCreate`. */
@@ -82,6 +83,18 @@ export function IssueCreateForm({
   const [labels, setLabels] = useState<string[]>([])
   const [externalRef, setExternalRef] = useState('')
   const [titleError, setTitleError] = useState<string | null>(null)
+
+  // M5 a11y: focus trap + restoration + Escape handling shared by
+  // every modal dialog in the app. The hook snapshots the trigger
+  // on mount and restores focus to it on unmount, so the user
+  // doesn't lose their place in the issue list when the form closes.
+  const panelRef = useRef<HTMLDivElement>(null)
+  const titleRef = useRef<HTMLInputElement>(null)
+  useDialogA11y({
+    panelRef,
+    initialFocusRef: titleRef,
+    onClose,
+  })
 
   const createMutation = useMutation({
     mutationFn: async (input: CreateInput) => {
@@ -144,9 +157,12 @@ export function IssueCreateForm({
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
     >
       <div
+        ref={panelRef}
         data-testid="create-form"
         role="dialog"
+        aria-modal="true"
         aria-label={t('beads.issueCreateForm.newIssue', 'New issue')}
+        tabIndex={-1}
         className="flex max-h-[90vh] w-[560px] max-w-[90vw] flex-col overflow-y-auto rounded-[var(--radius)] border border-[color:var(--border)] bg-[color:var(--card)] font-sans text-sm leading-normal text-[color:var(--card-foreground)] shadow-lg"
       >
         <header className="flex items-center justify-between border-b border-[color:var(--border)] px-4 py-3">
@@ -175,6 +191,7 @@ export function IssueCreateForm({
             error={titleError}
           >
             <input
+              ref={titleRef}
               type="text"
               data-testid="create-title"
               value={title}
@@ -183,7 +200,6 @@ export function IssueCreateForm({
                 if (titleError) setTitleError(null)
               }}
               required
-              autoFocus
               className={inputClass}
             />
           </Field>

@@ -225,6 +225,7 @@ export function Sidebar() {
             type="button"
             data-testid="sidebar-filter-clear-all"
             onClick={() => clearAll()}
+            aria-label={t('sidebar.clearAllFilters', 'Clear all filters')}
             className="mb-1 inline-flex items-center gap-1 h-6 px-2 text-[11px] text-[color:var(--muted-foreground)] hover:text-[color:var(--foreground)] hover:bg-[color:var(--sidebar-accent)] rounded-[var(--radius)]"
           >
             <X size={10} aria-hidden="true" />
@@ -324,6 +325,13 @@ export function Sidebar() {
                       type="button"
                       data-testid={`sidebar-filter-assignee-${a.assignee}`}
                       data-active={isActive}
+                      aria-pressed={isActive}
+                      aria-label={t(
+                        isActive
+                          ? 'sidebar.assigneeFilterAriaActive'
+                          : 'sidebar.assigneeFilterAria',
+                        { assignee: a.assignee, count: a.count }
+                      )}
                       onClick={() => toggleAssignee(a.assignee)}
                       className={cn(
                         'flex w-full items-center gap-2 h-7 px-2 rounded-[var(--radius)] text-[12px]',
@@ -386,6 +394,13 @@ export function Sidebar() {
                       data-testid={`sidebar-label-${l.label}`}
                       data-active={isActive}
                       data-count={l.count}
+                      aria-pressed={isActive}
+                      aria-label={t(
+                        isActive
+                          ? 'sidebar.labelFilterAriaActive'
+                          : 'sidebar.labelFilterAria',
+                        { label: l.label, count: l.count }
+                      )}
                       onClick={() => toggleLabel(l.label)}
                       className={cn(
                         'flex w-full items-center gap-2 h-7 px-2 rounded-[var(--radius)] text-[12px]',
@@ -496,11 +511,23 @@ function ToggleChip({
   onToggle,
   testidPrefix,
 }: ToggleChipProps) {
+  // ponytail: ToggleChip is its own component (separate from
+  // Sidebar) so it needs its own useTranslation hook for the
+  // aria-label. i18next's `t` is referentially stable across
+  // renders (the hook returns the same function instance unless the
+  // active language changes), so no `useCallback` wrapper is needed
+  // around the aria-label computation.
+  const { t } = useTranslation()
   return (
     <button
       type="button"
       data-testid={`${testidPrefix}-${value}`}
       data-active={isActive}
+      aria-pressed={isActive}
+      aria-label={t(
+        isActive ? 'sidebar.filterAriaActive' : 'sidebar.filterAria',
+        { label }
+      )}
       onClick={onToggle}
       className={cn(
         'inline-flex items-center h-6 px-2 rounded-[var(--radius)] text-[11px] border',

@@ -12,6 +12,7 @@ describe('useWorkspaceStore', () => {
       repoPath: null,
       activeView: 'list',
       selectedIssueId: null,
+      selectedRowId: null,
     })
   })
 
@@ -36,6 +37,14 @@ describe('useWorkspaceStore', () => {
       const s = useWorkspaceStore.getState()
       expect(s.repoPath).toBe('/new/repo')
       expect(s.selectedIssueId).toBeNull()
+    })
+
+    it('clears the keyboard cursor when switching repos', () => {
+      useWorkspaceStore.setState({ selectedRowId: 'ROW-1' })
+      useWorkspaceStore.getState().setRepoPath('/new/repo')
+      const s = useWorkspaceStore.getState()
+      expect(s.repoPath).toBe('/new/repo')
+      expect(s.selectedRowId).toBeNull()
     })
 
     it('is a no-op when the path is the same', () => {
@@ -106,12 +115,45 @@ describe('useWorkspaceStore', () => {
         repoPath: '/foo',
         activeView: 'search',
         selectedIssueId: 'ISSUE-1',
+        selectedRowId: 'ISSUE-2',
       })
       useWorkspaceStore.getState().reset()
       const s = useWorkspaceStore.getState()
       expect(s.repoPath).toBeNull()
       expect(s.activeView).toBe('list')
       expect(s.selectedIssueId).toBeNull()
+      expect(s.selectedRowId).toBeNull()
+    })
+  })
+
+  describe('setSelectedRowId', () => {
+    it('sets the selected row id', () => {
+      useWorkspaceStore.getState().setSelectedRowId('ISSUE-9')
+      expect(useWorkspaceStore.getState().selectedRowId).toBe('ISSUE-9')
+    })
+
+    it('accepts null to clear', () => {
+      useWorkspaceStore.getState().setSelectedRowId('ISSUE-9')
+      useWorkspaceStore.getState().setSelectedRowId(null)
+      expect(useWorkspaceStore.getState().selectedRowId).toBeNull()
+    })
+
+    it('is a no-op when the value is unchanged', () => {
+      useWorkspaceStore.getState().setSelectedRowId('ISSUE-9')
+      const before = useWorkspaceStore.getState()
+      useWorkspaceStore.getState().setSelectedRowId('ISSUE-9')
+      const after = useWorkspaceStore.getState()
+      // Reference equality preserves the subscriber diff and
+      // avoids a pointless re-render of every selected row.
+      expect(after).toBe(before)
+    })
+
+    it('does not affect selectedIssueId (the open drawer)', () => {
+      useWorkspaceStore.getState().openIssue('OPEN-1')
+      useWorkspaceStore.getState().setSelectedRowId('CURSOR-1')
+      const s = useWorkspaceStore.getState()
+      expect(s.selectedIssueId).toBe('OPEN-1')
+      expect(s.selectedRowId).toBe('CURSOR-1')
     })
   })
 
@@ -134,6 +176,12 @@ describe('useWorkspaceStore', () => {
       useWorkspaceStore.setState({ repoPath: '/old', selectedIssueId: 'X' })
       useWorkspaceStore.getState().switchWorkspace('/new')
       expect(useWorkspaceStore.getState().selectedIssueId).toBeNull()
+    })
+
+    it('clears the keyboard cursor on switch', () => {
+      useWorkspaceStore.setState({ repoPath: '/old', selectedRowId: 'Y' })
+      useWorkspaceStore.getState().switchWorkspace('/new')
+      expect(useWorkspaceStore.getState().selectedRowId).toBeNull()
     })
 
     it("keeps each workspace's beads cache independent (no removeQueries call)", () => {
