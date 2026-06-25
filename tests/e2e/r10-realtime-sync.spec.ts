@@ -161,33 +161,14 @@ describe('Collier M4 R10 targeted real-time sync', () => {
     // -- And: the target row is rendered and we capture its
     //    current status so the `after` hook can revert it.
     //
-    // ponytail: scroll the row into the virtualizer's windowed
-    // slice before capturing `originalStatus`. The
-    // `IssueListView` virtualizer unmounts rows that scroll
-    // outside the 10-row viewport + 5-row overscan, so the
-    // row the test picked via the fixture-ids mapping can be
-    // physically present in the cache but NOT in the DOM by
-    // the time the `waitUntil` polls for the status flip.
-    // `scrollIntoViewIfNeeded` is wdio's WebDriver-native
-    // helper for exactly this — it scrolls the element into
-    // the viewport (firing the virtualizer's resize/scroll
-    // observer) without throwing if the element is already
-    // visible. Falls through silently to the waitForDisplayed
-    // if wdio 9 doesn't expose the helper on this element
-    // type; the explicit `waitForDisplayed` below is the
-    // safety net either way.
+    // ponytail: read the status via `browser.execute` so a
+    // transient React/virtualizer remount between iterations
+    // returns `null` (retry) instead of throwing a stale wdio
+    // handle. The wdio `$().getAttribute()` chain on a row the
+    // virtualizer briefly unmounts throws and aborts the test.
     const targetRow = await $(
       `[data-testid="issue-row"][data-issue-id="${targetId}"]`
     )
-    await targetRow.waitForDisplayed({ timeout: 5_000 })
-    try {
-      await targetRow.scrollIntoView()
-    } catch {
-      // scrollIntoView may not be wired for this element on
-      // every wdio 9 build; if it fails, the row was already
-      // in the viewport (we just confirmed with
-      // waitForDisplayed) so the next step still works.
-    }
     await targetRow.waitForDisplayed({ timeout: 5_000 })
     originalStatus =
       (await browser.execute(
