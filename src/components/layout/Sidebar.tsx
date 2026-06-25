@@ -45,6 +45,7 @@ const VIEW_LABELS: Record<WorkspaceView, string> = {
   blocked: 'Blocked',
   search: 'Search',
   epic: 'Epics',
+  graph: 'Graph',
   swarm: 'Swarm',
   sync: 'Sync',
   worktree: 'Worktree',

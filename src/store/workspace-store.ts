@@ -20,6 +20,7 @@ export type WorkspaceView =
   | 'blocked'
   | 'search'
   | 'epic'
+  | 'graph'
   | 'swarm'
   | 'sync'
   | 'worktree'
@@ -32,6 +33,7 @@ export const WORKSPACE_VIEWS: readonly WorkspaceView[] = [
   'blocked',
   'search',
   'epic',
+  'graph',
   'swarm',
   'sync',
   'worktree',

@@ -328,6 +328,24 @@ async bdList(cwd: string, filters: ListFilters) : Promise<Result<Issue[], BdErro
 }
 },
 /**
+ * Run `bd list --all --json` in `cwd` and return a `Graph` with
+ * one node per issue and one edge per `Dependency` row.
+ * 
+ * Edge direction follows `Dependency` semantics: each edge points
+ * from the dependent issue (the enclosing `Issue.id`) TO the
+ * issue being depended on (`Dependency.dependency_id`). The
+ * frontend reverses this for arrow rendering when it wants
+ * "X blocks Y" semantics.
+ */
+async bdGraph(cwd: string) : Promise<Result<Graph, BdError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("bd_graph", { cwd }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
  * Run `bd create <flags> --json` in `cwd` and return the new issue.
  * 
  * Verified shape (bd 1.0.5, 2026-06-17): `{ schema_version: 1,
@@ -682,16 +700,14 @@ async bdNotify(title: string, body: string) : Promise<Result<null, BdError>> {
  * Returns `ParseError` if the array is empty (should not happen for
  * a valid id, but possible for a race with `bd delete`).
  * 
- * **Known follow-up**: the real `bd show` JSON is sparser than the
- * Rust `Issue` struct (it omits `closed_at`, `description`, `labels`,
- * `dependencies`, `parent`, `acceptance_criteria`, `external_ref`).
- * Until `Issue` gets `#[serde(default)]` on those fields, this
- * command will return `ParseError` against the real CLI. The unit
- * tests in this module use the synthetic full-shape envelope (same
- * pattern as T6 / T7 / T15) so the contract is verified; the
- * end-to-end fix is a follow-up that should also cover the list,
- * 
- * ready, blocked, search, and query commands.
+ * **bd show JSON is sparser than the list JSON** (verified against
+ * bd 1.0.4, 2026-06-24): it omits `dependency_count`,
+ * `dependent_count`, `comment_count`, and (for issues without
+ * those) `description`, `owner`, `closed_at`, `parent`,
+ * `acceptance_criteria`, `external_ref`, and the full
+ * `dependencies` list. The `Issue` struct has `#[serde(default)]`
+ * on every field `bd show` may omit, so the deserialiser fills
+ * them with the documented defaults and the command succeeds.
  */
 async bdShow(cwd: string, id: string) : Promise<Result<Issue, BdError>> {
     try {
@@ -938,12 +954,16 @@ export type Dependency = {
  * The target issue id (the issue being depended on, i.e. the
  * "to" side of the relationship). The field is named
  * `dependency_id` in the Rust→TS contract (see
- * `DependencyTreeView.tsx`) but bd's `bd list --json` emits it
- * as `depends_on_id`. The alias keeps both shapes deserialisable;
- * serialization stays `dependency_id` so the frontend contract
- * is unchanged. The `issue_id` bd also emits is the source side
- * — that's already on the enclosing `Issue`, so we just ignore
- * it on deserialize (serde_json drops unknown fields).
+ * `DependencyTreeView.tsx`) but `bd show --json` emits the
+ * nested issue object under the `id` key (the entry is a
+ * full issue, not a `{dependency_id, dependency_type}`
+ * pair), and `bd list --json` historically used
+ * `depends_on_id`. The two aliases keep all three shapes
+ * deserialisable; serialization stays `dependency_id` so the
+ * frontend contract is unchanged. The `issue_id` bd also
+ * emits is the source side — that's already on the
+ * enclosing `Issue`, so we just ignore it on deserialize
+ * (serde_json drops unknown fields).
  */
 dependency_id: string; 
 /**
@@ -967,6 +987,25 @@ export type DependencyType = "blocks" |
  * `parent_child` so the existing TS contract is unchanged.
  */
 "parent_child" | "conditional_blocks" | "waits_for" | "related" | "tracks" | "discovered_from" | "caused_by" | "validates" | "supersedes"
+/**
+ * The full graph payload. `nodes` are de-duplicated by id;
+ * `edges` is the multiset of dependency rows from `bd list`
+ * (with the source side filled in from the enclosing `Issue`).
+ */
+export type Graph = { nodes: GraphNode[]; edges: GraphEdge[] }
+/**
+ * One directed edge in the dependency graph. `source` is the
+ * dependent issue (the one that "needs" `target`); `target` is
+ * the issue being depended on. `dep_type` is the raw bd edge
+ * kind so the frontend can colour / dash it per type.
+ */
+export type GraphEdge = { source: string; target: string; depType: DependencyType }
+/**
+ * One node in the dependency graph. Carries just enough for the
+ * frontend to render a labelled card and colour it by status /
+ * type without another round-trip.
+ */
+export type GraphNode = { id: string; title: string; status: IssueStatus; priority: IssuePriority; issueType: IssueType }
 /**
  * One entry from an issue's version history.
  * 
@@ -1044,7 +1083,28 @@ owner?: string | null; labels: Label[];
  * `missing field 'dependencies'` ParseError after the M0
  * label regression was fixed.
  */
-dependencies?: Dependency[]; dependency_count: number; dependent_count: number; comment_count: number; 
+dependencies?: Dependency[]; 
+/**
+ * `#[serde(default)]` because bd v1.0.4's `bd show --json`
+ * output omits `dependency_count` — the field is only present
+ * in `bd list --json`. Default = `0`. The R4 E2E spec needs
+ * the drawer to mount (which fails on `bd show` ParseError
+ * without this default); the count is reconciled from
+ * `dependencies.len()` if a future patch wants to backfill.
+ */
+dependency_count?: number; 
+/**
+ * `#[serde(default)]` because bd v1.0.4's `bd show --json`
+ * output omits `dependent_count`. Default = `0`. Mirror of
+ * `dependency_count` above.
+ */
+dependent_count?: number; 
+/**
+ * `#[serde(default)]` because bd v1.0.4's `bd show --json`
+ * output omits `comment_count`. Default = `0`. Mirror of
+ * `dependency_count` above.
+ */
+comment_count?: number; 
 /**
  * `#[serde(default)]` because bd v1.0.4's list output omits
  * `parent` for issues that aren't children of an epic. Default
