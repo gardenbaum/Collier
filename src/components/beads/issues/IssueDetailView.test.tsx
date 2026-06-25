@@ -446,4 +446,50 @@ describe('IssueDetailView', () => {
       expect(onOpenIssue).toHaveBeenCalledWith('beads-99')
     })
   })
+
+  // M3 R8 — the detail header surfaces a "blocked by N" / "blocks N"
+  // chip next to the inline-edit badges. Driven by the same counts
+  // the row-level badge uses (dependency_count / dependent_count on
+  // the `Issue` returned by `bd show --json`).
+  describe('dep badge (M3 R8)', () => {
+    it('renders the header-variant dep badge for a blocked issue', async () => {
+      const { IssueDetailView } = await importSut()
+      const blockedIssue = {
+        ...issueFixture,
+        id: 'beads-99',
+        status: 'blocked' as const,
+        dependency_count: 2,
+        dependent_count: 1,
+      }
+      mockBdShow.mockResolvedValue({ status: 'ok', data: blockedIssue })
+
+      render(<IssueDetailView cwd="/repo" issueId="beads-99" onClose={noop} />)
+
+      // ponytail: the badge is inside the `issue ? ... : null`
+      // branch, so it only mounts once `bdShow` resolves. Wait
+      // for the badge directly rather than the outer container
+      // (which renders in the loading state).
+      const badge = await waitFor(() => screen.getByTestId('dep-badge'))
+      expect(badge.getAttribute('data-variant')).toBe('header')
+      expect(badge.getAttribute('data-blocked-by')).toBe('2')
+      expect(badge.getAttribute('data-blocks')).toBe('1')
+      expect(badge.textContent).toContain('blocked by 2')
+      expect(badge.textContent).toContain('blocks 1')
+    })
+
+    it('omits the dep badge when both counts are zero', async () => {
+      const { IssueDetailView } = await importSut()
+      mockBdShow.mockResolvedValue({ status: 'ok', data: issueFixture })
+
+      render(<IssueDetailView cwd="/repo" issueId="beads-42" onClose={noop} />)
+
+      // Wait for the issue to load (title renders) before asserting
+      // the badge is absent.
+      await waitFor(() => {
+        expect(screen.getByText('Fix the thing')).toBeInTheDocument()
+      })
+
+      expect(screen.queryByTestId('dep-badge')).toBeNull()
+    })
+  })
 })

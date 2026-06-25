@@ -58,6 +58,7 @@ describe('useWorkspaceStore', () => {
         'blocked',
         'search',
         'epic',
+        'graph',
         'swarm',
         'sync',
         'worktree',

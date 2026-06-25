@@ -92,7 +92,10 @@ export function MainWindowContent() {
         </div>
       </header>
 
-      <div className="flex-1 overflow-hidden" data-testid="main-viewport">
+      <div
+        className="flex flex-1 flex-col overflow-hidden"
+        data-testid="main-viewport"
+      >
         <ViewsRouter cwd={repoPath} onOpenIssue={openIssue} />
       </div>
 

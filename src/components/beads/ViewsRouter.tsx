@@ -13,6 +13,7 @@ import { ReadyView } from './issues/ReadyView'
 import { BlockedView } from './issues/BlockedView'
 import { SearchView } from './issues/SearchView'
 import { EpicView } from './views/EpicView'
+import { DepGraphView } from './views/DepGraphView'
 import { SwarmView } from './views/SwarmView'
 import { SyncStatusView } from './views/SyncStatusView'
 import { WorktreeListView } from './views/WorktreeListView'
@@ -40,6 +41,8 @@ export function ViewsRouter({ cwd, onOpenIssue }: ViewsRouterProps) {
       return <SearchView cwd={cwd} />
     case 'epic':
       return <EpicView cwd={cwd} onOpenIssue={onOpenIssue} />
+    case 'graph':
+      return <DepGraphView cwd={cwd} onOpenIssue={onOpenIssue} />
     case 'swarm':
       return <SwarmView cwd={cwd} />
     case 'sync':

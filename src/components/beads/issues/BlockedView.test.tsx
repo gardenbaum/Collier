@@ -184,4 +184,31 @@ describe('BlockedView', () => {
     const html = container.innerHTML.toLowerCase()
     expect(html).not.toContain('c2410c')
   })
+
+  it('renders the dep badge for blocked issues with their blocker count', async () => {
+    // M3 R8: BlockedView is the canonical surface for "this issue
+    // is stuck on a dep". The row must surface a "blocked by N"
+    // chip on every blocked issue with dependency_count > 0.
+    // The fixture (TASK_OPT, TASK_REFAC) seeds the same shape.
+    mockBdBlocked.mockResolvedValue({ status: 'ok', data: [issueA, issueB] })
+
+    const { BlockedView } = await importSut()
+    render(<BlockedView cwd="/fake" />)
+
+    await waitFor(() => {
+      expect(screen.getByTestId('blocked-list')).toBeInTheDocument()
+    })
+
+    const rows = screen.getAllByTestId('blocked-row')
+    // Row A has 1 blocker — "blocked by 1" chip.
+    const badgeA = rows[0]?.querySelector('[data-testid="dep-badge"]')
+    expect(badgeA).not.toBeNull()
+    expect(badgeA?.getAttribute('data-blocked-by')).toBe('1')
+    expect(badgeA?.textContent).toContain('blocked by 1')
+    // Row B has 2 blockers — "blocked by 2" chip.
+    const badgeB = rows[1]?.querySelector('[data-testid="dep-badge"]')
+    expect(badgeB).not.toBeNull()
+    expect(badgeB?.getAttribute('data-blocked-by')).toBe('2')
+    expect(badgeB?.textContent).toContain('blocked by 2')
+  })
 })

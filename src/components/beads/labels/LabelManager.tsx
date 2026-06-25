@@ -124,7 +124,11 @@ export function LabelManager({ cwd, issue }: LabelManagerProps) {
   // children" call; `dependency_count` is the closest typed
   // signal. A real children count would require a recursive
   // `bd show` walk or a future CLI flag, both out of scope.
-  const hasChildren = issue.dependency_count > 0
+  // ponytail: `dependency_count` is optional in the specta-
+  // generated `Issue` type because bd's `bd show` envelope
+  // omits it (the M0 fix added `#[serde(default)]` on the Rust
+  // side). Treat `undefined` as 0 — same effect as "no deps".
+  const hasChildren = (issue.dependency_count ?? 0) > 0
 
   const handleAddSubmit = (e: FormEvent) => {
     e.preventDefault()

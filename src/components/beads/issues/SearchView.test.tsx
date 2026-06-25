@@ -315,4 +315,49 @@ describe('SearchView', () => {
     const html = container.innerHTML.toLowerCase()
     expect(html).not.toContain('c2410c')
   })
+
+  it('renders the dep badge on a result row that has a blocker', async () => {
+    // M3 R8: search results share the row shape with the list /
+    // ready / blocked views, so a search hit on a blocked issue
+    // (e.g. searching for "OPT") must surface the same dep-badge
+    // the user sees in IssueListView. This is the consistency
+    // contract: same data, same chip.
+    const blockedSearchResult = {
+      ...issueA,
+      id: 'beads-opt',
+      title: 'Optimize queries',
+      status: 'blocked' as const,
+      dependency_count: 2,
+      dependent_count: 1,
+    }
+    mockBdSearch.mockResolvedValue({
+      status: 'ok',
+      data: [blockedSearchResult],
+    })
+
+    const { SearchView } = await importSut()
+    render(<SearchView cwd="/fake" />)
+
+    const input = screen.getByTestId('search-input') as HTMLInputElement
+    const submit = screen.getByTestId('search-submit-button')
+    const nativeSetter = Object.getOwnPropertyDescriptor(
+      window.HTMLInputElement.prototype,
+      'value'
+    )?.set
+    nativeSetter?.call(input, 'OPT')
+    input.dispatchEvent(new Event('input', { bubbles: true }))
+    submit.click()
+
+    await waitFor(() => {
+      expect(screen.getByTestId('search-result-row')).toBeInTheDocument()
+    })
+
+    const row = screen.getByTestId('search-result-row')
+    const badge = row.querySelector('[data-testid="dep-badge"]')
+    expect(badge).not.toBeNull()
+    expect(badge?.getAttribute('data-blocked-by')).toBe('2')
+    expect(badge?.getAttribute('data-blocks')).toBe('1')
+    expect(badge?.textContent).toContain('blocked by 2')
+    expect(badge?.textContent).toContain('blocks 1')
+  })
 })

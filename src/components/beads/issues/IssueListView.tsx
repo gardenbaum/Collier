@@ -40,6 +40,7 @@ import { useIssueFilterStore } from '@/store/issue-filter-store'
 import { colors, radius, space, type } from '@/lib/design-tokens'
 import { TypeIcon } from './badges/TypeIcon'
 import { LabelChip } from './badges/LabelChip'
+import { DependencyBadge } from './badges/DependencyBadge'
 import {
   InlineAssigneeEdit,
   InlinePriorityEdit,
@@ -665,6 +666,10 @@ function IssueRow({ issue, onClick, cwd, positionStyle }: IssueRowProps) {
             ))}
           </span>
         ) : null}
+        <DependencyBadge
+          blockedBy={issue.dependency_count ?? 0}
+          blocks={issue.dependent_count ?? 0}
+        />
       </span>
       <span data-column="status" style={badgeCellStyle}>
         <InlineStatusEdit cwd={cwd} issue={issue} swallowHostEvents />

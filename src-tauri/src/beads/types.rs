@@ -443,12 +443,29 @@ pub struct Issue {
     /// label regression was fixed.
     #[serde(default)]
     pub dependencies: Vec<Dependency>,
+    /// Outgoing edges: issues that depend on THIS one (the
+    /// "blocks N" side). `bd show --json` emits these under
+    /// the `dependents` key as a list of nested issue objects
+    /// (each carries `dependency_type`), while `bd list --json`
+    /// omits the field entirely (the summary `dependent_count`
+    /// is sufficient for the list view). The R8 E2E spec
+    /// (`r8-dep-badges`) needs the detail drawer to surface
+    /// the "blocks N" chip for an issue that has zero incoming
+    /// blockers — TASK_REFAC is one — so the badge can render
+    /// with `dependent_count` derived from this array.
+    /// Default = empty `Vec`. Same `Dependency` shape as
+    /// `dependencies` (uses the `id` → `dependency_id` alias).
+    #[serde(default)]
+    pub dependents: Vec<Dependency>,
     /// `#[serde(default)]` because bd v1.0.4's `bd show --json`
     /// output omits `dependency_count` — the field is only present
     /// in `bd list --json`. Default = `0`. The R4 E2E spec needs
     /// the drawer to mount (which fails on `bd show` ParseError
-    /// without this default); the count is reconciled from
-    /// `dependencies.len()` if a future patch wants to backfill.
+    /// without this default). The R8 E2E spec backfills this from
+    /// `dependencies.len()` in `bd_show` (excluding parent-child
+    /// edges, mirroring `bd list`'s own count semantics — see
+    /// `show_history::bd_show`), so an issue that has no incoming
+    /// blockers but blocks others still renders the right chip.
     #[serde(default)]
     pub dependency_count: u32,
     /// `#[serde(default)]` because bd v1.0.4's `bd show --json`
@@ -521,6 +538,63 @@ pub enum BdError {
 }
 
 pub type BdResult<T> = Result<T, BdError>;
+
+// ============================================================================
+// Dependency Graph (M3 R7)
+// ============================================================================
+//
+// One node per issue + one edge per `Dependency` row from
+// `bd list --json`. Sourced from a single `bd list --all --json`
+// call so the React `DepGraphView` never has to fan out N `bd show`
+// requests just to render the canvas. The shape is intentionally
+// minimal — anything the frontend doesn't need (description, owner,
+// labels, timestamps) is dropped here so the bridge payload stays
+// small even on 500-issue workspaces.
+//
+// Edge direction follows the bd `Dependency` semantics: each edge
+// points FROM the dependent issue TO its dependency (the issue
+// being depended on / the upstream blocker). E.g. for
+// `MIGRATE blocks OPT`, the edge is `(OPT, MIGRATE, blocks)` —
+// OPT depends on MIGRATE. The frontend reverses this for arrow
+// rendering if it wants "MIGRATE -> OPT" semantics ("X blocks Y").
+//
+// Status is included so the frontend can highlight `blocked`
+// nodes without a second `bd blocked` round-trip.
+
+/// One node in the dependency graph. Carries just enough for the
+/// frontend to render a labelled card and colour it by status /
+/// type without another round-trip.
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct GraphNode {
+    pub id: String,
+    pub title: String,
+    pub status: IssueStatus,
+    pub priority: IssuePriority,
+    pub issue_type: IssueType,
+}
+
+/// One directed edge in the dependency graph. `source` is the
+/// dependent issue (the one that "needs" `target`); `target` is
+/// the issue being depended on. `dep_type` is the raw bd edge
+/// kind so the frontend can colour / dash it per type.
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct GraphEdge {
+    pub source: String,
+    pub target: String,
+    pub dep_type: DependencyType,
+}
+
+/// The full graph payload. `nodes` are de-duplicated by id;
+/// `edges` is the multiset of dependency rows from `bd list`
+/// (with the source side filled in from the enclosing `Issue`).
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct Graph {
+    pub nodes: Vec<GraphNode>,
+    pub edges: Vec<GraphEdge>,
+}
 
 #[cfg(test)]
 mod tests {
@@ -789,8 +863,13 @@ mod tests {
                 dependency_type: DependencyType::Blocks,
                 blocked_by: Some(true),
             }],
+            dependents: vec![Dependency {
+                dependency_id: "beads-pqr".to_string(),
+                dependency_type: DependencyType::Blocks,
+                blocked_by: Some(false),
+            }],
             dependency_count: 1,
-            dependent_count: 0,
+            dependent_count: 1,
             comment_count: 2,
             parent: None,
             acceptance_criteria: Some("All tests pass".to_string()),

@@ -200,4 +200,49 @@ describe('ReadyView', () => {
     const html = container.innerHTML.toLowerCase()
     expect(html).not.toContain('c2410c')
   })
+
+  it('renders the dep badge for ready issues that have dependents', async () => {
+    // M3 R8: ready issues have no open blockers, so the
+    // "blocked by" chip is always absent. The "blocks" chip can
+    // still surface (a ready task can still gate downstream
+    // work). The row must show the count when > 0.
+    const readyWithDependents = {
+      ...issueA,
+      dependency_count: 0,
+      dependent_count: 2,
+    }
+    mockBdReady.mockResolvedValue({
+      status: 'ok',
+      data: [readyWithDependents],
+    })
+
+    const { ReadyView } = await importSut()
+    render(<ReadyView cwd="/fake" />)
+
+    await waitFor(() => {
+      expect(screen.getByTestId('ready-list')).toBeInTheDocument()
+    })
+
+    const row = screen.getByTestId('ready-row')
+    const badge = row.querySelector('[data-testid="dep-badge"]')
+    expect(badge).not.toBeNull()
+    // No "blocked by" — ready issues are unblocked by definition.
+    expect(badge?.getAttribute('data-blocked-by')).toBeNull()
+    expect(badge?.getAttribute('data-blocks')).toBe('2')
+    expect(badge?.textContent).toContain('blocks 2')
+  })
+
+  it('omits the dep badge when both counts are zero', async () => {
+    mockBdReady.mockResolvedValue({ status: 'ok', data: [issueA] })
+
+    const { ReadyView } = await importSut()
+    render(<ReadyView cwd="/fake" />)
+
+    await waitFor(() => {
+      expect(screen.getByTestId('ready-list')).toBeInTheDocument()
+    })
+
+    const row = screen.getByTestId('ready-row')
+    expect(row.querySelector('[data-testid="dep-badge"]')).toBeNull()
+  })
 })

@@ -964,4 +964,90 @@ describe('IssueListView', () => {
       ?.toLowerCase()
     expect(rootStyle ?? '').not.toContain('c2410c')
   })
+
+  it('renders the dep badge for issues with blockers and dependents', async () => {
+    // M3 R8: a row whose issue has dependency_count > 0 or
+    // dependent_count > 0 should carry the dep-badge inside its
+    // title cell with the counts exposed as data attributes. The
+    // fixture (25 issues, 5 blocks edges, 2 status=blocked) seeds
+    // both shapes — TASK_LOGIN has dependency_count=2, TASK_MIGRATE
+    // has dependent_count=1 — so the test seeds one of each.
+    const issues = [
+      makeIssue({
+        id: 'beads-1',
+        title: 'No deps',
+        dependency_count: 0,
+        dependent_count: 0,
+      }),
+      makeIssue({
+        id: 'beads-2',
+        title: 'Login form',
+        dependency_count: 2,
+        dependent_count: 0,
+      }),
+      makeIssue({
+        id: 'beads-3',
+        title: 'Migrate DB',
+        dependency_count: 0,
+        dependent_count: 1,
+      }),
+      makeIssue({
+        id: 'beads-4',
+        title: 'Both sides',
+        dependency_count: 1,
+        dependent_count: 1,
+      }),
+    ]
+    mockBdList.mockResolvedValue({ status: 'ok', data: issues })
+
+    const { IssueListView } = await importSut()
+    render(
+      <IssueListView cwd="/fake" onOpenIssue={vi.fn()} containerHeight={400} />
+    )
+
+    await waitFor(() => {
+      expect(screen.getAllByTestId('issue-row')).toHaveLength(4)
+    })
+
+    // ponytail: the row testid is just `issue-row`; the id is
+    // exposed as a `data-issue-id` attribute. Use a custom helper
+    // to find the row for a given id.
+    const findRow = (id: string): HTMLElement => {
+      const rows = screen.getAllByTestId('issue-row')
+      const match = rows.find(r => r.getAttribute('data-issue-id') === id)
+      if (!match) {
+        throw new Error(`row for ${id} not found`)
+      }
+      return match
+    }
+
+    // Row 1 (no deps) — no dep-badge in its title cell.
+    const row1 = findRow('beads-1')
+    expect(row1.querySelector('[data-testid="dep-badge"]')).toBeNull()
+
+    // Row 2 (2 blockers) — "blocked by 2" chip present, "blocks" absent.
+    const row2 = findRow('beads-2')
+    const badge2 = row2.querySelector('[data-testid="dep-badge"]')
+    expect(badge2).not.toBeNull()
+    expect(badge2?.getAttribute('data-blocked-by')).toBe('2')
+    expect(badge2?.getAttribute('data-blocks')).toBeNull()
+    expect(badge2?.textContent).toContain('blocked by 2')
+
+    // Row 3 (1 dependent) — "blocks 1" chip present, "blocked by" absent.
+    const row3 = findRow('beads-3')
+    const badge3 = row3.querySelector('[data-testid="dep-badge"]')
+    expect(badge3).not.toBeNull()
+    expect(badge3?.getAttribute('data-blocked-by')).toBeNull()
+    expect(badge3?.getAttribute('data-blocks')).toBe('1')
+    expect(badge3?.textContent).toContain('blocks 1')
+
+    // Row 4 (both) — both chips present, both data attributes set.
+    const row4 = findRow('beads-4')
+    const badge4 = row4.querySelector('[data-testid="dep-badge"]')
+    expect(badge4).not.toBeNull()
+    expect(badge4?.getAttribute('data-blocked-by')).toBe('1')
+    expect(badge4?.getAttribute('data-blocks')).toBe('1')
+    expect(badge4?.textContent).toContain('blocked by 1')
+    expect(badge4?.textContent).toContain('blocks 1')
+  })
 })

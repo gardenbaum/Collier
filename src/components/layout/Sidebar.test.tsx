@@ -83,7 +83,7 @@ const SAMPLE_ASSIGNEES: AssigneeWithCount[] = [
 ]
 
 describe('Sidebar — views', () => {
-  it('renders all 10 view names', () => {
+  it('renders all 11 view names', () => {
     render(<Sidebar />)
     const views = [
       'list',
@@ -91,6 +91,7 @@ describe('Sidebar — views', () => {
       'blocked',
       'search',
       'epic',
+      'graph',
       'swarm',
       'sync',
       'worktree',
