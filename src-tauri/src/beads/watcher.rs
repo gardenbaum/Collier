@@ -365,6 +365,9 @@ pub fn spawn_watcher(
     let snapshot = WatcherSnapshot::new();
     let snapshot_for_task = snapshot.clone();
     let repo_path_for_task = repo_path.clone();
+    // Clone `app` once so the debouncer closure can hold its own
+    // handle without moving the function parameter.
+    let app_for_debouncer = app.clone();
 
     let mut debouncer = new_debouncer(
         Duration::from_millis(250),
@@ -374,7 +377,7 @@ pub fn spawn_watcher(
                     return;
                 }
                 handle_change(
-                    app.clone(),
+                    app_for_debouncer.clone(),
                     repo_path_for_task.clone(),
                     repo_path_str.clone(),
                     snapshot_for_task.clone(),
@@ -391,6 +394,45 @@ pub fn spawn_watcher(
         .map_err(|e| format!("failed to watch {}: {e}", watch_dir.display()))?;
 
     log::info!("Watching beads directory: {}", watch_dir.display());
+
+    // Seed the snapshot synchronously at attach time so the FIRST
+    // `bd update …` after attach emits a targeted
+    // `beads-issue-updated` event instead of `beads-data-reset` +
+    // broad cache invalidation. Without this, the very first
+    // external mutation after a workspace switch triggers a full
+    // list refetch (which races the 1 s end-to-end target under
+    // CI cold-start and flakes the r10 spec — observed on runs
+    // 28164785305, 28173810778, 28176649802, 28176992325,
+    // 28178940994). Seeding via `read_jsonl` is a no-op when the
+    // JSONL is missing/empty (the diff_snapshot path already
+    // handles that case with `if !baseline.is_seeded()`), so
+    // this is safe to do unconditionally.
+    let snapshot_for_seed = snapshot.clone();
+    let repo_path_for_seed = repo_path.clone();
+    let app_for_seed = app.clone();
+    tauri::async_runtime::spawn(async move {
+        match crate::beads::jsonl::read_jsonl(&repo_path_for_seed).await {
+            Ok(read_result) => {
+                let _ = diff_snapshot(&snapshot_for_seed, &read_result.issues);
+                log::info!(
+                    "Seeded beads watcher baseline with {} issues from {}",
+                    read_result.issues.len(),
+                    repo_path_for_seed.display()
+                );
+            }
+            Err(e) => {
+                log::warn!(
+                    "Failed to seed beads watcher baseline for {}: {e:?}",
+                    repo_path_for_seed.display()
+                );
+            }
+        }
+        // Drop the app handle once seeding is done so the
+        // closure doesn't keep a ref-counted handle alive past
+        // its useful scope.
+        drop(app_for_seed);
+    });
+
     Ok(WatcherHandle {
         _debouncer: debouncer,
         snapshot,
