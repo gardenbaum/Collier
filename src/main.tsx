@@ -33,6 +33,26 @@ if (rootElement === null) {
 // QueryClientProvider boundary.
 installQueryClient(queryClient)
 
+// ponytail: E2E hook — expose the queryClient on `window` so the
+// wdio specs can read cache state directly via `page-context`
+// JavaScript instead of polling DOM attributes. The DOM is a
+// *windowed* projection of the cache (`@tanstack/react-virtual`
+// only mounts ~15 rows at a time), so polling the DOM for a row
+// the virtualizer has unmounted races with the test's `waitUntil`
+// loop and times out at 1500 ms even when the watcher already
+// patched the cache. Reading from the cache is race-free: the
+// queryClient holds every cached issue regardless of what's
+// mounted, and the watcher patches it synchronously on the file
+// event. The harness gates on `import.meta.env.VITE_E2E === '1'`
+// so production builds don't ship a debugging handle. The flag
+// is set by the E2E CI workflow via the build-time Vite env (see
+// `.github/workflows/ci.yml` — `E2E_TAURI_EXECUTABLE` is the
+// adjacent env var; the Vite flag is independent).
+if (import.meta.env.VITE_E2E === '1') {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  ;(globalThis as any).__collierQueryClient__ = queryClient
+}
+
 ReactDOM.createRoot(rootElement).render(
   <QueryClientProvider client={queryClient}>
     <App />

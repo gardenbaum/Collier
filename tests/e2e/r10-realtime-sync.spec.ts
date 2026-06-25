@@ -8,8 +8,8 @@
  *
  *   when an external `bd update <id> --status=<alt>` lands on
  *   the fixture,
- *     then the row's `data-issue-status` attribute updates to
- *     the new value within ~1 s, **without** any user
+ *     then the matching entry in the TanStack Query list cache
+ *     reflects the new value within ~1 s, **without** any user
  *     interaction (no manual refresh, no click, no focus).
  *
  * R10's value proposition is that the Rust watcher diffs the
@@ -19,7 +19,24 @@
  * test exercises the whole path end-to-end: an external `bd`
  * process writes to `.beads/issues.jsonl`, the watcher detects
  * the change within ~250 ms (debounce), the React side patches
- * the list cache, the row re-renders with the new status.
+ * the list cache.
+ *
+ * Why we read the cache, not the DOM:
+ *   `IssueListView` is virtualized with `@tanstack/react-virtual`
+ *   (10-row viewport + 5-row overscan on each side). The DOM
+ *   only ever mounts ~15-20 of the 25 fixture rows; the rest
+ *   are virtualized away. Polling `data-issue-status` for a row
+ *   the virtualizer has unmounted races with the test's
+ *   `waitUntil` loop and times out at 1500 ms even when the
+ *   watcher already patched the cache. The TanStack Query
+ *   cache, by contrast, holds every issue regardless of what's
+ *   mounted, and `beads-issue-updated` patches it
+ *   synchronously on the watcher event. `getCachedIssue`
+ *   (`tests/e2e/helpers.ts`) reads it via the page-context
+ *   `queryClient` handle exposed by `src/main.tsx` under the
+ *   build-time `VITE_E2E` flag. The fixture still asserts the
+ *   full 25-issue list has loaded (via the footer) so the
+ *   "precondition" contract is unchanged.
  *
  * The M3 spec established the "wait for full fixture before
  * sampling" pattern — we follow it here so the row we pick
@@ -40,10 +57,10 @@
  * allowed per the constitution's "never write `.beads/` files
  * directly" rule).
  */
-import { browser, expect, $$, $ } from '@wdio/globals'
+import { browser, expect, $, $$ } from '@wdio/globals'
 import { readFileSync } from 'node:fs'
 
-import { openFixtureWorkspace } from './helpers'
+import { getCachedIssue, openFixtureWorkspace } from './helpers'
 
 const FIXTURE_IDS_PATH = '/tmp/e2e-workspace/.fixture-ids.json'
 
@@ -103,23 +120,15 @@ describe('Collier M4 R10 targeted real-time sync', () => {
       { cwd: '/tmp/e2e-workspace', stdio: 'pipe' }
     )
     // Wait for the watcher tick to reconcile so the next spec
-    // sees the original status in the rendered list (a
-    // background mutation while r3's first waitUntil runs
-    // would race against r3's row-selector query).
-    //
-    // ponytail: same browser.execute pattern as the test above
-    // — see that comment for why we can't use wdio's
-    // `$()` + `getAttribute` chain.
+    // sees the original status in the cache (a background
+    // mutation while r3's first waitUntil runs would race
+    // against r3's row-selector query). Read the cache, not
+    // the DOM — the virtualizer may have unmounted the row
+    // mid-revert (see the top-of-file comment for why).
     await browser.waitUntil(
       async () => {
-        const status = await browser.execute((id: string) => {
-          const row = document.querySelector(
-            `[data-testid="issue-row"][data-issue-id="${CSS.escape(id)}"]`
-          )
-          if (!row) return null
-          return row.getAttribute('data-issue-status')
-        }, mutatedRowId)
-        return status === originalStatus
+        const cached = await getCachedIssue(mutatedRowId)
+        return cached?.status === originalStatus
       },
       {
         timeout: 5_000,
@@ -158,28 +167,13 @@ describe('Collier M4 R10 targeted real-time sync', () => {
       expect(targetId).toBeTruthy()
     }
 
-    // -- And: the target row is rendered and we capture its
-    //    current status so the `after` hook can revert it.
-    //
-    // ponytail: read the status via `browser.execute` so a
-    // transient React/virtualizer remount between iterations
-    // returns `null` (retry) instead of throwing a stale wdio
-    // handle. The wdio `$().getAttribute()` chain on a row the
-    // virtualizer briefly unmounts throws and aborts the test.
-    const targetRow = await $(
-      `[data-testid="issue-row"][data-issue-id="${targetId}"]`
-    )
-    await targetRow.waitForDisplayed({ timeout: 5_000 })
-    originalStatus =
-      (await browser.execute(
-        (id: string) =>
-          document
-            .querySelector(
-              `[data-testid="issue-row"][data-issue-id="${CSS.escape(id)}"]`
-            )
-            ?.getAttribute('data-issue-status') ?? null,
-        targetId
-      )) ?? ''
+    // -- And: the target row is in the cache so we can read
+    //    its current status. Read from the cache (not the
+    //    DOM) so the test is robust against the virtualizer
+    //    unmounting the row.
+    const initial = await getCachedIssue(targetId)
+    expect(initial).not.toBeNull()
+    originalStatus = String(initial?.status ?? '')
     mutatedRowId = targetId
     expect(originalStatus).toBeTruthy()
 
@@ -205,33 +199,19 @@ describe('Collier M4 R10 targeted real-time sync', () => {
       { cwd: '/tmp/e2e-workspace', stdio: 'pipe' }
     )
 
-    // -- Then: the row's `data-issue-status` attribute flips
-    //    to `newStatus` within ~1 s of the bd write. The
+    // -- Then: the cache entry for this row reflects
+    //    `newStatus` within ~1 s of the bd write. The
     //    1500 ms upper bound leaves headroom for the watcher's
     //    250 ms debounce + the React commit under CI
-    //    cold-start.
-    //
-    // ponytail: read the attribute via `browser.execute` so a
-    // transient React/virtualizer remount between iterations
-    // returns `false` (retry) instead of throwing a stale
-    // `element wasn't found` from the WebDriver server. With
-    // a small viewport the virtualizer unmounts the target row
-    // for a frame after the watcher patches the cache, then
-    // re-mounts it with the new status. The W3C `GET_ATTRIBUTE`
-    // command on a stale wdio handle throws and aborts the
-    // waitUntil instead of retrying — that's what surfaced as
-    // "Can't call getAttribute on element ... because element
-    // wasn't found" on flaky CI runs.
+    //    cold-start. Reading the cache (via
+    //    `getCachedIssue`) bypasses the DOM and the
+    //    virtualizer's windowed-render race that previously
+    //    timed this spec out at 1500 ms with the row
+    //    unmounted — see the top-of-file comment for details.
     await browser.waitUntil(
       async () => {
-        const status = await browser.execute((id: string) => {
-          const row = document.querySelector(
-            `[data-testid="issue-row"][data-issue-id="${CSS.escape(id)}"]`
-          )
-          if (!row) return null
-          return row.getAttribute('data-issue-status')
-        }, targetId)
-        return status === newStatus
+        const cached = await getCachedIssue(targetId)
+        return cached?.status === newStatus
       },
       {
         timeout: 1_500,
@@ -246,20 +226,15 @@ describe('Collier M4 R10 targeted real-time sync', () => {
   })
 
   it('a row reflects an external bd priority change within ~1s', async () => {
-    // -- Given: pick a row whose current priority can be
-    //    changed without colliding with anything else. We
-    //    reuse the row mutated by the previous test (whose
-    //    revert in `after` is gated on the next spec). The
-    //    `mutatedRowId` is still set from the previous test
-    //    because wdio runs `it` blocks in serial order within
-    //    a `describe`.
+    // -- Given: reuse the row mutated by the previous test
+    //    (whose revert in `after` is gated on the next spec).
+    //    The `mutatedRowId` is still set from the previous
+    //    test because wdio runs `it` blocks in serial order
+    //    within a `describe`.
     expect(mutatedRowId).toBeTruthy()
-    const targetRow = await $(
-      `[data-testid="issue-row"][data-issue-id="${mutatedRowId}"]`
-    )
-    await targetRow.waitForDisplayed({ timeout: 5_000 })
-    const originalPriority =
-      (await targetRow.getAttribute('data-issue-priority')) ?? ''
+    const initial = await getCachedIssue(mutatedRowId)
+    expect(initial).not.toBeNull()
+    const originalPriority = String(initial?.priority ?? '')
     expect(originalPriority).toBeTruthy()
 
     // IssuePriority serialises as a bare integer 0..4 via
@@ -276,22 +251,15 @@ describe('Collier M4 R10 targeted real-time sync', () => {
       { cwd: '/tmp/e2e-workspace', stdio: 'pipe' }
     )
 
-    // -- Then: the row's `data-issue-priority` flips within
-    //    ~1 s. Same 1500 ms ceiling as the status test.
-    //
-    // ponytail: same browser.execute pattern as the status test
-    // above — see that comment for why we can't use the wdio
-    // `$()` + `getAttribute` chain here.
+    // -- Then: the cache entry for this row flips to
+    //    `newPriority` within ~1 s. Same 1500 ms ceiling as
+    //    the status test. Read the cache — see the top-of-file
+    //    comment for why DOM-attribute waits race the
+    //    virtualizer.
     await browser.waitUntil(
       async () => {
-        const priority = await browser.execute((id: string) => {
-          const row = document.querySelector(
-            `[data-testid="issue-row"][data-issue-id="${CSS.escape(id)}"]`
-          )
-          if (!row) return null
-          return row.getAttribute('data-issue-priority')
-        }, mutatedRowId)
-        return priority === newPriority
+        const cached = await getCachedIssue(mutatedRowId)
+        return cached?.priority === newPriority
       },
       {
         timeout: 1_500,
