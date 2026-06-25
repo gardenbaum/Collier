@@ -138,42 +138,50 @@ describe('Collier M5 vim-style keyboard navigation', () => {
     await drawer.waitForDisplayed({ timeout: 5_000 })
 
     // The drawer's "bd-show" cache is keyed on the active issue
-    // id; assert via the workspace store rather than the DOM.
-    // Falling back to a DOM-level check: the drawer renders the
-    // issue id in its title bar (testid="issue-detail-title"
-    // or a heading). Both are stable enough; we use the page
-    // title's aria relationship to the drawer content. Simpler:
-    // read the active issue via the cache handle exposed by
-    // src/main.tsx under VITE_E2E.
-    const openedId = await browser.execute(() => {
-      const client = (
-        globalThis as unknown as {
-          __collierQueryClient__?: {
-            getQueryCache: () => {
-              getAll: () => {
-                queryKey: readonly unknown[]
-                state: { data: unknown }
-              }[]
+    // id. The Tauri command call takes ~hundreds of ms to land,
+    // so we poll the cache handle (exposed by src/main.tsx under
+    // VITE_E2E) until the query has data matching secondId. This
+    // avoids the race where the drawer mounts with "Loading…"
+    // before the bd-show response arrives.
+    const openedId = await browser.waitUntil(
+      async () => {
+        const id = await browser.execute(() => {
+          const client = (
+            globalThis as unknown as {
+              __collierQueryClient__?: {
+                getQueryCache: () => {
+                  getAll: () => {
+                    queryKey: readonly unknown[]
+                    state: { data: unknown }
+                  }[]
+                }
+              }
+            }
+          ).__collierQueryClient__
+          if (!client) return null
+          const queries = client.getQueryCache().getAll()
+          for (const q of queries) {
+            const key = q.queryKey
+            if (
+              Array.isArray(key) &&
+              key[0] === 'beads' &&
+              key[1] === 'show' &&
+              q.state.data
+            ) {
+              const data = q.state.data as { id?: string }
+              if (typeof data.id === 'string') return data.id
             }
           }
-        }
-      ).__collierQueryClient__
-      if (!client) return null
-      const queries = client.getQueryCache().getAll()
-      for (const q of queries) {
-        const key = q.queryKey
-        if (
-          Array.isArray(key) &&
-          key[0] === 'beads' &&
-          key[1] === 'show' &&
-          q.state.data
-        ) {
-          const data = q.state.data as { id?: string }
-          if (typeof data.id === 'string') return data.id
-        }
+          return null
+        })
+        return typeof id === 'string' && id === secondId ? id : null
+      },
+      {
+        timeout: 10_000,
+        interval: 100,
+        timeoutMsg: `bd-show never resolved to ${secondId}`,
       }
-      return null
-    })
+    )
     expect(openedId).toBe(secondId)
   })
 
