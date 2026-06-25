@@ -101,6 +101,7 @@
   "beads.views.epic.childrenCount_one": "{{count}} enfant",
   "beads.views.epic.childrenCount_other": "{{count}} enfants",
   "beads.views.epic.noChildren": "Aucun enfant pour l'instant",
+  "beads.views.epic.childrenGroupLabel": "Enfants de l'épic",
   "beads.views.status.comingSoon": "Disponible en v1.1 — utilisez la CLI pour l'instant",
   "beads.views.status.copied": "Copié !",
   "beads.views.status.copyCommand": "Copier la commande CLI",
@@ -237,7 +238,18 @@
     },
     "newIssue": "Nouveau ticket",
     "sort": "Trier",
-    "group": "Regrouper"
+    "group": "Regrouper",
+    "clearAllFilters": "Effacer tous les filtres",
+    "filterAria": "Filtre {{label}}",
+    "filterAriaActive": "Filtre {{label}}, actif",
+    "assigneeFilterAria_one": "{{assignee}}, {{count}} ticket, filtre",
+    "assigneeFilterAria_other": "{{assignee}}, {{count}} tickets, filtre",
+    "assigneeFilterAriaActive_one": "{{assignee}}, {{count}} ticket, filtre, actif",
+    "assigneeFilterAriaActive_other": "{{assignee}}, {{count}} tickets, filtre, actif",
+    "labelFilterAria_one": "Étiquette {{label}}, {{count}} ticket, filtre",
+    "labelFilterAria_other": "Étiquette {{label}}, {{count}} tickets, filtre",
+    "labelFilterAriaActive_one": "Étiquette {{label}}, {{count}} ticket, filtre, actif",
+    "labelFilterAriaActive_other": "Étiquette {{label}}, {{count}} tickets, filtre, actif"
   },
   "titlebar": {
     "default": "Collier",

@@ -599,6 +599,12 @@ function ChildrenList({
   onOpenIssue,
   emptyLabel,
 }: ChildrenListProps) {
+  // ponytail: ChildrenList is rendered inside EpicTreeRow, which
+  // also reads `t`, but we re-call the hook here so the
+  // childrenGroupLabel translation is owned by the component that
+  // actually renders it. Each useTranslation instance is cheap
+  // (i18next memoises), so the duplication is fine.
+  const { t } = useTranslation()
   if (epicChildren.length === 0) {
     return (
       <div data-testid="epic-children-empty" style={noChildrenStyle}>
@@ -610,7 +616,7 @@ function ChildrenList({
     <ul
       data-testid="epic-children"
       role="group"
-      aria-label="Epic children"
+      aria-label={t('beads.views.epic.childrenGroupLabel', 'Epic children')}
       style={childrenListStyle}
     >
       {epicChildren.map((child, idx) => {

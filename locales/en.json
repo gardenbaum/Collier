@@ -101,6 +101,7 @@
   "beads.views.epic.childrenCount_one": "{{count}} child",
   "beads.views.epic.childrenCount_other": "{{count}} children",
   "beads.views.epic.noChildren": "No children yet",
+  "beads.views.epic.childrenGroupLabel": "Epic children",
   "beads.views.status.comingSoon": "Coming in v1.1 — use the CLI for now",
   "beads.views.status.copied": "Copied!",
   "beads.views.status.copyCommand": "Copy CLI command",
@@ -237,7 +238,18 @@
     },
     "newIssue": "New issue",
     "sort": "Sort",
-    "group": "Group"
+    "group": "Group",
+    "clearAllFilters": "Clear all filters",
+    "filterAria": "{{label}} filter",
+    "filterAriaActive": "{{label}} filter, active",
+    "assigneeFilterAria_one": "{{assignee}}, {{count}} issue, filter",
+    "assigneeFilterAria_other": "{{assignee}}, {{count}} issues, filter",
+    "assigneeFilterAriaActive_one": "{{assignee}}, {{count}} issue, filter, active",
+    "assigneeFilterAriaActive_other": "{{assignee}}, {{count}} issues, filter, active",
+    "labelFilterAria_one": "{{label}} label, {{count}} issue, filter",
+    "labelFilterAria_other": "{{label}} label, {{count}} issues, filter",
+    "labelFilterAriaActive_one": "{{label}} label, {{count}} issue, filter, active",
+    "labelFilterAriaActive_other": "{{label}} label, {{count}} issues, filter, active"
   },
   "titlebar": {
     "default": "Collier",
