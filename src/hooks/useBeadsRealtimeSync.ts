@@ -112,7 +112,7 @@ export function useBeadsRealtimeSync(): void {
 
   useEffect(() => {
     let isMounted = true
-    const unlistenFns: Array<() => void> = []
+    const unlistenFns: (() => void)[] = []
 
     const setupListener = async <T>(
       eventName: string,
@@ -144,16 +144,13 @@ export function useBeadsRealtimeSync(): void {
     // of the repo). Instead we do a single broad invalidation
     // so the existing queries settle, then switch to targeted
     // patches for every subsequent event.
-    void setupListener<BeadsDataResetPayload>(
-      'beads-data-reset',
-      payload => {
-        if (payload.repo_path !== activeRepoPath()) return
-        logger.debug('beads-data-reset event received', {
-          count: payload.count,
-        })
-        queryClient.invalidateQueries({ queryKey: ['beads'] })
-      }
-    )
+    void setupListener<BeadsDataResetPayload>('beads-data-reset', payload => {
+      if (payload.repo_path !== activeRepoPath()) return
+      logger.debug('beads-data-reset event received', {
+        count: payload.count,
+      })
+      queryClient.invalidateQueries({ queryKey: ['beads'] })
+    })
 
     // -- beads-issue-created --
     void setupListener<BeadsIssuePayload>('beads-issue-created', payload => {

@@ -81,7 +81,7 @@ so the bulk of the logic is unit-testable without spinning up a
   are refetched lazily by TanStack on the next mount or window
   focus; that's the same contract as before R10.
 - **Optimistic UI for external mutations.** If a user runs `bd
-  update` from a sibling shell, the GUI catches up via R10 — but
+update` from a sibling shell, the GUI catches up via R10 — but
   this card does NOT add an "unsaved local change" warning. Out of
   scope; would belong on a separate card if a user ever asks for
   it.
@@ -106,9 +106,10 @@ so the bulk of the logic is unit-testable without spinning up a
 This card (R10) is the only card on the milestone branch for the
 real-time-sync work. It satisfies the milestone's "real-time sync
 polish" acceptance criterion in one shot because the diff engine
-+ the cache patcher + the E2E test fit comfortably in a single
-budget. The R9 card already shipped the multi-workspace switcher
-on the same branch.
+
+- the cache patcher + the E2E test fit comfortably in a single
+  budget. The R9 card already shipped the multi-workspace switcher
+  on the same branch.
 
 ## Per-card contract
 

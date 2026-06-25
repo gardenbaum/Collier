@@ -19,8 +19,10 @@ import { useBeadsRealtimeSync } from './useBeadsRealtimeSync'
 // Capture every (eventName, handler) pair registered via
 // listen(), keyed by event name so multiple listeners can be
 // simulated at once. Tests simulate emits by looking up the
-// matching handler and invoking it.
-type ListenerCallback = (event: { payload: unknown }) => void
+// matching handler and invoking it with a minimal Event<T>
+// shape (the real @tauri-apps/api Event<T> carries { event,
+// id, payload } — we only need `payload` for the handlers).
+type ListenerCallback = Parameters<typeof listen>[1]
 type Unlisten = () => void
 const listeners = new Map<string, ListenerCallback>()
 const unlistenFns = new Set<Unlisten>()
@@ -32,7 +34,7 @@ function makeIssue(overrides: Partial<Issue> = {}): Issue {
     id: 'beads-1',
     title: 'Sample',
     status: 'open',
-    priority: 2,
+    priority: 'P2',
     issue_type: 'task',
     created_at: '2026-01-01T00:00:00Z',
     updated_at: null,
@@ -57,7 +59,10 @@ function emit(eventName: string, payload: unknown): void {
   if (!handler) {
     throw new Error(`no listener registered for ${eventName}`)
   }
-  handler({ payload })
+  // Cast through `never` — the handler signature is generic
+  // over T but we don't know T at the call site; the handler
+  // only reads `evt.payload` so a structural cast is safe.
+  handler({ event: eventName, id: 0, payload } as never)
 }
 
 function makeQueryClient() {
@@ -189,7 +194,9 @@ describe('useBeadsRealtimeSync', () => {
 
     const list = qc.getQueryData<Issue[]>(['beads', 'list', REPO, {}])
     expect(list?.map(i => i.id)).toEqual(['beads-2'])
-    expect(qc.getQueryData<Issue>(['beads', 'show', REPO, 'beads-1'])).toBeUndefined()
+    expect(
+      qc.getQueryData<Issue>(['beads', 'show', REPO, 'beads-1'])
+    ).toBeUndefined()
     // beads-2's show cache must remain untouched
     expect(qc.getQueryData<Issue>(['beads', 'show', REPO, 'beads-2'])?.id).toBe(
       'beads-2'
@@ -339,9 +346,10 @@ describe('useBeadsRealtimeSync', () => {
   it('no-ops when there is no active workspace', async () => {
     const qc = makeQueryClient()
     // Initial cache state: status = 'open'.
-    qc.setQueryData<Issue[]>(['beads', 'list', REPO, {}], [
-      makeIssue({ id: 'beads-1', status: 'open' }),
-    ])
+    qc.setQueryData<Issue[]>(
+      ['beads', 'list', REPO, {}],
+      [makeIssue({ id: 'beads-1', status: 'open' })]
+    )
     useWorkspaceStore.setState({ repoPath: null })
 
     renderWithClient(qc)
