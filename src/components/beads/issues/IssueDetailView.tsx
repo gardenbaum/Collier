@@ -365,7 +365,19 @@ function CommentsTab({
     )
   }
 
-  const comments = query.data ?? []
+  // ponytail: M6 R8 — sort comments by `created_at` ascending so
+  // the thread reads chronologically (oldest at the top, newest at
+  // the bottom, like a chat transcript). `bd comments <id> --json`
+  // doesn't promise a particular order on the wire, and Dolt /
+  // JSONL reads can return insertion-order or a different order
+  // depending on the index used. Sorting here makes the UI
+  // deterministic regardless of the upstream ordering and matches
+  // the "Thread/order by time" requirement. ISO 8601 strings sort
+  // lexicographically the same way they sort chronologically, so a
+  // `String#localeCompare` is enough — no `new Date()` parse needed.
+  const comments = [...(query.data ?? [])].sort((a, b) =>
+    a.created_at.localeCompare(b.created_at)
+  )
 
   return (
     <div data-testid="comments-tab" style={commentsTabStyle}>

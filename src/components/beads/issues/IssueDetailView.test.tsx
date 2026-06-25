@@ -226,6 +226,125 @@ describe('IssueDetailView', () => {
     expect(rows[1]?.textContent).toContain('Confirmed on staging.')
   })
 
+  // M6 R8 — comments must render chronologically (oldest at the
+  // top, newest at the bottom) regardless of the order the bd
+  // command returned them in. The previous implementation trusted
+  // bd's wire order, which can change between Dolt / JSONL /
+  // index paths. The new sort uses `String#localeCompare` on the
+  // ISO 8601 `created_at` field — lexicographic order on ISO
+  // 8601 strings is the same as chronological order, so the sort
+  // is allocation-free.
+  describe('comments sort (M6 R8)', () => {
+    it('sorts comments ascending by created_at when bd returns them out of order', async () => {
+      // Wire order is newest-first; the UI must reorder to
+      // oldest-first regardless.
+      mockBdComments.mockResolvedValue({
+        status: 'ok',
+        data: [
+          {
+            ...commentsFixture[1],
+            id: 'c-2',
+            created_at: '2026-01-03T00:00:00Z',
+          },
+          {
+            ...commentsFixture[0],
+            id: 'c-1',
+            created_at: '2026-01-02T00:00:00Z',
+          },
+        ],
+      })
+      const { IssueDetailView } = await importSut()
+      render(<IssueDetailView cwd="/repo" issueId="beads-42" onClose={noop} />)
+
+      fireEvent.click(screen.getByTestId('tab-comments'))
+
+      await waitFor(() => {
+        expect(screen.getAllByTestId('comment-row')).toHaveLength(2)
+      })
+
+      const rows = screen.getAllByTestId('comment-row')
+      // c-1 (older) renders first, c-2 (newer) renders second —
+      // not the wire order.
+      expect(rows[0]?.getAttribute('data-comment-id')).toBe('c-1')
+      expect(rows[1]?.getAttribute('data-comment-id')).toBe('c-2')
+    })
+
+    it('sorts three or more comments by created_at', async () => {
+      mockBdComments.mockResolvedValue({
+        status: 'ok',
+        data: [
+          {
+            id: 'c-mid',
+            author: 'carol',
+            body: 'middle',
+            created_at: '2026-02-15T12:00:00Z',
+            updated_at: null,
+          },
+          {
+            id: 'c-newest',
+            author: 'dave',
+            body: 'newest',
+            created_at: '2026-03-01T00:00:00Z',
+            updated_at: null,
+          },
+          {
+            id: 'c-oldest',
+            author: 'eve',
+            body: 'oldest',
+            created_at: '2026-01-01T00:00:00Z',
+            updated_at: null,
+          },
+        ],
+      })
+      const { IssueDetailView } = await importSut()
+      render(<IssueDetailView cwd="/repo" issueId="beads-42" onClose={noop} />)
+
+      fireEvent.click(screen.getByTestId('tab-comments'))
+
+      await waitFor(() => {
+        expect(screen.getAllByTestId('comment-row')).toHaveLength(3)
+      })
+
+      const rows = screen.getAllByTestId('comment-row')
+      expect(rows[0]?.getAttribute('data-comment-id')).toBe('c-oldest')
+      expect(rows[1]?.getAttribute('data-comment-id')).toBe('c-mid')
+      expect(rows[2]?.getAttribute('data-comment-id')).toBe('c-newest')
+    })
+
+    it('does not mutate the underlying query data array', async () => {
+      const wireData = [
+        {
+          ...commentsFixture[1],
+          id: 'c-2',
+          created_at: '2026-01-03T00:00:00Z',
+        },
+        {
+          ...commentsFixture[0],
+          id: 'c-1',
+          created_at: '2026-01-02T00:00:00Z',
+        },
+      ]
+      const wireCopy = JSON.parse(JSON.stringify(wireData))
+      mockBdComments.mockResolvedValue({ status: 'ok', data: wireData })
+      const { IssueDetailView } = await importSut()
+      render(<IssueDetailView cwd="/repo" issueId="beads-42" onClose={noop} />)
+
+      fireEvent.click(screen.getByTestId('tab-comments'))
+
+      await waitFor(() => {
+        expect(screen.getAllByTestId('comment-row')).toHaveLength(2)
+      })
+
+      // ponytail: sorting must be a non-mutating copy. The TanStack
+      // Query cache holds the wire-order array; in-place sort would
+      // re-order it for every consumer of the same cache entry.
+      // The implementation spreads `[...query.data]` before sort
+      // — this test guards against future "optimisations" that
+      // reach for `query.data.sort()` directly.
+      expect(wireData).toEqual(wireCopy)
+    })
+  })
+
   it('submitting a new comment fires bdAddComment and clears the form', async () => {
     const { IssueDetailView } = await importSut()
     render(<IssueDetailView cwd="/repo" issueId="beads-42" onClose={noop} />)
