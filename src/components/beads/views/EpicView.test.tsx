@@ -364,4 +364,126 @@ describe('EpicView', () => {
     expect(screen.queryByTestId('epic-tree')).not.toBeInTheDocument()
     expect(screen.queryByTestId('epic-empty')).not.toBeInTheDocument()
   })
+
+  // ponytail: M5 a11y — the epic view is a real ARIA tree. These
+  // tests verify the structural semantics without touching the
+  // visual styling. They live alongside the rest of the EpicView
+  // suite because the same mock + render harness covers both.
+  describe('ARIA tree semantics', () => {
+    it('renders the outer list as a role="tree" with an accessible label', async () => {
+      mockBdList.mockResolvedValue({
+        status: 'ok',
+        data: [makeEpic({ id: 'epic-auth' })],
+      })
+
+      const { EpicView } = await importSut()
+      render(<EpicView cwd="/fake" onOpenIssue={() => undefined} />)
+
+      await waitFor(() => {
+        expect(screen.getByTestId('epic-tree')).toBeInTheDocument()
+      })
+
+      const tree = screen.getByRole('tree', { name: 'Epics' })
+      expect(tree).toBeInTheDocument()
+    })
+
+    it('marks each epic row as role="treeitem" with aria-level/posinset/setsize/expanded', async () => {
+      mockBdList.mockResolvedValue({
+        status: 'ok',
+        data: [
+          makeEpic({ id: 'epic-a', title: 'Alpha epic' }),
+          makeEpic({ id: 'epic-b', title: 'Beta epic' }),
+          makeEpic({ id: 'epic-c', title: 'Gamma epic' }),
+        ],
+      })
+
+      const { EpicView } = await importSut()
+      render(<EpicView cwd="/fake" onOpenIssue={() => undefined} />)
+
+      await waitFor(() => {
+        expect(screen.getAllByTestId('epic-row')).toHaveLength(3)
+      })
+
+      const rows = screen.getAllByTestId('epic-row')
+      for (const [idx, row] of rows.entries()) {
+        expect(row).toHaveAttribute('role', 'treeitem')
+        expect(row).toHaveAttribute('aria-level', '1')
+        expect(row).toHaveAttribute('aria-posinset', String(idx + 1))
+        expect(row).toHaveAttribute('aria-setsize', '3')
+        // All epics start expanded (the view opens every epic by
+        // default) → aria-expanded=true.
+        expect(row).toHaveAttribute('aria-expanded', 'true')
+      }
+    })
+
+    it('hides the children group when the epic is collapsed (aria-expanded=false)', async () => {
+      mockBdList.mockResolvedValue({
+        status: 'ok',
+        data: [
+          makeEpic({ id: 'epic-auth' }),
+          makeChild({ id: 'auth-1', parent: 'epic-auth' }),
+        ],
+      })
+
+      const { EpicView } = await importSut()
+      render(<EpicView cwd="/fake" onOpenIssue={() => undefined} />)
+
+      await waitFor(() => {
+        expect(screen.getByTestId('epic-tree')).toBeInTheDocument()
+      })
+
+      // Collapse the epic via the chevron — the children group
+      // disappears from the DOM and aria-expanded flips to false.
+      await fireEvent.click(screen.getByTestId('epic-chevron'))
+      const row = screen.getByTestId('epic-row')
+      expect(row).toHaveAttribute('aria-expanded', 'false')
+      expect(screen.queryByTestId('epic-children')).not.toBeInTheDocument()
+    })
+
+    it('marks children as level-2 treeitems inside a role="group"', async () => {
+      mockBdList.mockResolvedValue({
+        status: 'ok',
+        data: [
+          makeEpic({ id: 'epic-auth' }),
+          makeChild({ id: 'auth-1', title: 'Login', parent: 'epic-auth' }),
+          makeChild({ id: 'auth-2', title: 'Logout', parent: 'epic-auth' }),
+        ],
+      })
+
+      const { EpicView } = await importSut()
+      render(<EpicView cwd="/fake" onOpenIssue={() => undefined} />)
+
+      await waitFor(() => {
+        expect(screen.getByTestId('epic-children')).toBeInTheDocument()
+      })
+
+      const group = screen.getByTestId('epic-children')
+      expect(group).toHaveAttribute('role', 'group')
+      const children = screen.getAllByTestId('epic-child-row')
+      expect(children).toHaveLength(2)
+      for (const [idx, child] of children.entries()) {
+        expect(child).toHaveAttribute('role', 'treeitem')
+        expect(child).toHaveAttribute('aria-level', '2')
+        expect(child).toHaveAttribute('aria-posinset', String(idx + 1))
+        expect(child).toHaveAttribute('aria-setsize', '2')
+      }
+    })
+
+    it('exposes the epic title via aria-label on the treeitem', async () => {
+      mockBdList.mockResolvedValue({
+        status: 'ok',
+        data: [makeEpic({ id: 'epic-auth', title: 'Authentication' })],
+      })
+
+      const { EpicView } = await importSut()
+      render(<EpicView cwd="/fake" onOpenIssue={() => undefined} />)
+
+      await waitFor(() => {
+        expect(screen.getByTestId('epic-tree')).toBeInTheDocument()
+      })
+
+      const row = screen.getByTestId('epic-row')
+      expect(row.getAttribute('aria-label')).toContain('Authentication')
+    })
+  })
 })

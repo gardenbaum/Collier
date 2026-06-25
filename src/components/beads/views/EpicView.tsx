@@ -402,8 +402,13 @@ export function EpicView({ cwd, onOpenIssue }: EpicViewProps) {
       style={containerStyle}
       aria-label={t('beads.views.epic.title')}
     >
-      <ul data-testid="epic-tree" style={listStyle}>
-        {epics.map(epic => (
+      <ul
+        data-testid="epic-tree"
+        role="tree"
+        aria-label={t('beads.views.epic.title')}
+        style={listStyle}
+      >
+        {epics.map((epic, idx) => (
           <EpicTreeRow
             key={epic.id}
             epic={epic}
@@ -411,6 +416,8 @@ export function EpicView({ cwd, onOpenIssue }: EpicViewProps) {
             isExpanded={expanded.has(epic.id)}
             isKeyboardSelected={selectedRowId === epic.id}
             selectedRowId={selectedRowId}
+            epicIndex={idx + 1}
+            epicCount={epics.length}
             onToggle={() => toggle(epic.id)}
             onOpenIssue={onOpenIssue}
           />
@@ -438,6 +445,15 @@ interface EpicTreeRowProps {
    * child — no extra store subscription needed here.
    */
   selectedRowId: string | null
+  /**
+   * M5 a11y: 1-based position of this epic within the visible
+   * tree, used to set `aria-posinset` on the treeitem. Required
+   * by the ARIA tree pattern so screen-reader users know "I am at
+   * item 2 of 5 in this level".
+   */
+  epicIndex: number
+  /** M5 a11y: total number of top-level epics, for `aria-setsize`. */
+  epicCount: number
   onToggle: () => void
   onOpenIssue: (id: string) => void
 }
@@ -448,6 +464,8 @@ function EpicTreeRow({
   isExpanded,
   isKeyboardSelected,
   selectedRowId,
+  epicIndex,
+  epicCount,
   onToggle,
   onOpenIssue,
 }: EpicTreeRowProps) {
@@ -459,13 +477,33 @@ function EpicTreeRow({
 
   return (
     <li
+      role="treeitem"
+      aria-level={1}
+      aria-expanded={isExpanded}
+      aria-posinset={epicIndex}
+      aria-setsize={epicCount}
+      aria-selected={isKeyboardSelected}
+      aria-label={`${t('beads.views.epic.openIssue')}: ${epic.title}`}
       data-testid="epic-row"
       data-kbd-nav="row"
       data-row-id={epic.id}
       data-epic-id={epic.id}
       data-expanded={isExpanded}
       data-row-selected={isKeyboardSelected ? 'true' : 'false'}
-      aria-selected={isKeyboardSelected}
+      tabIndex={isKeyboardSelected ? 0 : -1}
+      id={`${epic.id}-treeitem`}
+      onKeyDown={e => {
+        // The global keyboard hook already routes Enter on the
+        // selected row to `openIssue`, but if the user explicitly
+        // Tabs onto the treeitem and presses Enter, the row's own
+        // keydown handler is what fires first. Keep it in sync
+        // so the treeitem is self-contained when focused via the
+        // roving tabindex path.
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault()
+          onOpenIssue(epic.id)
+        }
+      }}
       style={{
         ...epicRowStyle,
         ...(isKeyboardSelected ? epicRowSelectedStyle : null),
@@ -569,31 +607,47 @@ function ChildrenList({
     )
   }
   return (
-    <ul data-testid="epic-children" style={childrenListStyle}>
-      {epicChildren.map(child => {
+    <ul
+      data-testid="epic-children"
+      role="group"
+      aria-label="Epic children"
+      style={childrenListStyle}
+    >
+      {epicChildren.map((child, idx) => {
         const isSelected = child.id === selectedRowId
         return (
-          <li key={child.id}>
-            <button
-              type="button"
-              data-testid="epic-child-row"
-              data-kbd-nav="row"
-              data-row-id={child.id}
-              data-issue-id={child.id}
-              data-issue-status={child.status}
-              data-row-selected={isSelected ? 'true' : 'false'}
-              aria-selected={isSelected}
-              onClick={() => onOpenIssue(child.id)}
-              style={{
-                ...childRowStyle,
-                ...(isSelected ? childRowSelectedStyle : null),
-              }}
-            >
-              <StatusPill status={child.status} />
-              <PriorityDot priority={child.priority} />
-              <span style={childTitleStyle}>{child.title}</span>
-              <span style={childIdStyle}>{child.id}</span>
-            </button>
+          <li
+            key={child.id}
+            role="treeitem"
+            aria-level={2}
+            aria-posinset={idx + 1}
+            aria-setsize={epicChildren.length}
+            aria-selected={isSelected}
+            aria-label={child.title}
+            data-testid="epic-child-row"
+            data-kbd-nav="row"
+            data-row-id={child.id}
+            data-issue-id={child.id}
+            data-issue-status={child.status}
+            data-row-selected={isSelected ? 'true' : 'false'}
+            tabIndex={isSelected ? 0 : -1}
+            id={`${child.id}-treeitem`}
+            onClick={() => onOpenIssue(child.id)}
+            onKeyDown={e => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault()
+                onOpenIssue(child.id)
+              }
+            }}
+            style={{
+              ...childRowStyle,
+              ...(isSelected ? childRowSelectedStyle : null),
+            }}
+          >
+            <StatusPill status={child.status} />
+            <PriorityDot priority={child.priority} />
+            <span style={childTitleStyle}>{child.title}</span>
+            <span style={childIdStyle}>{child.id}</span>
           </li>
         )
       })}

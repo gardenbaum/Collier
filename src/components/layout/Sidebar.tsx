@@ -225,6 +225,7 @@ export function Sidebar() {
             type="button"
             data-testid="sidebar-filter-clear-all"
             onClick={() => clearAll()}
+            aria-label="Clear all filters"
             className="mb-1 inline-flex items-center gap-1 h-6 px-2 text-[11px] text-[color:var(--muted-foreground)] hover:text-[color:var(--foreground)] hover:bg-[color:var(--sidebar-accent)] rounded-[var(--radius)]"
           >
             <X size={10} aria-hidden="true" />
@@ -324,6 +325,8 @@ export function Sidebar() {
                       type="button"
                       data-testid={`sidebar-filter-assignee-${a.assignee}`}
                       data-active={isActive}
+                      aria-pressed={isActive}
+                      aria-label={`${a.assignee}, ${a.count} ${a.count === 1 ? 'issue' : 'issues'}, filter${isActive ? ', active' : ''}`}
                       onClick={() => toggleAssignee(a.assignee)}
                       className={cn(
                         'flex w-full items-center gap-2 h-7 px-2 rounded-[var(--radius)] text-[12px]',
@@ -386,6 +389,8 @@ export function Sidebar() {
                       data-testid={`sidebar-label-${l.label}`}
                       data-active={isActive}
                       data-count={l.count}
+                      aria-pressed={isActive}
+                      aria-label={`${l.label} label, ${l.count} ${l.count === 1 ? 'issue' : 'issues'}, filter${isActive ? ', active' : ''}`}
                       onClick={() => toggleLabel(l.label)}
                       className={cn(
                         'flex w-full items-center gap-2 h-7 px-2 rounded-[var(--radius)] text-[12px]',
@@ -501,6 +506,8 @@ function ToggleChip({
       type="button"
       data-testid={`${testidPrefix}-${value}`}
       data-active={isActive}
+      aria-pressed={isActive}
+      aria-label={`${label} filter${isActive ? ', active' : ''}`}
       onClick={onToggle}
       className={cn(
         'inline-flex items-center h-6 px-2 rounded-[var(--radius)] text-[11px] border',
