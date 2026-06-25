@@ -51,6 +51,28 @@ Element.prototype.getBoundingClientRect = function patchedGetBoundingClientRect(
       }
     }
   }
+  // ponytail: Radix UI's dropdown-menu portals pass elements
+  // through @floating-ui/dom, which calls `getBoundingClientRect`
+  // on nodes that may not be HTMLElements (SVG, document fragments,
+  // nodes from other documents, etc.). The original jsdom
+  // implementation throws on those; Radix then emits an unhandled
+  // rejection that vitest counts as a test error. Return a
+  // zero-rect stub so the floating-ui math degrades to "place at
+  // origin" rather than throwing — tests that assert on position
+  // are out of scope here.
+  if (this instanceof Element) {
+    return {
+      width: 0,
+      height: 0,
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    }
+  }
   return originalGetBoundingClientRect()
 }
 

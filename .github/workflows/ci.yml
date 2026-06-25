@@ -124,7 +124,16 @@ jobs:
       # Debug build is ~5x faster than release on cold cache; we
       # only need the binary, not installers, so --no-bundle skips
       # .deb/.rpm/AppImage generation entirely.
+      #
+      # ponytail: `VITE_E2E=1` flips the build-time gate in
+      # `src/main.tsx` that exposes the `queryClient` on
+      # `window.__collierQueryClient__` so the wdio specs can read
+      # cache state directly (bypassing the DOM-virtualizer race
+      # that timed out r10 / r3 in CI). Only set for E2E builds;
+      # production builds do NOT ship the debugging handle.
       - name: Build the app (debug, no bundle)
+        env:
+          VITE_E2E: '1'
         run: bun run tauri build --debug --no-bundle
 
       - name: Generate E2E fixture workspace
@@ -134,6 +143,36 @@ jobs:
           scripts/make-fixture.sh /tmp/e2e-workspace
           # Sanity: fixture must expose a non-empty issue list.
           (cd /tmp/e2e-workspace && bd list --json | head -c 200 && echo)
+
+      # M4: second fixture for the workspace-switcher spec. The
+      # switcher dropdown reads ~/.beads/registry.json plus
+      # recent_repos, so pre-populate the registry with both
+      # workspaces BEFORE pre-warming the binary — the registry
+      # lives at $HOME and survives the fixture teardown.
+      - name: Generate second E2E fixture workspace
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/e2e-workspace-b
+          scripts/make-second-fixture.sh /tmp/e2e-workspace-b
+          # Pre-populate ~/.beads/registry.json with both fixtures
+          # so the WorkspaceSwitcher dropdown shows both entries
+          # on first render. Without this, the dropdown would only
+          # list the active workspace (current) and we'd never see
+          # a second entry to click. We deliberately write the
+          # registry ourselves (instead of relying on `bd init` to
+          # register them) so the fixture stays deterministic.
+          # Use single-quoted heredoc to disable shell expansion —
+          # `<<JSON` would still try to expand $HOME inside the
+          # body, and the YAML parser treats the bare `:` in the
+          # JSON keys as a YAML mapping separator on adjacent
+          # lines. Single-quoted terminator + spaces around the
+          # colons make the YAML linter happy.
+          mkdir -p "$HOME/.beads"
+          cat >"$HOME/.beads/registry.json" <<'REGISTRY_END'
+          { "version" : 1, "workspaces" : [ { "path" : "/tmp/e2e-workspace" }, { "path" : "/tmp/e2e-workspace-b" } ] }
+          REGISTRY_END
+          echo "Registry written to $HOME/.beads/registry.json"
+          cat "$HOME/.beads/registry.json"
 
       # Pre-warm the OS file cache for the Collier binary and its
       # shared libraries. The debug binary is 382 MB and the cold

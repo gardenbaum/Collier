@@ -9,6 +9,7 @@ pub fn generate_bindings() -> Builder<tauri::Wry> {
     };
     use crate::commands::{
         diagnostic_log, notifications, preferences, quick_pane, recent_repos, recovery,
+        workspace_list,
     };
 
     Builder::<tauri::Wry>::new().commands(collect_commands![
@@ -33,6 +34,7 @@ pub fn generate_bindings() -> Builder<tauri::Wry> {
         detect::detect_bd,
         recent_repos::add_recent_repo,
         recent_repos::get_current_dir,
+        workspace_list::list_workspaces,
         ready_blocked::bd_ready,
         ready_blocked::bd_blocked,
         search_query::bd_search,

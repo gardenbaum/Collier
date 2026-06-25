@@ -16,6 +16,7 @@ import { useTranslation } from 'react-i18next'
 import { Plus } from 'lucide-react'
 import { useWorkspaceStore } from '@/store/workspace-store'
 import { useBeadsInvalidation } from '@/hooks/useBeadsInvalidation'
+import { useBeadsRealtimeSync } from '@/hooks/useBeadsRealtimeSync'
 import { ViewsRouter } from '@/components/beads/ViewsRouter'
 import { IssueDetailDrawer } from '@/components/beads/IssueDetailDrawer'
 import { Button } from '@/components/ui/button'
@@ -45,6 +46,12 @@ export function MainWindowContent() {
 
   // Single fs-watch subscription per main window. Views / drawer all
   // benefit from the invalidation without each one re-subscribing.
+  // R10 split the broadcast event into targeted per-issue events:
+  //   - useBeadsRealtimeSync handles beads-issue-* + beads-data-reset
+  //     (patches the matching TanStack Query cache in-place)
+  //   - useBeadsInvalidation keeps the "Data refreshed" toast + the
+  //     window-focus broad-invalidation safety net
+  useBeadsRealtimeSync()
   useBeadsInvalidation()
 
   if (repoPath === null) {

@@ -18,9 +18,83 @@
  * is mounted and at least one row has rendered (the row wait
  * must outlive the app's 120s `bd list` subprocess timeout for
  * Dolt cold-start under CI).
+ *
+ * `getCachedIssueField` is the read-from-cache counterpart to
+ * the DOM-attribute waits every spec used to do. The DOM is a
+ * *windowed* projection of the TanStack Query cache (only ~15
+ * rows are mounted at a time by `@tanstack/react-virtual`), so a
+ * test that polls `data-issue-status` for a row the virtualizer
+ * has unmounted will burn its full timeout polling `null` even
+ * when the watcher has already patched the cache. Reading the
+ * cache directly via the page-context `queryClient` bypasses the
+ * virtualizer entirely — the cache always holds every issue
+ * regardless of what's in the DOM, and `beads-issue-updated` /
+ * `beads-issue-created` / `beads-issue-deleted` patch it
+ * synchronously. The handle is exposed by `src/main.tsx` under
+ * the build-time `VITE_E2E` flag (production builds do not ship
+ * the handle).
  */
 
 import { browser, $, $$ } from '@wdio/globals'
+
+/**
+ * Open the workspace switcher dropdown if it is not already open.
+ *
+ * Why this helper exists: the Radix DropdownMenu renders its content
+ * in a portal appended to document.body. Once open, the menu overlay
+ * sits on top of the trigger button, and WebdriverIO's element.click()
+ * refuses to fire ("element not interactable" — the centre point is
+ * owned by the portal, not the trigger). The retry loop burns ~10s per
+ * attempt and times the suite out.
+ *
+ * We dispatch a real DOM `click` via `browser.execute` so we bypass
+ * the interactability check; we still check `data-state="open"` on the
+ * trigger so we don't *toggle* an already-open menu shut. After the
+ * click we wait for `[data-testid="workspace-switcher-menu"]` to be
+ * displayed so callers can assert against its contents without a race.
+ */
+export async function openWorkspaceSwitcher(): Promise<void> {
+  // ponytail: read `data-state` and trigger via `browser.execute`
+  // so the click happens in the page context — WebDriver's
+  // `element.click()` refuses to fire when the Radix portal
+  // overlays the trigger and the centre point is owned by the
+  // menu, not the trigger button. We still gate on the trigger's
+  // `data-state` so we don't *toggle* an already-open menu shut.
+  const alreadyOpen = await browser.execute(
+    () =>
+      document
+        .querySelector('[data-testid="workspace-switcher-trigger"]')
+        ?.getAttribute('data-state') === 'open'
+  )
+  if (!alreadyOpen) {
+    await browser.execute(() => {
+      const trigger = document.querySelector(
+        '[data-testid="workspace-switcher-trigger"]'
+      ) as HTMLElement | null
+      trigger?.click()
+    })
+  }
+  // Wait for the menu via `browser.execute` rather than wdio's
+  // `$().waitForDisplayed`. The Radix portal sometimes re-mounts
+  // the menu during the open animation; a wdio element handle
+  // captured mid-mount has a stale WebDriver reference and
+  // `waitForDisplayed` reports `still not displayed after 5000ms`.
+  // Page-context DOM lookup re-queries on every iteration so a
+  // transient remount just retries until the menu stabilises.
+  await browser.waitUntil(
+    async () =>
+      (await browser.execute(
+        () =>
+          document.querySelector('[data-testid="workspace-switcher-menu"]') !==
+          null
+      )) === true,
+    {
+      timeout: 5_000,
+      interval: 100,
+      timeoutMsg: 'workspace-switcher-menu did not appear within 5000ms',
+    }
+  )
+}
 
 /**
  * Open the fixture workspace and wait for the first issue row to
@@ -169,4 +243,85 @@ export async function openFixtureWorkspace(specLabel: string): Promise<void> {
   console.log(
     `[e2e:${specLabel}] post-open: footer="${String(footerText)}" renderedRows=${renderedRowCount}`
   )
+}
+
+/**
+ * Read an issue's field from the TanStack Query cache via the
+ * page-context `queryClient` handle (exposed by `src/main.tsx`
+ * under `import.meta.env.VITE_E2E === '1'`). Returns `null` when
+ * the cache doesn't have the issue yet (spec needs to wait) or
+ * when the handle isn't exposed (production build — would be a
+ * test-environment misconfiguration).
+ *
+ * The cache key shape is `['beads', 'list', cwd]` where `cwd` is
+ * the absolute path of the active workspace. We don't take `cwd`
+ * as a parameter and instead iterate every list cache variant:
+ * the active workspace's `cwd` is a runtime concern (localStorage
+ * / workspace-switcher), and reading from any variant where the
+ * issue exists is sufficient for the test's purpose (the spec is
+ * asserting "this issue's field changed in the cache" — not
+ * "this issue's field changed in the *active workspace's*
+ * cache", which would just be an implementation detail of
+ * `useWorkspaceList`). Falling back to iterating all list caches
+ * makes the helper robust against fixture-path churn (e.g.
+ * `/tmp` vs `/private/tmp` on macOS).
+ *
+ * The list cache stores `Issue[]` so we return either the
+ * requested field (`status`, `priority`, …) or the whole issue.
+ */
+export interface CachedIssueLike {
+  id: string
+  status?: unknown
+  priority?: unknown
+  title?: unknown
+}
+
+export async function getCachedIssue(
+  issueId: string
+): Promise<CachedIssueLike | null> {
+  return browser.execute((id: string) => {
+    // The handle is set by `src/main.tsx` when
+    // `import.meta.env.VITE_E2E === '1'`. In a production build
+    // it's absent and the helper returns `null` — the spec should
+    // fail with a clear "E2E handle not exposed" message rather
+    // than a generic timeout.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const client = (globalThis as any).__collierQueryClient__ as
+      | {
+          getQueryCache: () => {
+            getAll: () => {
+              queryKey: readonly unknown[]
+              state: { data: unknown }
+            }[]
+          }
+        }
+      | undefined
+    if (!client) return null
+    const queries = client.getQueryCache().getAll()
+    for (const q of queries) {
+      const key = q.queryKey
+      // The list cache is `['beads', 'list', ...]` — see
+      // `src/store/issue-filter-store.ts` and the
+      // `useQuery({ queryKey: ['beads', 'list', cwd, filters] })`
+      // call in `IssueListView.tsx`. The show cache is
+      // `['beads', 'show', cwd, id]` — both carry the same Issue
+      // payload, so we accept either.
+      const isBeadsList =
+        Array.isArray(key) && key[0] === 'beads' && key[1] === 'list'
+      const isBeadsShow =
+        Array.isArray(key) && key[0] === 'beads' && key[1] === 'show'
+      if (!isBeadsList && !isBeadsShow) continue
+      const data = q.state.data as
+        | CachedIssueLike[]
+        | CachedIssueLike
+        | undefined
+      if (Array.isArray(data)) {
+        const match = data.find(i => i.id === id)
+        if (match) return match
+      } else if (data && typeof data === 'object' && data.id === id) {
+        return data
+      }
+    }
+    return null
+  }, issueId)
 }

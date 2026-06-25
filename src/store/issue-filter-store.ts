@@ -1,20 +1,18 @@
 /**
  * Issue-filter store — Zustand slice for the FilterSidebar.
  *
- * ponytail: persists the active filter selection to localStorage via
- * `zustand/middleware/persist`. Per-repo persistence is a v2 concern
- * (Tauri preferences); one global filter set covers the v1 single-repo
- * bootstrap flow.
+ * ponytail (M4): per-workspace persistence. The state still exposes
+ * `status`, `priority`, etc. directly (callers don't care which repo
+ * they're in), but those arrays now mirror the active repo's saved
+ * filter rather than a single global filter. The full set of filters
+ * is persisted as `Record<path, IssueFilter>` under one localStorage
+ * key (`collier-issue-filter`), and the store subscribes to the
+ * workspace-store so a workspace switch swaps the in-memory filter to
+ * the new repo's saved selection.
  *
- * The data fields are persisted; the action functions are not (functions
- * don't survive JSON round-trip, and the factory re-creates them on every
- * module load). `partialize` makes the persist boundary explicit so a
- * future maintainer reading this won't wonder whether functions are
- * stored in localStorage.
- *
- * Selector pattern (per AGENTS.md): never destructure the whole store in
- * a component — `useIssueFilterStore(state => state.status)` for the
- * dimension you need.
+ * Selector pattern (per AGENTS.md): never destructure the whole store
+ * in a component — `useIssueFilterStore(state => state.status)` for
+ * the dimension you need.
  */
 import { create } from 'zustand'
 import { devtools, persist } from 'zustand/middleware'
@@ -29,12 +27,32 @@ export interface IssueFilter {
 }
 
 interface IssueFilterState extends IssueFilter {
+  /** Wired during boot via `attachToWorkspaceStore`. Internal. */
+  _activeRepoPath: string | null
+  /** Subscribed to workspace-store changes. Internal. */
+  _unsubscribeWorkspace?: () => void
+  /**
+   * Internal: full persisted map (incl. inactive repos). Lives
+   * on the state slice so the persist middleware can write it
+   * to localStorage and so `_setActiveRepoPath` can read the
+   * latest persisted map when swapping repos.
+   */
+  _persistedByRepo: Record<string, IssueFilter>
+
   toggleStatus: (s: IssueStatus) => void
   togglePriority: (p: IssuePriority) => void
   toggleType: (t: IssueType) => void
   toggleLabel: (l: string) => void
   toggleAssignee: (a: string) => void
   clearAll: () => void
+  /**
+   * Internal: called by the workspace-store subscriber when the
+   * active repo changes. Loads the saved filter for `path` (or
+   * an empty filter when none is persisted yet) and writes the
+   * previous repo's current state back to the map so a round-trip
+   * switch restores it.
+   */
+  _setActiveRepoPath: (path: string | null) => void
 }
 
 const EMPTY: IssueFilter = {
@@ -45,11 +63,24 @@ const EMPTY: IssueFilter = {
   assignees: [],
 }
 
+/**
+ * Persisted shape. The `version` is bumped to 2 so an old v1 entry
+ * (which serialised as a bare `IssueFilter`) is treated as an empty
+ * map by Zustand's `migrate` step rather than silently feeding into
+ * the new `byRepo` field.
+ */
+interface PersistedShape {
+  byRepo: Record<string, IssueFilter>
+}
+
 export const useIssueFilterStore = create<IssueFilterState>()(
   devtools(
     persist(
-      set => ({
+      (set, get) => ({
         ...EMPTY,
+        _activeRepoPath: null,
+        _persistedByRepo: {},
+
         toggleStatus: s =>
           set(
             state => ({
@@ -101,21 +132,156 @@ export const useIssueFilterStore = create<IssueFilterState>()(
             'toggleAssignee'
           ),
         clearAll: () => set({ ...EMPTY }, false, 'clearAll'),
+
+        _setActiveRepoPath: path => {
+          const prev = get()._activeRepoPath
+          if (prev === path) return
+          // The persist middleware writes the `byRepo` map on every
+          // set() — we read the latest map from storage via the
+          // store's persisted slice. Zustand persist exposes the
+          // current hydrated state through getState(), but we need
+          // to round-trip through storage to avoid losing a write
+          // the subscriber makes between our get() and set().
+          // Simplest correct approach: snapshot the current filter
+          // into the next path's map key, and overwrite the in-memory
+          // state with the next path's filter (or empty).
+          const persisted = get()._persistedByRepo
+          const byRepo: Record<string, IssueFilter> = {
+            ...(persisted ?? {}),
+          }
+          // Persist the outgoing repo's current selection (if it
+          // had a repo key — the very first selection before any
+          // workspace was opened is dropped, since there's no path
+          // to attribute it to).
+          if (prev !== null) {
+            byRepo[prev] = {
+              status: get().status,
+              priority: get().priority,
+              type: get().type,
+              labels: get().labels,
+              assignees: get().assignees,
+            }
+          }
+          const next = path === null ? EMPTY : (byRepo[path] ?? EMPTY)
+          // Write the merged map back; the persist middleware will
+          // also flush this, but we set it explicitly so subscribers
+          // see the new filter on the same render.
+          set(
+            {
+              ...next,
+              _activeRepoPath: path,
+              _persistedByRepo: byRepo,
+            },
+            false,
+            '_setActiveRepoPath'
+          )
+        },
       }),
       {
         name: 'collier-issue-filter',
+        version: 2,
+        // Persist only the by-repo map; the in-memory fields are
+        // derived from `_activeRepoPath` + the map on hydrate.
         partialize: state => ({
-          status: state.status,
-          priority: state.priority,
-          type: state.type,
-          labels: state.labels,
-          assignees: state.assignees,
+          byRepo: state._persistedByRepo ?? {},
         }),
+        // On hydrate: lift the persisted map into the store's
+        // internal `_persistedByRepo` field. The active repo's
+        // filter isn't loaded here — `attachToWorkspaceStore`
+        // reads `repoPath` from the workspace-store once on boot
+        // and calls `_setActiveRepoPath`, which is what writes
+        // the active repo's filter into `status` / `priority` / …
+        merge: (
+          persistedState: unknown,
+          currentState: IssueFilterState
+        ): IssueFilterState => {
+          const obj =
+            (persistedState as Partial<PersistedShape> | undefined) ?? {}
+          const byRepo = obj.byRepo ?? {}
+          return {
+            ...currentState,
+            ...EMPTY,
+            _persistedByRepo: byRepo,
+          }
+        },
+        migrate: (
+          persistedState: unknown,
+          fromVersion: number
+        ): PersistedShape => {
+          // v1 → v2: the old format was a bare IssueFilter (no
+          // per-repo scoping). Discard it — a v1 user gets the
+          // same UX as a fresh install (empty filters everywhere).
+          // The byRepo key wasn't there, so there are no saved
+          // per-repo filters to migrate.
+          if (fromVersion < 2) {
+            return { byRepo: {} }
+          }
+          // Defensive default for unexpected versions — Zustand
+          // calls migrate before merge, so we always return the
+          // expected shape.
+          const obj = persistedState as Partial<PersistedShape> | undefined
+          return { byRepo: obj?.byRepo ?? {} }
+        },
       }
     ),
     { name: 'issue-filter-store' }
   )
 )
+
+// The internal `_persistedByRepo`, `_activeRepoPath`, and
+// `_unsubscribeWorkspace` fields live on the state slice (declared
+// on the State interface below) so the persist middleware can
+// write them to localStorage and so `_setActiveRepoPath` can read
+// the latest persisted map when swapping repos. Their underscore
+// prefix marks them as "not part of the public API — call the
+// actions, don't poke the fields directly".
+
+/**
+ * Wire the issue-filter store to the workspace store so workspace
+ * switches swap the active filter set automatically. Idempotent —
+ * re-calling replaces any previous subscription (so tests can
+ * re-attach after `setState` resets). Returns an unsubscribe fn
+ * the caller can use for cleanup; in production the app keeps
+ * the store alive for the whole session, so cleanup is a no-op.
+ */
+export function attachToWorkspaceStore(workspaceStore: {
+  getState: () => { repoPath: string | null }
+  subscribe: (
+    listener: (state: { repoPath: string | null }) => void
+  ) => () => void
+}): () => void {
+  const prev = useIssueFilterStore.getState()._unsubscribeWorkspace
+  if (prev) prev()
+
+  // Initial sync: load the active repo's filter if one is set.
+  const initialPath = workspaceStore.getState().repoPath
+  if (initialPath !== null) {
+    useIssueFilterStore.getState()._setActiveRepoPath(initialPath)
+  }
+
+  const unsubscribe = workspaceStore.subscribe(state => {
+    useIssueFilterStore.getState()._setActiveRepoPath(state.repoPath)
+  })
+
+  useIssueFilterStore.setState({ _unsubscribeWorkspace: unsubscribe })
+  return unsubscribe
+}
+
+/**
+ * Test-only: reset every piece of the store (in-memory filter,
+ * persisted map, active repo, subscription). Used by tests that
+ * start from a clean slate; production code never calls this.
+ */
+export function resetIssueFilterStoreForTests(): void {
+  const s = useIssueFilterStore.getState()
+  if (s._unsubscribeWorkspace) s._unsubscribeWorkspace()
+  useIssueFilterStore.setState({
+    ...EMPTY,
+    _activeRepoPath: null,
+    _persistedByRepo: {},
+    _unsubscribeWorkspace: undefined,
+  })
+}
 
 /**
  * Snapshot of every dimension's active count. Lives outside the store so

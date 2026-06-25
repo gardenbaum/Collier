@@ -32,7 +32,7 @@
 
 import { browser, expect, $$, $ } from '@wdio/globals'
 
-import { openFixtureWorkspace } from './helpers'
+import { getCachedIssue, openFixtureWorkspace } from './helpers'
 
 describe('Collier M1 R3 inline editing', () => {
   // Captured during the status/priority tests and reverted in
@@ -115,30 +115,34 @@ describe('Collier M1 R3 inline editing', () => {
     if (r3OriginalPriority !== '') {
       await setField('inline-priority-select', r3OriginalPriority)
     }
-    // ponytail: the waitUntil below checks the React state, which
-    // is updated by the optimistic cache patch the moment the
-    // mutation fires — that's much sooner than the bd write +
-    // watcher tick + cache refetch that actually mutates the
-    // fixture on disk. The fixture is what the r6 spec reads via
-    // `bdList`; if we hand off to r6 while the bd write is still
-    // in flight, r6 sees the leaked-mutation counts (open=11,
-    // closed=7 instead of 10/8). Wait for the bd write + watcher
-    // tick to actually complete before returning: sleep for
-    // ~1.5s, which is well under the wdio spec timeout (180s) and
-    // ~3x the observed bd-write + file-watcher latency on the
-    // CI runner. The mutation's `onSuccess` patches every list
-    // cache variant with the returned issue, so by the time we
-    // return the rendered `data-issue-status` reflects the
-    // server's truth, not the optimistic guess.
-    await browser.pause(1500)
+    // ponytail: the waitUntil below checks the cache, not the
+    // DOM. `IssueListView` is virtualized — the row we're
+    // reverting may have been unmounted by the virtualizer
+    // between the UI revert and now (e.g. tests 2 and 3
+    // scrolled the list, opened the detail drawer, etc., and
+    // the row dropped out of the 10-row viewport + 5-row
+    // overscan window). Reading the cache via `getCachedIssue`
+    // bypasses the DOM entirely: the cache always holds every
+    // issue, and the `bdUpdate` mutation's `onSuccess` patches
+    // the list cache with the returned server-side Issue, so
+    // by the time the watcher tick settles the cache reflects
+    // the reverted values. The fixture is what the r6 spec
+    // reads via `bdList`; if we hand off while the cache
+    // hasn't been patched yet, r6 sees the leaked-mutation
+    // counts (open=11, closed=7 instead of 10/8). Wait up to
+    // 10s for both fields to match — well under the wdio spec
+    // timeout (180s) and ~3x the observed bd-write + cache
+    // patch latency on the CI runner. The previous
+    // `browser.pause(1500)` was a fixed wait that wasted time
+    // on every run; reading the cache lets us return as soon
+    // as the patch lands.
     await browser.waitUntil(
       async () => {
-        const r = await $(
-          `[data-testid="issue-row"][data-issue-id="${r3RowId}"]`
-        )
+        const cached = await getCachedIssue(r3RowId)
         return (
-          (await r.getAttribute('data-issue-status')) === r3OriginalStatus &&
-          (await r.getAttribute('data-issue-priority')) === r3OriginalPriority
+          cached !== null &&
+          cached.status === r3OriginalStatus &&
+          String(cached.priority ?? '') === r3OriginalPriority
         )
       },
       {
@@ -207,13 +211,18 @@ describe('Collier M1 R3 inline editing', () => {
       nextStatus
     )
 
-    // -- Then: the row reflects the new status (optimistic) --
+    // -- Then: the cache reflects the new status (optimistic) --
+    // ponytail: the optimistic-update path patches the TanStack
+    // Query cache via `setQueryData` BEFORE the bd write + watcher
+    // tick, so the cache reflects the new value essentially
+    // synchronously. Reading the cache (via `getCachedIssue`)
+    // bypasses the DOM-virtualizer race that used to time this
+    // spec out when the row was unmounted by the virtualizer
+    // after the mutation triggered a re-render.
     await browser.waitUntil(
       async () => {
-        const row = await $(
-          `[data-testid="issue-row"][data-issue-id="${rowId}"]`
-        )
-        return (await row.getAttribute('data-issue-status')) === nextStatus
+        const cached = await getCachedIssue(rowId)
+        return cached?.status === nextStatus
       },
       {
         timeout: 5_000,
@@ -223,16 +232,13 @@ describe('Collier M1 R3 inline editing', () => {
     )
 
     // -- And: the watcher tick reconciles the change (bd persisted
-    //    it, the list query refetched, and the row still shows the
-    //    new status after a re-query). The watcher fires within
-    //    ~1s of the bd write; we wait up to 5s to be safe under
-    //    CI cold-start.
+    //    it, the cache still holds the new status after a
+    //    refetch). The watcher fires within ~1s of the bd write;
+    //    we wait up to 5s to be safe under CI cold-start.
     await browser.waitUntil(
       async () => {
-        const row = await $(
-          `[data-testid="issue-row"][data-issue-id="${rowId}"]`
-        )
-        return (await row.getAttribute('data-issue-status')) === nextStatus
+        const cached = await getCachedIssue(rowId)
+        return cached?.status === nextStatus
       },
       {
         timeout: 5_000,
@@ -289,13 +295,15 @@ describe('Collier M1 R3 inline editing', () => {
       nextPriority
     )
 
-    // -- Then: the row reflects the new priority (optimistic) --
+    // -- Then: the cache reflects the new priority (optimistic) --
+    // ponytail: same cache-based pattern as the status test —
+    // the optimistic mutation patches the cache via
+    // `setQueriesData` synchronously, and reading the cache
+    // bypasses the DOM-virtualizer race.
     await browser.waitUntil(
       async () => {
-        const row = await $(
-          `[data-testid="issue-row"][data-issue-id="${rowId}"]`
-        )
-        return (await row.getAttribute('data-issue-priority')) === nextPriority
+        const cached = await getCachedIssue(rowId)
+        return String(cached?.priority ?? '') === nextPriority
       },
       {
         timeout: 5_000,
@@ -307,10 +315,8 @@ describe('Collier M1 R3 inline editing', () => {
     // -- And: the watcher tick reconciles the change --
     await browser.waitUntil(
       async () => {
-        const row = await $(
-          `[data-testid="issue-row"][data-issue-id="${rowId}"]`
-        )
-        return (await row.getAttribute('data-issue-priority')) === nextPriority
+        const cached = await getCachedIssue(rowId)
+        return String(cached?.priority ?? '') === nextPriority
       },
       {
         timeout: 5_000,

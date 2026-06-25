@@ -76,7 +76,7 @@ afterEach(() => {
   vi.useRealTimers()
 })
 
-describe('useBeadsInvalidation', () => {
+describe('useBeadsInvalidation (R10 toast-only path)', () => {
   it('listens to the beads-data-changed tauri event', async () => {
     const qc = makeQueryClient()
     const invalidateSpy = vi.spyOn(qc, 'invalidateQueries')
@@ -93,7 +93,11 @@ describe('useBeadsInvalidation', () => {
     expect(invalidateSpy).not.toHaveBeenCalled()
   })
 
-  it('invalidates the beads query when the event fires', async () => {
+  it('does NOT invalidate the beads query when the watcher event fires (R10 split)', async () => {
+    // R10 moved the broad query invalidation off the
+    // beads-data-changed event. The watcher event now only
+    // surfaces a toast; per-issue cache patches come through
+    // `useBeadsRealtimeSync` instead.
     const qc = makeQueryClient()
     const invalidateSpy = vi.spyOn(qc, 'invalidateQueries')
     useWorkspaceStore.setState({ repoPath: '/tmp/repo' })
@@ -110,10 +114,10 @@ describe('useBeadsInvalidation', () => {
       capturedCallback()({ payload: { repo_path: '/tmp/repo', timestamp: 1 } })
     })
 
-    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['beads'] })
+    expect(invalidateSpy).not.toHaveBeenCalled()
   })
 
-  it('shows a "data refreshed" toast on invalidation', async () => {
+  it('shows a "data refreshed" toast when the watcher event fires', async () => {
     const qc = makeQueryClient()
     useWorkspaceStore.setState({ repoPath: '/tmp/repo' })
 
@@ -163,6 +167,28 @@ describe('useBeadsInvalidation', () => {
     expect(mockedToast.info).toHaveBeenCalledTimes(2)
   })
 
+  it('drops events whose repo_path does not match the active workspace', async () => {
+    const qc = makeQueryClient()
+    useWorkspaceStore.setState({ repoPath: '/tmp/active' })
+
+    renderWithClient(qc)
+
+    await act(async () => {
+      await Promise.resolve()
+    })
+
+    await act(async () => {
+      // Mismatched repo: toast must NOT fire (and no broad
+      // invalidation would either — both gated on the same
+      // filter).
+      capturedCallback()({
+        payload: { repo_path: '/tmp/other', timestamp: 1 },
+      })
+    })
+
+    expect(mockedToast.info).not.toHaveBeenCalled()
+  })
+
   it('cancels the listener on unmount', async () => {
     const qc = makeQueryClient()
     const unlisten = vi.fn()
@@ -183,7 +209,11 @@ describe('useBeadsInvalidation', () => {
     expect(unlisten).toHaveBeenCalledTimes(1)
   })
 
-  it('invalidates the beads query on window focus', async () => {
+  it('invalidates the beads query on window focus (safety net)', async () => {
+    // Window focus is the one place that still triggers a
+    // broad query invalidation: external editors and sibling
+    // shells don't go through Collier's IPC, so the only
+    // signal we get on return is the focus event.
     const qc = makeQueryClient()
     const invalidateSpy = vi.spyOn(qc, 'invalidateQueries')
 

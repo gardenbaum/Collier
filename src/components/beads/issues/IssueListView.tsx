@@ -31,12 +31,14 @@
  * never reaches for it.
  */
 import { useMemo, useRef, useState, type CSSProperties } from 'react'
+import { useEffect } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { useQuery } from '@tanstack/react-query'
 import { ArrowDown, ArrowUp, ArrowUpDown, X } from 'lucide-react'
 import { commands } from '@/lib/tauri-bindings'
 import type { Issue, ListFilters } from '@/lib/bindings'
 import { useIssueFilterStore } from '@/store/issue-filter-store'
+import { useScrollPositionStore } from '@/store/scroll-position-store'
 import { colors, radius, space, type } from '@/lib/design-tokens'
 import { TypeIcon } from './badges/TypeIcon'
 import { LabelChip } from './badges/LabelChip'
@@ -311,6 +313,48 @@ export function IssueListView({
     estimateSize: () => ROW_HEIGHT,
     overscan: OVERSCAN,
   })
+
+  // M4: per-workspace scroll position. Two effects:
+  //   1. restore — once the list has data and the virtualizer has
+  //      measured rows, jump to the saved offset (if any). Triggered
+  //      on `cwd` change so a workspace switch lands the user where
+  //      they left off in that workspace's list. The `rowVirtualizer`
+  //      ref pattern lets us avoid putting the virtualizer in the
+  //      dependency array (it's recreated on every render).
+  //   2. save — a passive scroll listener writes the current
+  //      scrollTop to the per-(repo, view) map. Listens on the
+  //      scroll element; cleaned up on cwd change.
+  const virtualizerRef = useRef(rowVirtualizer)
+  virtualizerRef.current = rowVirtualizer
+
+  useEffect(() => {
+    if (query.isLoading) return
+    if (total === 0) return
+    const saved = useScrollPositionStore.getState().getForView(cwd, 'list')
+    if (saved > 0) {
+      // scrollToOffset is idempotent and safe to call repeatedly
+      // — the virtualizer no-ops if the requested offset is out
+      // of range for the current item count.
+      virtualizerRef.current.scrollToOffset(saved)
+    }
+    // We intentionally only run this when the data settles for a
+    // new (repo, filter) combination, NOT on every scroll — the
+    // dependency list is `cwd` so a workspace switch re-runs the
+    // restore; a fresh query on the same repo (e.g. a watcher
+    // event) doesn't clobber the user's current scroll.
+  }, [cwd, query.isLoading, total])
+
+  useEffect(() => {
+    const el = scrollRef.current
+    if (!el) return () => undefined
+    const onScroll = () => {
+      useScrollPositionStore.getState().setForView('list', el.scrollTop)
+    }
+    el.addEventListener('scroll', onScroll, { passive: true })
+    return () => {
+      el.removeEventListener('scroll', onScroll)
+    }
+  }, [cwd])
 
   // Active filter chips — one entry per non-empty dimension. Pure
   // projection over the store arrays; nothing persisted or mutated.

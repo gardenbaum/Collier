@@ -5,6 +5,7 @@ import { i18n } from './i18n/config'
 import './i18n'
 import App from './App'
 import { queryClient } from './lib/query-client'
+import { installQueryClient } from './store/workspace-store'
 
 // Set the `<html lang>` synchronously from the saved preference
 // (or the i18n default) so screen readers announce the correct
@@ -23,6 +24,51 @@ if (rootElement === null) {
   throw new Error(
     'Collier could not mount: #root element is missing from index.html'
   )
+}
+
+// Wire the singleton queryClient into the workspace store so
+// `switchWorkspace` can drop the old workspace's `['beads']` query
+// cache. Must happen before `App` mounts (so the bootstrap path's
+// `setRepoPath` calls don't race the install); we do it here at the
+// QueryClientProvider boundary.
+installQueryClient(queryClient)
+
+// ponytail: E2E hook — expose the queryClient on `window` so the
+// wdio specs can read cache state directly via `page-context`
+// JavaScript instead of polling DOM attributes. The DOM is a
+// *windowed* projection of the cache (`@tanstack/react-virtual`
+// only mounts ~15 rows at a time), so polling the DOM for a row
+// the virtualizer has unmounted races with the test's `waitUntil`
+// loop and times out at 1500 ms even when the watcher already
+// patched the cache. Reading from the cache is race-free: the
+// queryClient holds every cached issue regardless of what's
+// mounted, and the watcher patches it synchronously on the file
+// event. The harness gates on `import.meta.env.VITE_E2E === '1'`
+// so production builds don't ship a debugging handle. The flag
+// is set by the E2E CI workflow via the build-time Vite env (see
+// `.github/workflows/ci.yml` — `E2E_TAURI_EXECUTABLE` is the
+// adjacent env var; the Vite flag is independent).
+if (import.meta.env.VITE_E2E === '1') {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  ;(globalThis as any).__collierQueryClient__ = queryClient
+  // ponytail: diag surface — track every targeted watcher event
+  // the React side processes. `useBeadsRealtimeSync` increments
+  // these counters from its `beads-issue-updated` / `created` /
+  // `deleted` handlers so an E2E failure points at the layer
+  // that dropped the event (zero counters = watcher never
+  // fired vs. counter incremented but cache not patched = patch
+  // logic dropped the event on a repo_path mismatch). Counters
+  // are exposed on globalThis under the same VITE_E2E gate as
+  // the queryClient handle.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  ;(globalThis as any).__collierDiag__ = {
+    issueUpdated: 0,
+    issueCreated: 0,
+    issueDeleted: 0,
+    dataReset: 0,
+    dataChanged: 0,
+    droppedRepoMismatch: 0,
+  }
 }
 
 ReactDOM.createRoot(rootElement).render(

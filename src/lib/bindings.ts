@@ -268,6 +268,23 @@ async getCurrentDir() : Promise<Result<string, string>> {
 }
 },
 /**
+ * Return the merged workspace list.
+ * 
+ * `current` is the active workspace's path (passed by the frontend
+ * from the `workspace-store.repoPath`); pass `null` from JS when no
+ * workspace is open yet. The Rust side treats both `null` and
+ * missing files as "no current workspace" and skips the
+ * always-first entry.
+ */
+async listWorkspaces(current: string | null) : Promise<Result<WorkspaceEntry[], string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("list_workspaces", { current }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
  * Run `bd ready --json` in `cwd` and return the list of ready issues.
  */
 async bdReady(cwd: string) : Promise<Result<Issue[], BdError>> {
@@ -280,6 +297,18 @@ async bdReady(cwd: string) : Promise<Result<Issue[], BdError>> {
 },
 /**
  * Run `bd blocked --json` in `cwd` and return the list of blocked issues.
+ * 
+ * **Implementation note (M3 R8):** `bd blocked --json` returns a
+ * sparser shape than `bd list --json` — it omits `dependency_count`
+ * and `dependent_count`, only emitting `blocked_by_count` and
+ * `blocked_by` (array of IDs). Without those counts, every row's
+ * `DependencyBadge` renders with counts of 0, which silently
+ * drops the "blocks N" chip for an issue that has zero incoming
+ * blockers but blocks others (TASK_REFAC in the fixture is one).
+ * We delegate to `bd list --json` and filter to the same set
+ * `bd blocked` would have returned: issues whose status is
+ * `blocked` (manually-marked) OR that have at least one open
+ * blocker (`dependency_count > 0`).
  */
 async bdBlocked(cwd: string) : Promise<Result<Issue[], BdError>> {
     try {
@@ -1342,6 +1371,49 @@ assignee?: string | null;
  * Empty string is treated as "not set".
  */
 externalRef?: string | null }
+/**
+ * A single workspace the dropdown can switch to.
+ */
+export type WorkspaceEntry = { 
+/**
+ * Absolute path to the workspace root (the directory that
+ * contains `.beads/`).
+ */
+path: string; 
+/**
+ * Last path component — the human-readable workspace name
+ * rendered in the dropdown row.
+ */
+name: string; 
+/**
+ * Which discovery source listed this entry.
+ */
+source: WorkspaceSource; 
+/**
+ * `true` when the directory exists on disk **and** contains a
+ * `.beads/` subdirectory. `false` entries are still rendered
+ * (so the user sees stale paths and can clean up), but visually
+ * marked so the UI can show a "missing" badge.
+ */
+exists: boolean }
+/**
+ * Where a workspace entry was discovered from. Used by the frontend
+ * to render the source label (e.g. italicise "registry" entries) and
+ * to preserve order when merging sources.
+ */
+export type WorkspaceSource = 
+/**
+ * The currently-active workspace. Always rendered first.
+ */
+"current" | 
+/**
+ * Recently opened — listed in `AppPreferences.recent_repos`.
+ */
+"recent" | 
+/**
+ * Listed in `~/.beads/registry.json` but not in recents.
+ */
+"registry"
 
 /** tauri-specta globals **/
 
