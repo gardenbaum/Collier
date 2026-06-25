@@ -373,7 +373,7 @@ pub fn spawn_watcher(
         Duration::from_millis(250),
         move |result: DebounceEventResult| match result {
             Ok(events) => {
-                if !is_jsonl_event(&events) {
+                if !is_beads_change_event(&events) {
                     return;
                 }
                 handle_change(
@@ -395,69 +395,36 @@ pub fn spawn_watcher(
 
     log::info!("Watching beads directory: {}", watch_dir.display());
 
-    // Seed the snapshot synchronously at attach time so the FIRST
+    // Seed the snapshot asynchronously at attach time so the FIRST
     // `bd update …` after attach emits a targeted
     // `beads-issue-updated` event instead of `beads-data-reset` +
     // broad cache invalidation. Without this, the very first
     // external mutation after a workspace switch triggers a full
     // list refetch (which races the 1 s end-to-end target under
-    // CI cold-start and flakes the r10 spec — observed on runs
-    // 28164785305, 28173810778, 28176649802, 28176992325,
-    // 28178940994, 28182904396).
+    // CI cold-start and flakes the r10 spec).
     //
-    // Two-stage seed: try `read_jsonl` first (fast — direct file
-    // read, ~10ms), fall back to `bd list --all --json` via
-    // subprocess if the workspace is Dolt-only (no JSONL file).
-    // The subprocess call is the same one the React list query
-    // uses, so it lands in the OS page cache and warms the bd
-    // binary for the first user query too. The diff_snapshot path
-    // is a no-op when the baseline isn't seeded yet, so this is
-    // safe to do unconditionally.
+    // Source of truth: `bd list --all --json`, NOT `.beads/issues.jsonl`.
+    // bd 1.0.x with the Dolt backend (default since 1.0) does NOT rewrite
+    // `.beads/issues.jsonl` on every update — the JSONL is exported
+    // lazily (often only at `bd create` or explicit `bd export`) and
+    // stays stale otherwise. We discovered this empirically while
+    // debugging r10 flakiness: `bd update --status=closed` mutates the
+    // Dolt store but the JSONL file's mtime and content stay frozen,
+    // so `read_jsonl` returned the pre-update payload and the diff
+    // against the baseline was empty. Going through `bd list` on
+    // every change adds ~100 ms vs the JSONL fast path, but that's
+    // well within the 1 s end-to-end budget and the diff is now
+    // actually correct on Dolt workspaces. The same call is what the
+    // React list query already runs, so the subprocess overhead is
+    // already paid on the page (we just double as a warm-up for the
+    // first user query). The diff_snapshot path is a no-op when the
+    // baseline isn't seeded yet, so this is safe to do
+    // unconditionally.
     let snapshot_for_seed = snapshot.clone();
     let repo_path_for_seed = repo_path.clone();
     let app_for_seed = app.clone();
     tauri::async_runtime::spawn(async move {
-        let read_result = crate::beads::jsonl::read_jsonl(&repo_path_for_seed).await;
-        let issues: Vec<Issue> = match read_result {
-            Ok(r) => r.issues,
-            Err(_) => {
-                // Fallback for Dolt-only fixtures: ask `bd` for
-                // the full list via subprocess. Same call the React
-                // list query uses (`bd list --all --json`), so we
-                // double as a warm-up for the first user query.
-                let argv: Vec<&str> = vec!["list", "--all", "--json"];
-                let path = repo_path_for_seed.as_path();
-                match crate::beads::runner::run_bd(&argv, path).await {
-                    Ok(crate::beads::runner::BdOutput::Json { value }) => {
-                        match crate::beads::search_query::extract_data(value) {
-                            Ok(v) => v,
-                            Err(e) => {
-                                log::warn!(
-                                    "Seeded baseline fallback parse failed for {}: {e:?}",
-                                    repo_path_for_seed.display()
-                                );
-                                Vec::new()
-                            }
-                        }
-                    }
-                    Ok(crate::beads::runner::BdOutput::Text { value }) => {
-                        log::warn!(
-                            "Seeded baseline fallback got text output for {}: {}",
-                            repo_path_for_seed.display(),
-                            value.chars().take(200).collect::<String>()
-                        );
-                        Vec::new()
-                    }
-                    Err(e) => {
-                        log::warn!(
-                            "Seeded baseline fallback failed for {}: {e:?}",
-                            repo_path_for_seed.display()
-                        );
-                        Vec::new()
-                    }
-                }
-            }
-        };
+        let issues: Vec<Issue> = read_issues_via_bd(&repo_path_for_seed).await;
         let count = issues.len();
         let _ = diff_snapshot(&snapshot_for_seed, &issues);
         log::info!(
@@ -505,46 +472,14 @@ fn handle_change(
 
     let app_for_task = app.clone();
     tauri::async_runtime::spawn(async move {
-        // Try `read_jsonl` first (fast — direct file read).
-        // Fall back to `bd list --all --json` for Dolt-only
-        // fixtures where no JSONL file exists. Without this
-        // fallback, the watcher silently drops every change on
-        // a Dolt-only workspace and the React cache never
-        // catches up.
-        let jsonl_result = crate::beads::jsonl::read_jsonl(&repo_path).await;
-        let issues: Vec<Issue> = match jsonl_result {
-            Ok(r) => r.issues,
-            Err(_) => {
-                let argv: Vec<&str> = vec!["list", "--all", "--json"];
-                let path = repo_path.as_path();
-                match crate::beads::runner::run_bd(&argv, path).await {
-                    Ok(crate::beads::runner::BdOutput::Json { value }) => {
-                        crate::beads::search_query::extract_data(value).unwrap_or_else(|e| {
-                            log::warn!(
-                                "handle_change fallback parse failed for {}: {e:?}",
-                                repo_path.display()
-                            );
-                            Vec::new()
-                        })
-                    }
-                    Ok(crate::beads::runner::BdOutput::Text { value }) => {
-                        log::warn!(
-                            "handle_change fallback got text output for {}: {}",
-                            repo_path.display(),
-                            value.chars().take(200).collect::<String>()
-                        );
-                        Vec::new()
-                    }
-                    Err(e) => {
-                        log::warn!(
-                            "handle_change fallback failed for {}: {e:?}",
-                            repo_path.display()
-                        );
-                        Vec::new()
-                    }
-                }
-            }
-        };
+        // Source of truth: `bd list --all --json`. See the comment
+        // in `spawn_watcher` for why we don't trust `.beads/issues.jsonl`
+        // on Dolt-backed workspaces — bd 1.0.x doesn't rewrite it
+        // on every update, so `read_jsonl` returns stale data and
+        // the diff comes up empty. The subprocess call is the same
+        // one the React list query already runs, so the OS page
+        // cache is warm by the time we get here.
+        let issues: Vec<Issue> = read_issues_via_bd(&repo_path).await;
         let was_seeded = snapshot.is_seeded();
         let changes = diff_snapshot(&snapshot, &issues);
         if !was_seeded {
@@ -596,6 +531,61 @@ fn handle_change(
             }
         }
     });
+}
+
+/// Read the canonical issue list for `repo_path` via `bd list --all
+/// --json`. This is the source of truth for the watcher's diff
+/// stage on Dolt-backed workspaces (bd 1.0.x's default since 1.0).
+///
+/// Why we don't trust `.beads/issues.jsonl` here: bd only rewrites
+/// the JSONL export lazily — on `bd create`, on explicit `bd
+/// export`, and at the end of `bd sync`. A bare `bd update
+/// --status=…` mutates the Dolt store (which notify WILL detect
+/// because `.beads/last-touched` + `.beads/embeddeddolt/...` are
+/// touched) but the JSONL file's mtime and content stay frozen,
+/// so `read_jsonl` returns the pre-update payload and the diff
+/// against the baseline is empty. We discovered this empirically
+/// while debugging r10 flakiness on PR #13 (e2e run 28186532811
+/// reported `row e2e-workspace-5nw status never reflected external
+/// bd update within 3000ms` for the very first mutation after
+/// attach).
+///
+/// Trade-off: this costs a subprocess + ~100 ms per change tick
+/// instead of an in-process file read (~10 ms). That's well within
+/// the 1 s end-to-end budget, and the React list query already
+/// runs the same `bd list --all --json` command when the cache is
+/// stale, so the OS page cache + Dolt connection pool are warm by
+/// the time the watcher fires its diff. Returns an empty `Vec` on
+/// any error so the watcher still emits `beads-data-changed`
+/// (legacy toast) — better a missed diff than a wedged watcher.
+async fn read_issues_via_bd(repo_path: &Path) -> Vec<Issue> {
+    let argv: [&str; 3] = ["list", "--all", "--json"];
+    match crate::beads::runner::run_bd(&argv, repo_path).await {
+        Ok(crate::beads::runner::BdOutput::Json { value }) => {
+            crate::beads::search_query::extract_data(value).unwrap_or_else(|e| {
+                log::warn!(
+                    "read_issues_via_bd: parse failed for {}: {e:?}",
+                    repo_path.display()
+                );
+                Vec::new()
+            })
+        }
+        Ok(crate::beads::runner::BdOutput::Text { value }) => {
+            log::warn!(
+                "read_issues_via_bd: expected JSON, got text for {}: {}",
+                repo_path.display(),
+                value.chars().take(200).collect::<String>()
+            );
+            Vec::new()
+        }
+        Err(e) => {
+            log::warn!(
+                "read_issues_via_bd: bd list failed for {}: {e:?}",
+                repo_path.display()
+            );
+            Vec::new()
+        }
+    }
 }
 
 /// Spawn a tokio task that polls `<repo>/.beads/` every 2 s and,
@@ -659,22 +649,43 @@ pub async fn attach_watch_repo(
     state.attach(app, PathBuf::from(repo_path))
 }
 
-/// Returns true if any event in `events` targets a `*.jsonl` file.
+/// Returns true if any event in `events` targets a file under
+/// `<repo>/.beads/` whose change is meaningful for the watcher.
 ///
-/// The watcher is already scoped to the `.beads/` directory, so we
-/// only filter on the extension and the file type. We intentionally
-/// do NOT compare the event's `parent()` to the watch directory: on
+/// The watcher's data source is `bd list --all --json`, not
+/// `.beads/issues.jsonl` (see `read_issues_via_bd` for why — bd
+/// 1.0.x's Dolt backend rewrites the JSONL lazily, so a bare
+/// `bd update` only touches `.beads/last-touched` +
+/// `.beads/embeddeddolt/...`). We accept events on any regular
+/// file under `.beads/` (so last-touched + the embedded Dolt
+/// store both fire the watcher) but skip tmp/swap files (`.swp`,
+/// `~`, `.tmp`) and directories so we don't churn on editor
+/// noise. The watcher is already scoped to the `.beads/`
+/// directory, so we don't re-check the path prefix here — on
 /// platforms that resolve symlinks (e.g. macOS `/tmp` →
-/// `/private/tmp`), `notify` reports the resolved path while the
-/// caller passed the unresolved one, and a string comparison would
-/// miss every event.
-fn is_jsonl_event(events: &[notify_debouncer_mini::DebouncedEvent]) -> bool {
+/// `/private/tmp`) `notify` reports the resolved path while the
+/// caller passed the unresolved one, and a string comparison
+/// would miss every event.
+fn is_beads_change_event(events: &[notify_debouncer_mini::DebouncedEvent]) -> bool {
     events.iter().any(|e| {
-        e.path
-            .extension()
-            .map(|ext| ext == "jsonl")
-            .unwrap_or(false)
-            && e.path.is_file()
+        if !e.path.is_file() {
+            return false;
+        }
+        let name = match e.path.file_name().and_then(|n| n.to_str()) {
+            Some(n) => n,
+            None => return false,
+        };
+        // Skip editor swap/temp artefacts so saving the JSONL in
+        // vim or VS Code doesn't double-fire the watcher.
+        if name.ends_with(".swp")
+            || name.ends_with(".swo")
+            || name.ends_with('~')
+            || name.ends_with(".tmp")
+            || name.starts_with(".#")
+        {
+            return false;
+        }
+        true
     })
 }
 
@@ -761,7 +772,7 @@ mod tests {
             Duration::from_millis(250),
             move |result: DebounceEventResult| {
                 if let Ok(events) = result {
-                    if is_jsonl_event(&events) {
+                    if is_beads_change_event(&events) {
                         on_event();
                     }
                 }

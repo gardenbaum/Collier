@@ -328,24 +328,38 @@ describe('Collier M1 R3 inline editing', () => {
 
   it('clicking the row body still opens the detail drawer (inline edit does not swallow row click)', async () => {
     // -- Given: at least one rendered row --
-    const rows = await $$('[data-testid="issue-row"]')
-    expect(rows.length).toBeGreaterThan(0)
-    const firstRow = rows[0] as unknown as WebdriverIO.Element
-
-    // -- When: click on the row's title cell (not the inline-edit
-    //    cells -- the title column has no inline control, so a
-    //    click there should bubble to the row's onClick handler and
-    //    open the detail drawer).
-    //
-    // ponytail: this regression-guard confirms that the inline
-    // edits' swallowHostEvents flag doesn't accidentally swallow
-    // events from OTHER cells. Only the cells that contain a
-    // <select> should stop propagation.
-    const titleCell = await firstRow.$('[data-column="title"]')
-    await titleCell.waitForDisplayed({ timeout: 5_000 })
-    await titleCell.click()
+    // ponytail: find a rendered row with a title cell via the
+    // page context. `@tanstack/react-virtual` can unmount a row
+    // between the moment `$$('[data-testid="issue-row"]')`
+    // captures the element handle and the moment `firstRow.$(
+    // '[data-column="title"]')` re-resolves it via WebDriver —
+    // the stale parent reference raises "element wasn't found"
+    // and `waitForDisplayed` on the child fails. Doing the
+    // lookup + click in a single page-context `execute` call
+    // (which always queries the live DOM) makes the test robust
+    // against the virtualizer remount; the `waitUntil` retries
+    // until a row is mounted again.
+    await browser.waitUntil(
+      async () =>
+        (await browser.execute(() => {
+          const row = document.querySelector('[data-testid="issue-row"]')
+          const cell = row?.querySelector('[data-column="title"]')
+          if (!row || !cell || !(cell instanceof HTMLElement)) return false
+          cell.click()
+          return true
+        })) === true,
+      {
+        timeout: 5_000,
+        interval: 100,
+        timeoutMsg: 'no rendered row with a title cell appeared',
+      }
+    )
 
     // -- Then: the issue detail view opens --
+    // ponytail: a regression-guard for the inline edits'
+    // `swallowHostEvents` flag — only cells containing a `<select>`
+    // should stop propagation, so a click on the title cell must
+    // bubble to the row's onClick and open the detail drawer.
     const detailView = await $('[data-testid="issue-detail-view"]')
     await detailView.waitForDisplayed({ timeout: 5_000 })
     expect(await detailView.isDisplayed()).toBe(true)
