@@ -4,6 +4,7 @@ import { ReactQueryDevtools } from '@tanstack/react-query-devtools'
 import { i18n } from './i18n/config'
 import './i18n'
 import App from './App'
+import { commands } from './lib/tauri-bindings'
 import { queryClient } from './lib/query-client'
 import { installQueryClient } from './store/workspace-store'
 
@@ -69,6 +70,34 @@ if (import.meta.env.VITE_E2E === '1') {
     dataChanged: 0,
     droppedRepoMismatch: 0,
   }
+  // ponytail: release-hardening handle — expose the build-time
+  // app metadata (name / version / identifier / updater endpoint /
+  // pubkey fingerprint) so the E2E suite can pin the bundled
+  // `tauri.conf.json` shape without parsing the binary or the
+  // filesystem. Backed by `commands.getAppMetadata()` in
+  // src-tauri/src/commands/app_metadata.rs; populated async on
+  // mount, so an E2E spec that reads it must wait for the
+  // `__collierAppMetadataReady` promise to resolve. Gated on
+  // the same VITE_E2E flag as the other handles — production
+  // builds do NOT ship this surface.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  ;(globalThis as any).__collierAppMetadataReady__ = commands
+    .getAppMetadata()
+    .then(result => {
+      if (result.status === 'ok') {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        ;(globalThis as any).__collierAppMetadata__ = result.data
+      } else {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        ;(globalThis as any).__collierAppMetadata__ = null
+      }
+      return result
+    })
+    .catch(() => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      ;(globalThis as any).__collierAppMetadata__ = null
+      return null
+    })
 }
 
 ReactDOM.createRoot(rootElement).render(

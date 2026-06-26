@@ -42,6 +42,13 @@ tauri-plugin-mcp-bridge = "0.11"
 log = "0.4"
 regex = "1"
 
+# SHA-256 fingerprint for the updater pubkey (commands/app_metadata.rs).
+# Used to assert "a pubkey is configured" from the E2E suite without
+# ever returning the raw signing material to the webview. `sha2` is
+# already in the build tree via tauri-codegen, but a build dep is not
+# visible to the lib target — declare it explicitly here.
+sha2 = "0.10"
+
 # Async runtime for the bd CLI runner (T3): spawn `bd` as a child
 # process, wait with a 10s timeout, and pipe stdin for `bd init`.
 # `process` for tokio::process::Command, `time` for timeout, `io-util`

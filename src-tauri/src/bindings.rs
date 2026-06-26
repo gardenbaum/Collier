@@ -8,11 +8,12 @@ pub fn generate_bindings() -> Builder<tauri::Wry> {
         show_history, statuses, watcher,
     };
     use crate::commands::{
-        diagnostic_log, notifications, preferences, quick_pane, recent_repos, recovery,
-        workspace_list,
+        app_metadata, diagnostic_log, notifications, preferences, quick_pane, recent_repos,
+        recovery, workspace_list,
     };
 
     Builder::<tauri::Wry>::new().commands(collect_commands![
+        app_metadata::get_app_metadata,
         diagnostic_log::write_log_line,
         diagnostic_log::set_diagnostic_logging,
         diagnostic_log::is_diagnostic_logging_enabled,

@@ -9,6 +9,21 @@
 
 export const commands = {
 /**
+ * Return the build-time app metadata for diagnostics + E2E.
+ * 
+ * `tauri::generate_context!()` reads `tauri.conf.json` at compile
+ * time, so the values returned here reflect exactly what was
+ * baked into the binary — not what's on disk at runtime.
+ */
+async getAppMetadata() : Promise<Result<AppMetadata, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("get_app_metadata") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/**
  * Write one log line. Called from the renderer via the Tauri command
  * bridge. Always best-effort: a write failure must never crash the
  * app, because this is the path the renderer takes when the app is
@@ -858,6 +873,49 @@ async attachWatchRepo(repoPath: string) : Promise<Result<null, string>> {
 
 /** user-defined types **/
 
+/**
+ * Subset of the build-time Tauri config we expose to the renderer.
+ * 
+ * `pubkey_fingerprint` is a SHA-256 hex prefix of the configured
+ * `tauri.conf.json::plugins.updater.pubkey` so the E2E suite can
+ * verify a key is set without ever returning the raw signing
+ * material to the webview (where test logs could capture it).
+ */
+export type AppMetadata = { 
+/**
+ * `productName` from `tauri.conf.json` (e.g. "Collier").
+ */
+name: string; 
+/**
+ * `version` from `tauri.conf.json` (semver, e.g. "0.1.0").
+ */
+version: string; 
+/**
+ * `identifier` from `tauri.conf.json` (reverse-DNS bundle id).
+ */
+identifier: string; 
+/**
+ * First endpoint listed in `plugins.updater.endpoints`, or
+ * `None` when no updater endpoint is configured.
+ */
+updaterEndpoint: string | null; 
+/**
+ * `plugins.updater.active` (or `false` when the updater
+ * section is absent). When `false`, the auto-update flow is
+ * inert even if `check()` succeeds at runtime.
+ */
+updaterActive: boolean; 
+/**
+ * SHA-256 hex prefix of the configured updater pubkey
+ * (first 16 chars). `None` when no pubkey is configured.
+ */
+pubkeyFingerprint: string | null; 
+/**
+ * GitHub Actions build number when available, else `None`.
+ * Pulled from the `GITHUB_RUN_NUMBER` env var so CI-built
+ * bundles can be cross-referenced with the workflow run.
+ */
+buildRunNumber: string | null }
 /**
  * Application preferences that persist to disk.
  * Only contains settings that should be saved between sessions.
