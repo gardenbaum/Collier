@@ -207,7 +207,10 @@ printf '%s\n' "$ALL_IDS" >"$ALL_IDS_FILE"
 sed -n "1,${EPICS}p" "$ALL_IDS_FILE" >"$EPIC_IDS_FILE"
 sed -n "$((EPICS + 1)),$((EPICS + STANDALONES))p" "$ALL_IDS_FILE" >"$STANDALONE_IDS_FILE"
 sed -n "$((EPICS + STANDALONES + 1)),\$p" "$ALL_IDS_FILE" >"$CHILD_IDS_FILE"
-rm -f "$ALL_IDS_FILE"
+# Keep $ALL_IDS_FILE alive — we re-use it below for the FIRST/LAST
+# probes, which avoids re-`echo`-ing the 1200-line string into
+# multiple short-lived pipelines (another SIGPIPE-prone pattern
+# under set -euo pipefail on a slow runner).
 
 # Wire parent-child via `bd dep add --file` (bulk JSONL import).
 # `bd import` silently drops the `parent` field on import (verified
@@ -277,11 +280,15 @@ echo "Wired cross-issue blocks dependencies."
 # role -> ID for the first few epics + standalones (enough for
 # the E2E spec to navigate deterministically); the full ID list
 # can always be re-derived via `bd list --json --all`.
-FIRST_EPIC_ID="$(echo "$ALL_IDS" | head -n 1)"
-FIRST_STANDALONE_ID="$(echo "$ALL_IDS" | sed -n "$((EPICS + 1))p")"
-FIRST_CHILD_ID="$(echo "$ALL_IDS" | sed -n "$((EPICS + STANDALONES + 1))p")"
-LAST_EPIC_ID="$(echo "$ALL_IDS" | sed -n "${EPICS}p")"
-LAST_CHILD_ID="$(echo "$ALL_IDS" | tail -n 1)"
+#
+# Read directly from $ALL_IDS_FILE (no `echo | head` pipeline)
+# to avoid SIGPIPE on the 1200-line string under set -euo pipefail
+# — the same race the split-above change fixes.
+FIRST_EPIC_ID="$(sed -n '1p' "$ALL_IDS_FILE")"
+FIRST_STANDALONE_ID="$(sed -n "$((EPICS + 1))p" "$ALL_IDS_FILE")"
+FIRST_CHILD_ID="$(sed -n "$((EPICS + STANDALONES + 1))p" "$ALL_IDS_FILE")"
+LAST_EPIC_ID="$(sed -n "${EPICS}p" "$ALL_IDS_FILE")"
+LAST_CHILD_ID="$(sed -n '$p' "$ALL_IDS_FILE")"
 
 cat >"$TARGET_DIR/.fixture-ids.json" <<JSON
 {
@@ -298,7 +305,7 @@ cat >"$TARGET_DIR/.fixture-ids.json" <<JSON
 JSON
 
 # Cleanup tmp files.
-rm -f "$PAYLOAD_FILE" "$EPIC_IDS_FILE" "$STANDALONE_IDS_FILE" "$CHILD_IDS_FILE" "$DEP_FILE" "$BLOCK_FILE"
+rm -f "$PAYLOAD_FILE" "$EPIC_IDS_FILE" "$STANDALONE_IDS_FILE" "$CHILD_IDS_FILE" "$ALL_IDS_FILE" "$DEP_FILE" "$BLOCK_FILE"
 
 echo "Fixture created at $TARGET_DIR"
 echo "  issues:    $ISSUE_COUNT ($EPICS epics + $CHILDREN children + $STANDALONES standalones)"
