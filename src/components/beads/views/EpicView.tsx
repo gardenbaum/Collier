@@ -46,6 +46,12 @@ import { useWorkspaceStore } from '@/store/workspace-store'
 import { EmptyState } from '@/components/atoms'
 import { StatusPill } from '../issues/badges/StatusPill'
 import { PriorityDot } from '../issues/badges/PriorityDot'
+import {
+  COLLAPSED_ROW_HEIGHT,
+  DEFAULT_CONTAINER_HEIGHT,
+  ROW_OVERSCAN,
+  estimateRowHeight,
+} from './epicViewSizing'
 
 export interface EpicViewProps {
   /** Repository root passed to `bd list`. */
@@ -62,52 +68,6 @@ export interface EpicViewProps {
    * smaller value for tighter DOM-shape assertions.
    */
   containerHeight?: number
-}
-
-/**
- * M6 perf: the epic tree is virtualised with @tanstack/react-virtual.
- * Each virtual row is one epic (header + optional children list).
- * Heights are estimated from the expand state so the scrollbar
- * stays honest when the user toggles an epic in a different
- * viewport — `useVirtualizer` reads `estimateSize` on every layout
- * and re-measures on `toggle` via the `measure()` invalidation in
- * the effect below.
- *
- *   COLLAPSED_ROW_HEIGHT: the header alone (~72px including padding
- *     + border). Matches the actual rendered height for an epic
- *     with 0 children or an epic the user has collapsed.
- *   CHILD_ROW_HEIGHT:     the height of one child row (~32px).
- *   CHILD_GAP:            the 2px gap between children rows.
- *
- * `expandedHeight = COLLAPSED + (nChildren * CHILD_ROW) + ((nChildren - 1) * CHILD_GAP)`
- * matches the rendered height within ~1px; the virtualizer
- * measures actual heights on first paint and `measure()` after
- * toggle, so the estimate only matters for the initial scrollbar
- * position before the first measurement pass completes.
- */
-export const COLLAPSED_ROW_HEIGHT = 72
-export const CHILD_ROW_HEIGHT = 32
-export const CHILD_GAP = 2
-export const ROW_OVERSCAN = 5
-export const DEFAULT_CONTAINER_HEIGHT = 600
-
-/**
- * Pure height estimator. Exported so the unit test can verify the
- * math without rendering. Production callers close over the live
- * `childrenByParent` map so the estimate reflects the current
- * data; the virtualizer measures actual heights on first paint
- * and `measure()` after toggle invalidates the cache.
- */
-export function estimateRowHeight(
-  isExpanded: boolean,
-  childCount: number
-): number {
-  if (!isExpanded) return COLLAPSED_ROW_HEIGHT
-  if (childCount === 0) return COLLAPSED_ROW_HEIGHT
-  // n children stacked vertically with 2px gap between each,
-  // plus a 4px top padding (space[1]) on the children list.
-  const childrenBlock = childCount * CHILD_ROW_HEIGHT + (childCount - 1) * CHILD_GAP
-  return COLLAPSED_ROW_HEIGHT + childrenBlock + 4
 }
 
 const containerStyle: CSSProperties = {

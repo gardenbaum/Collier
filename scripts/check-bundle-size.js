@@ -100,7 +100,9 @@ const initialGzip = initialChunks.reduce((sum, c) => sum + c.gzipBytes, 0)
 
 console.log('M6 perf — bundle-size budget check')
 console.log('================================')
-console.log(`  chunks:           ${chunks.length} (${initialChunks.length} initial)`)
+console.log(
+  `  chunks:           ${chunks.length} (${initialChunks.length} initial)`
+)
 console.log(`  total uncompr.:   ${fmtKb(totalRaw)}`)
 console.log(`  total gzipped:    ${fmtKb(totalGzip)}`)
 console.log(
@@ -134,7 +136,9 @@ if (totalGzip > TOTAL_BUNDLE_BUDGET_KB * 1024) {
   failed = true
 }
 
-const oversized = chunks.filter(c => c.gzipBytes > SINGLE_CHUNK_BUDGET_KB * 1024)
+const oversized = chunks.filter(
+  c => c.gzipBytes > SINGLE_CHUNK_BUDGET_KB * 1024
+)
 if (oversized.length > 0) {
   console.error(
     `\nFAIL: ${oversized.length} chunk(s) exceed the per-chunk budget of ${SINGLE_CHUNK_BUDGET_KB} KB gzipped:`

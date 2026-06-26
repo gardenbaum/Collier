@@ -500,7 +500,7 @@ describe('EpicView', () => {
   describe('M6 perf — large backlog', () => {
     it('estimateRowHeight returns the expected heights for each expand state', async () => {
       // Pure unit test on the exported helper — no render.
-      const { estimateRowHeight } = await importSut()
+      const { estimateRowHeight } = await import('./epicViewSizing')
       // Collapsed: 72px (the header alone).
       expect(estimateRowHeight(false, 0)).toBe(72)
       // Expanded with 0 children: still 72px (the empty
