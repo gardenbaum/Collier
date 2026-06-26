@@ -46,6 +46,7 @@ const VIEW_LABELS: Record<WorkspaceView, string> = {
   search: 'Search',
   epic: 'Epics',
   graph: 'Graph',
+  gates: 'Gates',
   swarm: 'Swarm',
   sync: 'Sync',
   worktree: 'Worktree',

@@ -82,6 +82,8 @@ export interface StatusCatalogState {
   statusNames: readonly string[]
   /** Built-in subset, even during loading (fallback). */
   builtin: readonly StatusMeta[]
+  /** Custom subset — empty array while loading. */
+  custom: readonly StatusMeta[]
   /** True only on the initial fetch. */
   isLoading: boolean
   /** Typed error from a failed fetch, or null. */
@@ -120,6 +122,7 @@ export function useStatusCatalog(cwd: string | null): StatusCatalogState {
       catalog: query.data,
       statusNames: query.data.statusNames,
       builtin: query.data.builtin,
+      custom: query.data.custom,
       isLoading: query.isLoading,
       error: query.error,
     }
@@ -129,6 +132,7 @@ export function useStatusCatalog(cwd: string | null): StatusCatalogState {
     catalog: undefined,
     statusNames: DEFAULT_STATUS_NAMES,
     builtin: DEFAULT_BUILTIN_STATUSES,
+    custom: [],
     isLoading: query.isLoading,
     error: query.error,
   }
