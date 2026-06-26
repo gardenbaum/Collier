@@ -189,12 +189,25 @@ print('\n'.join(ids))
 ")"
 
 # Split ALL_IDS into three files for the next step.
+#
+# We persist ALL_IDS to a tmp file ONCE and then split it with sed,
+# because the original `echo "$ALL_IDS" | tail -n "+N" | head -n M`
+# pipeline races under `set -euo pipefail`: head exits after M lines
+# and closes its stdin, which causes tail's next write to SIGPIPE
+# (exit 141). Whether that surfaces as a script-level error is
+# timing-dependent — locally the 1200-line seed always finished
+# before head exited, but on a CI runner the same script failed
+# with "tail: write error: Broken pipe". The single-file sed
+# approach sidesteps the race entirely.
 EPIC_IDS_FILE="$(mktemp -t make-large-fixture-epics-XXXXXX.txt)"
 STANDALONE_IDS_FILE="$(mktemp -t make-large-fixture-standalones-XXXXXX.txt)"
 CHILD_IDS_FILE="$(mktemp -t make-large-fixture-children-XXXXXX.txt)"
-echo "$ALL_IDS" | head -n "$EPICS" >"$EPIC_IDS_FILE"
-echo "$ALL_IDS" | tail -n "+$((EPICS + 1))" | head -n "$STANDALONES" >"$STANDALONE_IDS_FILE"
-echo "$ALL_IDS" | tail -n "+$((EPICS + STANDALONES + 1))" >"$CHILD_IDS_FILE"
+ALL_IDS_FILE="$(mktemp -t make-large-fixture-all-XXXXXX.txt)"
+printf '%s\n' "$ALL_IDS" >"$ALL_IDS_FILE"
+sed -n "1,${EPICS}p" "$ALL_IDS_FILE" >"$EPIC_IDS_FILE"
+sed -n "$((EPICS + 1)),$((EPICS + STANDALONES))p" "$ALL_IDS_FILE" >"$STANDALONE_IDS_FILE"
+sed -n "$((EPICS + STANDALONES + 1)),\$p" "$ALL_IDS_FILE" >"$CHILD_IDS_FILE"
+rm -f "$ALL_IDS_FILE"
 
 # Wire parent-child via `bd dep add --file` (bulk JSONL import).
 # `bd import` silently drops the `parent` field on import (verified
