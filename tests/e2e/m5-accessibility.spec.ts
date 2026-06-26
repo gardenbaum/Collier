@@ -200,8 +200,18 @@ describe('Collier M5 accessibility', () => {
       clearAll?.click()
     })
 
-    // Toggle status=open via the sidebar chip.
+    // ponytail: the Sidebar's status chip list is now sourced from
+    // `useStatusCatalog(repoPath)` (the M6 status-catalog migration
+    // replaced the hardcoded v1 5-status array). The catalog query
+    // resolves async — typically <100 ms, but on a fresh CI runner
+    // it can take a few seconds after the workspace is mounted.
+    // The bootstrap-path `openFixtureWorkspace` helper waits for the
+    // issue list's first row, which is independent of the catalog
+    // query, so the chip can be absent for a beat here. Wait for it
+    // explicitly before clicking so a slow catalog fetch doesn't
+    // race the click and surface as "element not found".
     const openChip = await $('[data-testid="sidebar-filter-status-open"]')
+    await openChip.waitForDisplayed({ timeout: 10_000 })
     await openChip.click()
 
     // Wait for the chip × to appear in the issue list header.
