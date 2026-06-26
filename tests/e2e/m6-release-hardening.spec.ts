@@ -92,14 +92,14 @@ async function waitForAppMetadata(timeoutMs: number): Promise<AppMetadata> {
     async () =>
       browser.execute(
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        () => (globalThis as any).__collierAppMetadata__ !== undefined,
+        () => (globalThis as any).__collierAppMetadata__ !== undefined
       ),
     {
       timeout: timeoutMs,
       interval: 250,
       timeoutMsg:
         '__collierAppMetadata__ never populated (getAppMetadata never resolved)',
-    },
+    }
   )
   if (ready !== true) {
     throw new Error('waitUntil returned non-true without timing out')
@@ -107,7 +107,7 @@ async function waitForAppMetadata(timeoutMs: number): Promise<AppMetadata> {
   const metadata = await readAppMetadata()
   if (metadata === null) {
     throw new Error(
-      '__collierAppMetadata__ set but null — getAppMetadata returned an error',
+      '__collierAppMetadata__ set but null — getAppMetadata returned an error'
     )
   }
   return metadata
@@ -133,11 +133,7 @@ function readTauriConfig(): {
   }
   createUpdaterArtifacts: boolean
 } {
-  const configPath = path.resolve(
-    process.cwd(),
-    'src-tauri',
-    'tauri.conf.json',
-  )
+  const configPath = path.resolve(process.cwd(), 'src-tauri', 'tauri.conf.json')
   // Strip JSON-with-comments before JSON.parse (tauri.conf.json
   // carries `//` comments for human-readable section headers).
   const raw = readFileSync(configPath, 'utf8')
@@ -172,7 +168,7 @@ function readTauriConfig(): {
 /** Read the semver `version` field out of `package.json`. */
 function readPackageVersion(): string {
   const pkg = JSON.parse(
-    readFileSync(path.resolve(process.cwd(), 'package.json'), 'utf8'),
+    readFileSync(path.resolve(process.cwd(), 'package.json'), 'utf8')
   ) as { version: string }
   return pkg.version
 }
@@ -245,7 +241,7 @@ describe('Collier M6 release hardening', () => {
     expect(metadata.updaterEndpoint).not.toBeNull()
     expect(metadata.updaterEndpoint).toBe(tauriConfig.updater.endpoints[0])
     expect(metadata.updaterEndpoint).toMatch(
-      /^https:\/\/github\.com\/gardenbaum\/Collier\/releases\/latest\/download\/latest\.json$/,
+      /^https:\/\/github\.com\/gardenbaum\/Collier\/releases\/latest\/download\/latest\.json$/
     )
   })
 
