@@ -15,7 +15,12 @@ env:
   RUST_BACKTRACE: 1
 
 jobs:
-  checks:
+  # Static quality gate. Equivalent to running `bun run check:all`
+  # locally — typecheck, lint, ast-grep, format check, rustfmt,
+  # clippy -D warnings, vitest, cargo test. A tagged release that
+  # violates any of these is rejected before we burn the
+  # cross-platform build matrix on it.
+  check-all:
     name: check:all (bun + rust)
     runs-on: ubuntu-latest
     steps:
@@ -55,8 +60,23 @@ jobs:
       - name: Run check:all
         run: bun run check:all
 
+  # Behavioural gate. The xvfb + tauri-driver + WebdriverIO harness
+  # lives in `.github/workflows/e2e.yml` so ci.yml and release.yml
+  # share the exact same setup — when a fixture seeder or the
+  # WebKit env-var set changes, only one file moves. A tagged
+  # release that breaks the smoke contract is rejected before any
+  # platform-specific build runs.
+  e2e:
+    name: e2e (xvfb + tauri-driver)
+    uses: ./.github/workflows/e2e.yml
+
   publish-tauri:
-    needs: checks
+    # Both gates must succeed before any platform build starts.
+    # A failing check:all or a failing e2e halts the matrix
+    # (fail-fast: false on the matrix itself is intentional — we
+    # still want to see all three platform failures in one CI
+    # log even if one fails first).
+    needs: [check-all, e2e]
     permissions:
       contents: write
     strategy:
@@ -94,6 +114,40 @@ jobs:
       - name: Install frontend dependencies
         run: bun install --frozen-lockfile
 
+      # Tauri signing-key plumbing:
+      #
+      #   `secrets.TAURI_PRIVATE_KEY`           (GH secret, repo setting)
+      #       │
+      #       └── mapped to `env.TAURI_SIGNING_PRIVATE_KEY`
+      #           (env name `tauri-action` consumes)
+      #
+      # `tauri-action` reads `TAURI_SIGNING_PRIVATE_KEY` /
+      # `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` directly from the
+      # process env, NOT from the `with:` block — the `env:` map
+      # below is the binding surface. The pubkey fingerprint baked
+      # into `tauri.conf.json::plugins.updater.pubkey` MUST be the
+      # matching public half of the secret in `TAURI_PRIVATE_KEY`,
+      # or every existing user gets an "Invalid signature" error
+      # on the next update check. Document the key pair generation
+      # in `docs/developer/releases.md` so the rotation story
+      # isn't tribal knowledge.
+      #
+      # Required GitHub repository secrets (Settings → Secrets and
+      # variables → Actions):
+      #
+      #   - TAURI_PRIVATE_KEY
+      #         Contents of the `~/.tauri/<key>.key` file generated
+      #         by `tauri signer generate`. NEVER commit this.
+      #         Rotate by re-generating + re-publishing the public
+      #         half into tauri.conf.json (so existing users get
+      #         the new pubkey with the next release).
+      #
+      #   - TAURI_SIGNING_PRIVATE_KEY_PASSWORD
+      #         Password used when the key was generated. Empty
+      #         string if no password was set.
+      #
+      # `GITHUB_TOKEN` is provisioned automatically by GitHub
+      # Actions for every workflow run; no setup required.
       - name: Build and release
         uses: tauri-apps/tauri-action@v0
         env:
