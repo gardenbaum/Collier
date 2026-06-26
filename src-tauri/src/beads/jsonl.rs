@@ -127,6 +127,7 @@ pub async fn read_issues_jsonl(cwd: String) -> Result<JsonlResult, BdError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::beads::{IssuePriority, IssueType, ISSUE_STATUS_OPEN};
     use chrono::{DateTime, Utc};
     use tempfile::TempDir;
 
@@ -134,7 +135,7 @@ mod tests {
         Issue {
             id: id.to_string(),
             title: format!("Issue {id}"),
-            status: IssueStatus::Open,
+            status: ISSUE_STATUS_OPEN.to_string(),
             priority: IssuePriority::P2,
             issue_type: IssueType::Bug,
             created_at: DateTime::parse_from_rfc3339(created_at)

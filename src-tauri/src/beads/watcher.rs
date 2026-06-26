@@ -202,11 +202,11 @@ impl Default for WatcherSnapshot {
 /// `Issue` body is meaningless — we never compare it against
 /// anything.
 fn empty_seed_issue() -> Issue {
-    use crate::beads::{IssuePriority, IssueStatus, IssueType};
+    use crate::beads::{IssuePriority, IssueType, ISSUE_STATUS_OPEN};
     Issue {
         id: "__seeded__".to_string(),
         title: String::new(),
-        status: IssueStatus::Open,
+        status: ISSUE_STATUS_OPEN.to_string(),
         priority: IssuePriority::P4,
         issue_type: IssueType::Task,
         created_at: chrono::DateTime::<chrono::Utc>::from_timestamp(0, 0)
@@ -749,7 +749,9 @@ fn _ensure_module_linked(_p: &Path) {}
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::beads::{Issue, IssuePriority, IssueStatus, IssueType};
+    use crate::beads::{
+        Issue, IssuePriority, IssueStatus, IssueType, ISSUE_STATUS_CLOSED, ISSUE_STATUS_OPEN,
+    };
     use chrono::{DateTime, Utc};
     use std::fs;
     use std::sync::mpsc;
@@ -824,8 +826,8 @@ mod tests {
     fn diff_first_call_seeds_baseline_without_emitting_changes() {
         let baseline = WatcherSnapshot::new();
         let issues = vec![
-            make_issue("beads-1", "First", IssueStatus::Open),
-            make_issue("beads-2", "Second", IssueStatus::Closed),
+            make_issue("beads-1", "First", ISSUE_STATUS_OPEN.to_string()),
+            make_issue("beads-2", "Second", ISSUE_STATUS_CLOSED.to_string()),
         ];
         let changes = diff_snapshot(&baseline, &issues);
         assert!(
@@ -839,7 +841,7 @@ mod tests {
     #[test]
     fn diff_second_call_with_no_changes_is_idempotent() {
         let baseline = WatcherSnapshot::new();
-        let issues = vec![make_issue("beads-1", "Same", IssueStatus::Open)];
+        let issues = vec![make_issue("beads-1", "Same", ISSUE_STATUS_OPEN.to_string())];
         let _ = diff_snapshot(&baseline, &issues);
         let changes = diff_snapshot(&baseline, &issues);
         assert!(
@@ -853,13 +855,17 @@ mod tests {
         let baseline = WatcherSnapshot::new();
         let _ = diff_snapshot(
             &baseline,
-            &[make_issue("beads-1", "Existing", IssueStatus::Open)],
+            &[make_issue(
+                "beads-1",
+                "Existing",
+                ISSUE_STATUS_OPEN.to_string(),
+            )],
         );
         let changes = diff_snapshot(
             &baseline,
             &[
-                make_issue("beads-1", "Existing", IssueStatus::Open),
-                make_issue("beads-2", "Brand new", IssueStatus::Open),
+                make_issue("beads-1", "Existing", ISSUE_STATUS_OPEN.to_string()),
+                make_issue("beads-2", "Brand new", ISSUE_STATUS_OPEN.to_string()),
             ],
         );
         assert_eq!(changes.len(), 1, "exactly one Created expected");
@@ -874,17 +880,25 @@ mod tests {
         let baseline = WatcherSnapshot::new();
         let _ = diff_snapshot(
             &baseline,
-            &[make_issue("beads-1", "Flip me", IssueStatus::Open)],
+            &[make_issue(
+                "beads-1",
+                "Flip me",
+                ISSUE_STATUS_OPEN.to_string(),
+            )],
         );
         let changes = diff_snapshot(
             &baseline,
-            &[make_issue("beads-1", "Flip me", IssueStatus::Closed)],
+            &[make_issue(
+                "beads-1",
+                "Flip me",
+                ISSUE_STATUS_CLOSED.to_string(),
+            )],
         );
         assert_eq!(changes.len(), 1, "exactly one Updated expected");
         match &changes[0] {
             IssueChange::Updated(issue) => {
                 assert_eq!(issue.id, "beads-1");
-                assert_eq!(issue.status, IssueStatus::Closed);
+                assert_eq!(issue.status, ISSUE_STATUS_CLOSED.to_string());
             }
             other => panic!("expected Updated, got {other:?}"),
         }
@@ -897,11 +911,19 @@ mod tests {
         let baseline = WatcherSnapshot::new();
         let _ = diff_snapshot(
             &baseline,
-            &[make_issue("beads-1", "old title", IssueStatus::Open)],
+            &[make_issue(
+                "beads-1",
+                "old title",
+                ISSUE_STATUS_OPEN.to_string(),
+            )],
         );
         let changes = diff_snapshot(
             &baseline,
-            &[make_issue("beads-1", "new title", IssueStatus::Open)],
+            &[make_issue(
+                "beads-1",
+                "new title",
+                ISSUE_STATUS_OPEN.to_string(),
+            )],
         );
         assert_eq!(changes.len(), 1);
         match &changes[0] {
@@ -916,13 +938,13 @@ mod tests {
         let _ = diff_snapshot(
             &baseline,
             &[
-                make_issue("beads-1", "Keep", IssueStatus::Open),
-                make_issue("beads-2", "Delete me", IssueStatus::Open),
+                make_issue("beads-1", "Keep", ISSUE_STATUS_OPEN.to_string()),
+                make_issue("beads-2", "Delete me", ISSUE_STATUS_OPEN.to_string()),
             ],
         );
         let changes = diff_snapshot(
             &baseline,
-            &[make_issue("beads-1", "Keep", IssueStatus::Open)],
+            &[make_issue("beads-1", "Keep", ISSUE_STATUS_OPEN.to_string())],
         );
         assert_eq!(changes.len(), 1, "exactly one Deleted expected");
         match &changes[0] {
@@ -938,17 +960,17 @@ mod tests {
         let _ = diff_snapshot(
             &baseline,
             &[
-                make_issue("beads-1", "Stays the same", IssueStatus::Open),
-                make_issue("beads-2", "Will change", IssueStatus::Open),
-                make_issue("beads-3", "Will be deleted", IssueStatus::Open),
+                make_issue("beads-1", "Stays the same", ISSUE_STATUS_OPEN.to_string()),
+                make_issue("beads-2", "Will change", ISSUE_STATUS_OPEN.to_string()),
+                make_issue("beads-3", "Will be deleted", ISSUE_STATUS_OPEN.to_string()),
             ],
         );
         let changes = diff_snapshot(
             &baseline,
             &[
-                make_issue("beads-1", "Stays the same", IssueStatus::Open),
-                make_issue("beads-2", "Did change", IssueStatus::Closed),
-                make_issue("beads-4", "Brand new", IssueStatus::Open),
+                make_issue("beads-1", "Stays the same", ISSUE_STATUS_OPEN.to_string()),
+                make_issue("beads-2", "Did change", ISSUE_STATUS_CLOSED.to_string()),
+                make_issue("beads-4", "Brand new", ISSUE_STATUS_OPEN.to_string()),
             ],
         );
         assert_eq!(
@@ -982,21 +1004,21 @@ mod tests {
         let baseline = WatcherSnapshot::new();
         let _ = diff_snapshot(
             &baseline,
-            &[make_issue("beads-1", "old", IssueStatus::Open)],
+            &[make_issue("beads-1", "old", ISSUE_STATUS_OPEN.to_string())],
         );
         let first_changes = diff_snapshot(
             &baseline,
             &[
-                make_issue("beads-1", "old", IssueStatus::Open),
-                make_issue("beads-2", "new", IssueStatus::Open),
+                make_issue("beads-1", "old", ISSUE_STATUS_OPEN.to_string()),
+                make_issue("beads-2", "new", ISSUE_STATUS_OPEN.to_string()),
             ],
         );
         assert_eq!(first_changes.len(), 1);
         let second_changes = diff_snapshot(
             &baseline,
             &[
-                make_issue("beads-1", "old", IssueStatus::Open),
-                make_issue("beads-2", "new", IssueStatus::Open),
+                make_issue("beads-1", "old", ISSUE_STATUS_OPEN.to_string()),
+                make_issue("beads-2", "new", ISSUE_STATUS_OPEN.to_string()),
             ],
         );
         assert!(

@@ -100,12 +100,35 @@ interface SortState {
 // assignees sink to the bottom of `asc` so unassigned issues never
 // crowd out assigned ones when the user is looking for "what's
 // mine".
-const statusRank: Record<Issue['status'], number> = {
-  open: 0,
-  in_progress: 1,
-  blocked: 2,
-  deferred: 3,
-  closed: 4,
+/**
+ * Rank the canonical v1 statuses in lifecycle order so the list
+ * sorts the way the user thinks about progress
+ * (`open` → `in_progress` → `blocked` → `deferred` → `closed`).
+ *
+ * Custom statuses (anything bd surfaces that's not in this list —
+ * see `docs/CONSTITUTION.md §3`) sink to the bottom of `asc` with
+ * a stable +Infinity rank; the alphabetical tiebreaker on `id` then
+ * groups them deterministically. We deliberately do not invent a
+ * rank per custom status — a workspace that re-orders its custom
+ * statuses via `bd config set` would otherwise see different list
+ * orders in different sessions, which is exactly the drift the M6
+ * contract was written to prevent.
+ */
+function statusRank(status: string): number {
+  switch (status) {
+    case 'open':
+      return 0
+    case 'in_progress':
+      return 1
+    case 'blocked':
+      return 2
+    case 'deferred':
+      return 3
+    case 'closed':
+      return 4
+    default:
+      return Number.POSITIVE_INFINITY
+  }
 }
 
 // ponytail: `IssuePriority` is `#[repr(u8)] Serialize_repr` on the Rust
@@ -144,7 +167,7 @@ function compareIssues(a: Issue, b: Issue, sort: SortState): number {
     case 'id':
       return a.id.localeCompare(b.id) * sign
     case 'status':
-      return (statusRank[a.status] - statusRank[b.status]) * sign
+      return (statusRank(a.status) - statusRank(b.status)) * sign
     case 'priority': {
       const pa = priorityRank[Number(a.priority)] ?? Number.MAX_SAFE_INTEGER
       const pb = priorityRank[Number(b.priority)] ?? Number.MAX_SAFE_INTEGER
@@ -813,9 +836,9 @@ function IssueRow({
         style={titleCellStyle}
       >
         <span style={titleTextStyle}>{issue.title}</span>
-        {issue.labels.length > 0 ? (
+        {(issue.labels ?? []).length > 0 ? (
           <span style={labelsStyle}>
-            {issue.labels.map(l => (
+            {(issue.labels ?? []).map(l => (
               <LabelChip key={l.name} label={l.name} />
             ))}
           </span>

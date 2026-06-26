@@ -122,6 +122,7 @@ impl ListFilters {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::beads::{ISSUE_STATUS_IN_PROGRESS, ISSUE_STATUS_OPEN};
 
     #[test]
     fn test_to_args_with_empty_filters_returns_no_filter_args() {
@@ -135,7 +136,10 @@ mod tests {
     #[test]
     fn test_to_args_with_status_and_priority() {
         let filters = ListFilters {
-            status: Some(vec![IssueStatus::Open, IssueStatus::InProgress]),
+            status: Some(vec![
+                ISSUE_STATUS_OPEN.to_string(),
+                ISSUE_STATUS_IN_PROGRESS.to_string(),
+            ]),
             priority: Some(vec![IssuePriority::P0, IssuePriority::P2]),
             ..Default::default()
         };
@@ -208,7 +212,7 @@ mod tests {
     #[test]
     fn test_to_args_combined_all_dimensions() {
         let filters = ListFilters {
-            status: Some(vec![IssueStatus::Open]),
+            status: Some(vec![ISSUE_STATUS_OPEN.to_string()]),
             priority: Some(vec![IssuePriority::P1]),
             issue_type: Some(vec![IssueType::Task]),
             labels: Some(vec!["x".to_string()]),
@@ -558,6 +562,7 @@ impl UpdateInput {
 #[cfg(test)]
 mod update_input_tests {
     use super::*;
+    use crate::beads::{ISSUE_STATUS_BLOCKED, ISSUE_STATUS_IN_PROGRESS};
 
     /// `UpdateInput::default()` produces no CLI args at all. The caller
     /// still appends the positional `<id>` and `--json` — but the
@@ -594,7 +599,7 @@ mod update_input_tests {
     fn test_to_args_with_priority_and_status() {
         let input = UpdateInput {
             priority: Some(IssuePriority::P1),
-            status: Some(IssueStatus::InProgress),
+            status: Some(ISSUE_STATUS_IN_PROGRESS.to_string()),
             ..Default::default()
         };
         let args = input.to_args();
@@ -627,7 +632,7 @@ mod update_input_tests {
             description: Some("New body".to_string()),
             issue_type: Some(IssueType::Feature),
             priority: Some(IssuePriority::P2),
-            status: Some(IssueStatus::Blocked),
+            status: Some(ISSUE_STATUS_BLOCKED.to_string()),
             assignee: Some("bob".to_string()),
             external_ref: Some("JIRA-7".to_string()),
         };

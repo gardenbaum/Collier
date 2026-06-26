@@ -9,14 +9,47 @@ use std::fmt;
 // Issue Status & Priority & Type
 // ============================================================================
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type)]
-#[serde(rename_all = "snake_case")]
-pub enum IssueStatus {
-    Open,
-    InProgress,
-    Blocked,
-    Closed,
-    Deferred,
+/// Status of an issue.
+///
+/// Beads (v1.0.4+) ships five built-in statuses — `open`,
+/// `in_progress`, `blocked`, `deferred`, `closed` — plus two
+/// v1.0.5 additions (`pinned`, `hooked`) — and allows users to
+/// register additional *custom* statuses via
+/// `bd config set status.custom "name:category,..."` (see
+/// `docs/CONSTITUTION.md §3`). Because the CLI doesn't constrain
+/// the on-disk `status` column to a closed set, we model the Rust
+/// type as a plain `String` and accept any value bd emits. The
+/// `ISSUE_STATUS_*` constants below are the *built-in*
+/// convenience names; code that needs to recognise them should
+/// compare against these constants (or against the canonical
+/// names surfaced by the `bd_statuses` command).
+///
+/// The TS side mirrors this — `bindings.ts` advertises
+/// `IssueStatus` as a bare `string` so any custom value the CLI
+/// surfaces flows through unchanged.
+pub type IssueStatus = String;
+
+/// Canonical string for the v1 lifecycle's `open` status.
+pub const ISSUE_STATUS_OPEN: &str = "open";
+/// Canonical string for the v1 lifecycle's `in_progress` status.
+#[allow(dead_code)] // exposed for downstream callers; not yet consumed in lib code
+pub const ISSUE_STATUS_IN_PROGRESS: &str = "in_progress";
+/// Canonical string for the v1 lifecycle's `blocked` status.
+pub const ISSUE_STATUS_BLOCKED: &str = "blocked";
+/// Canonical string for the v1 lifecycle's `deferred` status.
+#[allow(dead_code)] // exposed for downstream callers; not yet consumed in lib code
+pub const ISSUE_STATUS_DEFERRED: &str = "deferred";
+/// Canonical string for the v1 lifecycle's `closed` status.
+pub const ISSUE_STATUS_CLOSED: &str = "closed";
+
+/// Returns true when `status` is the canonical `closed` value
+/// (the only "done" category in the v1 lifecycle). Custom
+/// statuses are *not* treated as closed unless the workspace's
+/// catalog explicitly defines one as such — callers that need
+/// that nuance should query the `bd_statuses` catalog and key
+/// off `category == "done"`.
+pub fn issue_status_is_closed(status: &str) -> bool {
+    status == ISSUE_STATUS_CLOSED
 }
 
 // ponytail: `IssuePriority` serialises as a bare integer 0..4 (via
@@ -613,13 +646,22 @@ mod tests {
 
     #[test]
     fn issue_status_exhaustive_match() {
-        match IssueStatus::Open {
-            IssueStatus::Open
-            | IssueStatus::InProgress
-            | IssueStatus::Blocked
-            | IssueStatus::Closed
-            | IssueStatus::Deferred => {}
+        // IssueStatus is now a String alias (custom statuses are
+        // first-class), so the "exhaustive match" assertion reduces
+        // to "the canonical names are distinct". Future builds
+        // can add new canonical constants here as bd evolves.
+        const BUILTINS: &[&str] = &[
+            ISSUE_STATUS_OPEN,
+            ISSUE_STATUS_IN_PROGRESS,
+            ISSUE_STATUS_BLOCKED,
+            ISSUE_STATUS_CLOSED,
+            ISSUE_STATUS_DEFERRED,
+        ];
+        let mut seen = std::collections::HashSet::new();
+        for s in BUILTINS {
+            assert!(seen.insert(*s), "duplicate canonical name: {s}");
         }
+        assert_eq!(seen.len(), 5);
     }
 
     #[test]
@@ -684,18 +726,39 @@ mod tests {
 
     #[test]
     fn test_issue_status_serde_roundtrip() {
+        // The canonical v1 names round-trip through serde as bare
+        // strings. Custom statuses go through the same path —
+        // serialise the string, deserialise it back, get the same
+        // string. The test pins the canonical names so a typo
+        // here (e.g. "in-progress" vs "in_progress") surfaces
+        // before the bridge export does.
         let statuses = [
-            IssueStatus::Open,
-            IssueStatus::InProgress,
-            IssueStatus::Blocked,
-            IssueStatus::Closed,
-            IssueStatus::Deferred,
+            ISSUE_STATUS_OPEN,
+            ISSUE_STATUS_IN_PROGRESS,
+            ISSUE_STATUS_BLOCKED,
+            ISSUE_STATUS_CLOSED,
+            ISSUE_STATUS_DEFERRED,
         ];
         for status in statuses {
-            let json = serde_json::to_string(&status).unwrap();
+            let json = serde_json::to_string(status).unwrap();
+            assert_eq!(json, format!("\"{status}\""));
             let back: IssueStatus = serde_json::from_str(&json).unwrap();
-            assert_eq!(status, back);
+            assert_eq!(back, status);
         }
+    }
+
+    /// Custom statuses (anything bd accepts that's not in the
+    /// built-in set) round-trip through serde as a bare string —
+    /// no struct wrapper, no enum-tag wrapper. This is the
+    /// contract the frontend relies on to render unknown values
+    /// straight from `bd list --json`.
+    #[test]
+    fn test_issue_status_custom_roundtrip() {
+        let custom = "review";
+        let json = serde_json::to_string(custom).unwrap();
+        assert_eq!(json, "\"review\"");
+        let back: IssueStatus = serde_json::from_str(&json).unwrap();
+        assert_eq!(back, custom);
     }
 
     #[test]
@@ -851,7 +914,7 @@ mod tests {
         let issue = Issue {
             id: "beads-abc".to_string(),
             title: "Fix the thing".to_string(),
-            status: IssueStatus::Open,
+            status: ISSUE_STATUS_OPEN.to_string(),
             priority: IssuePriority::P2,
             issue_type: IssueType::Bug,
             created_at: DateTime::parse_from_rfc3339("2026-04-20T12:00:00Z")

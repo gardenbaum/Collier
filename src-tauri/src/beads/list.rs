@@ -47,7 +47,9 @@ pub async fn bd_list(cwd: String, filters: ListFilters) -> BdResult<Vec<Issue>> 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::beads::{IssuePriority, IssueStatus, IssueType};
+    use crate::beads::{
+        IssuePriority, IssueType, ISSUE_STATUS_CLOSED, ISSUE_STATUS_IN_PROGRESS, ISSUE_STATUS_OPEN,
+    };
 
     /// The contract: empty `ListFilters` -> no extra CLI args between
     /// `list` and `--json`. Guards against accidental `--search ""` or
@@ -63,7 +65,10 @@ mod tests {
     #[test]
     fn test_to_args_with_status_and_priority() {
         let filters = ListFilters {
-            status: Some(vec![IssueStatus::Open, IssueStatus::Closed]),
+            status: Some(vec![
+                ISSUE_STATUS_OPEN.to_string(),
+                ISSUE_STATUS_CLOSED.to_string(),
+            ]),
             priority: Some(vec![IssuePriority::P0, IssuePriority::P2]),
             ..Default::default()
         };
@@ -128,7 +133,7 @@ mod tests {
         let issues = search_query::extract_data(envelope).expect("should parse");
         assert_eq!(issues.len(), 1);
         assert_eq!(issues[0].id, "beads-list-1");
-        assert_eq!(issues[0].status, IssueStatus::InProgress);
+        assert_eq!(issues[0].status, ISSUE_STATUS_IN_PROGRESS.to_string());
         assert_eq!(issues[0].priority, IssuePriority::P1);
         assert_eq!(issues[0].issue_type, IssueType::Task);
     }

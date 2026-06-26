@@ -6,7 +6,7 @@
 
 use serde_json::Value;
 
-use crate::beads::{runner, BdError, BdResult, Issue, IssueStatus};
+use crate::beads::{runner, BdError, BdResult, Issue, ISSUE_STATUS_BLOCKED};
 
 /// Extract the `data` field from a JSON envelope, mapping any parse errors
 /// to `BdError::ParseError`.
@@ -68,7 +68,7 @@ pub async fn bd_blocked(cwd: String) -> BdResult<Vec<Issue>> {
     let issues: Vec<Issue> = extract_data(value)?;
     Ok(issues
         .into_iter()
-        .filter(|i| i.status == IssueStatus::Blocked || i.dependency_count > 0)
+        .filter(|i| i.status == ISSUE_STATUS_BLOCKED || i.dependency_count > 0)
         .collect())
 }
 
@@ -231,7 +231,7 @@ mod tests {
         let issues = extract_data(envelope).expect("should parse");
         let kept: Vec<&Issue> = issues
             .iter()
-            .filter(|i| i.status == IssueStatus::Blocked || i.dependency_count > 0)
+            .filter(|i| i.status == ISSUE_STATUS_BLOCKED || i.dependency_count > 0)
             .collect();
         let ids: Vec<&str> = kept.iter().map(|i| i.id.as_str()).collect();
         assert_eq!(

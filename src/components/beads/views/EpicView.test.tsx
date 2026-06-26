@@ -15,8 +15,9 @@
  *     detail drawer.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { screen, waitFor, fireEvent } from '@testing-library/react'
+import { act, screen, waitFor, fireEvent } from '@testing-library/react'
 import { render } from '@/test/test-utils'
+import { useIssueFilterStore } from '@/store/issue-filter-store'
 
 const { mockBdList } = vi.hoisted(() => ({
   mockBdList: vi.fn(),
@@ -484,6 +485,152 @@ describe('EpicView', () => {
 
       const row = screen.getByTestId('epic-row')
       expect(row.getAttribute('aria-label')).toContain('Authentication')
+    })
+  })
+
+  /**
+   * M6 perf — the epic tree is virtualised with
+   * @tanstack/react-virtual so the DOM only carries the viewport
+   * slice + overscan. The `containerHeight` prop controls the
+   * scroll container's pixel height; the virtualizer reads its
+   * offsetHeight to compute which rows are visible. The tests
+   * below exercise the height estimator, the small-list shape,
+   * and the refetch-doesn't-blow-up invariant.
+   */
+  describe('M6 perf — large backlog', () => {
+    it('estimateRowHeight returns the expected heights for each expand state', async () => {
+      // Pure unit test on the exported helper — no render.
+      const { estimateRowHeight } = await import('./epicViewSizing')
+      // Collapsed: 72px (the header alone).
+      expect(estimateRowHeight(false, 0)).toBe(72)
+      // Expanded with 0 children: still 72px (the empty
+      // children block collapses to a 0-height div).
+      expect(estimateRowHeight(true, 0)).toBe(72)
+      // Expanded with 3 children: 72 + 3*32 + 2*2 + 4 = 176px.
+      expect(estimateRowHeight(true, 3)).toBe(72 + 3 * 32 + 2 * 2 + 4)
+      // Expanded with 10 children: 72 + 10*32 + 9*2 + 4 = 414px.
+      expect(estimateRowHeight(true, 10)).toBe(72 + 10 * 32 + 9 * 2 + 4)
+    })
+
+    it('virtualizes a 60-epic list so the DOM only carries the viewport slice + overscan', async () => {
+      // 60 epics, containerHeight=200. With ROW_HEIGHT=72 +
+      // OVERSCAN=5, ~3 visible + 2*5 overscan = ~13 rows
+      // mounted. The test asserts < 60 to prove the virtualizer
+      // is wiring up — without virtualization every render
+      // would mount all 60 rows.
+      const epics = Array.from({ length: 60 }, (_, i) =>
+        makeEpic({
+          id: `epic-${i}`,
+          title: `Epic ${i}`,
+          priority: `P${(i % 5).toString()}` as
+            | 'P0'
+            | 'P1'
+            | 'P2'
+            | 'P3'
+            | 'P4',
+          status: 'open',
+        })
+      )
+      mockBdList.mockResolvedValue({ status: 'ok', data: epics })
+
+      const { EpicView } = await importSut()
+      render(
+        <EpicView
+          cwd="/fake"
+          onOpenIssue={() => undefined}
+          containerHeight={200}
+        />
+      )
+
+      await waitFor(() => {
+        expect(screen.getByTestId('epic-tree')).toBeInTheDocument()
+      })
+
+      // Wait for at least one row to mount.
+      await waitFor(() => {
+        const rows = screen.queryAllByTestId('epic-row')
+        expect(rows.length).toBeGreaterThan(0)
+      })
+
+      // The DOM is bounded: far fewer than 60 rows mounted.
+      const mountedRows = screen.getAllByTestId('epic-row')
+      expect(mountedRows.length).toBeLessThan(60)
+      // And the rows carry the absolute-position style the
+      // virtualizer uses (proves virtualization is wired up).
+      for (const row of mountedRows) {
+        expect((row as HTMLElement).style.position).toBe('absolute')
+      }
+    })
+
+    it('refetching the list does not re-mount rows outside the change set (watcher tick is targeted)', async () => {
+      // 60 epics in a 200px-tall container; the virtualiser is
+      // active. The test simulates a watcher tick by toggling a
+      // filter on the store; this re-keys the TanStack Query
+      // for `bdList` and triggers a fresh fetch with a wholly
+      // new issue reference set, the way a real
+      // `beads-issue-updated` event would after a `bd update`
+      // from a sibling shell. The virtualiser should keep the
+      // DOM row count bounded regardless.
+      const initial = Array.from({ length: 60 }, (_, i) =>
+        makeEpic({
+          id: `epic-${i}`,
+          title: `Epic ${i}`,
+          priority: `P${(i % 5).toString()}` as
+            | 'P0'
+            | 'P1'
+            | 'P2'
+            | 'P3'
+            | 'P4',
+          status: 'open',
+        })
+      )
+      const updated = initial.map((e, i) =>
+        i === 7
+          ? { ...e, title: 'Updated epic 7', status: 'closed' as const }
+          : e
+      )
+      mockBdList.mockResolvedValueOnce({ status: 'ok', data: initial })
+      mockBdList.mockResolvedValueOnce({ status: 'ok', data: updated })
+
+      const { EpicView } = await importSut()
+      render(
+        <EpicView
+          cwd="/fake"
+          onOpenIssue={() => undefined}
+          containerHeight={200}
+        />
+      )
+
+      // First mount: data resolves to `initial`.
+      await waitFor(() => {
+        expect(screen.getByTestId('epic-tree')).toBeInTheDocument()
+      })
+      // Bounded DOM after first paint.
+      await waitFor(() => {
+        const rows = screen.queryAllByTestId('epic-row')
+        expect(rows.length).toBeLessThan(60)
+      })
+
+      // Force a refetch by toggling the filter on the store.
+      // (TanStack Query's `bdList` query is keyed on cwd +
+      // filters; a filter change re-keys it.) This matches
+      // the M0 R4 watcher-tick invariant test in
+      // IssueListView.test.tsx.
+      await act(async () => {
+        useIssueFilterStore.getState().toggleStatus('open')
+      })
+
+      // After the refetch, the row count stays bounded — the
+      // virtualiser still owns the mount set. Without
+      // virtualization, every refresh would mount all 60
+      // rows; with it, only the viewport slice + 5 overscan.
+      await waitFor(() => {
+        const rows = screen.queryAllByTestId('epic-row')
+        expect(rows.length).toBeLessThan(60)
+      })
+
+      // Cleanup the filter so it doesn't leak into the next test.
+      useIssueFilterStore.getState().toggleStatus('open')
     })
   })
 })

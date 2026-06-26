@@ -75,7 +75,7 @@ pub async fn bd_graph(cwd: String) -> BdResult<Graph> {
         .map(|issue| GraphNode {
             id: issue.id.clone(),
             title: issue.title.clone(),
-            status: issue.status,
+            status: issue.status.clone(),
             priority: issue.priority,
             issue_type: issue.issue_type,
         })
@@ -123,7 +123,7 @@ mod tests {
         let node = GraphNode {
             id: "n1".to_string(),
             title: "T".to_string(),
-            status: crate::beads::IssueStatus::Open,
+            status: crate::beads::ISSUE_STATUS_OPEN.to_string(),
             priority: crate::beads::IssuePriority::P1,
             issue_type: crate::beads::IssueType::Task,
         };

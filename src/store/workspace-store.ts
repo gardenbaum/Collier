@@ -34,6 +34,7 @@ export type WorkspaceView =
   | 'search'
   | 'epic'
   | 'graph'
+  | 'gates'
   | 'swarm'
   | 'sync'
   | 'worktree'
@@ -47,6 +48,7 @@ export const WORKSPACE_VIEWS: readonly WorkspaceView[] = [
   'search',
   'epic',
   'graph',
+  'gates',
   'swarm',
   'sync',
   'worktree',

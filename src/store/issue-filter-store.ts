@@ -16,10 +16,10 @@
  */
 import { create } from 'zustand'
 import { devtools, persist } from 'zustand/middleware'
-import type { IssuePriority, IssueStatus, IssueType } from '@/lib/bindings'
+import type { IssuePriority, IssueType } from '@/lib/bindings'
 
 export interface IssueFilter {
-  status: IssueStatus[]
+  status: string[]
   priority: IssuePriority[]
   type: IssueType[]
   labels: string[]
@@ -39,7 +39,7 @@ interface IssueFilterState extends IssueFilter {
    */
   _persistedByRepo: Record<string, IssueFilter>
 
-  toggleStatus: (s: IssueStatus) => void
+  toggleStatus: (s: string) => void
   togglePriority: (p: IssuePriority) => void
   toggleType: (t: IssueType) => void
   toggleLabel: (l: string) => void
