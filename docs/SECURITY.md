@@ -56,6 +56,39 @@ std::fs::write(user_input, data)
 - Use `.env.local` (gitignored) for local secrets
 - Use GitHub Secrets for CI/CD
 
+### Release Signing Keys
+
+Collier's auto-updater signs release artifacts with an
+Ed25519 key pair. The split between what lives in GitHub
+Secrets and what lives in the public repo:
+
+| Component                                     | Location                                              | Public? |
+| --------------------------------------------- | ----------------------------------------------------- | ------- |
+| `TAURI_PRIVATE_KEY`                           | GitHub repo Settings → Secrets and variables → Actions | No      |
+| `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`          | Same                                                  | No      |
+| `plugins.updater.pubkey` (in `tauri.conf.json`) | Source-tree, committed                                | Yes     |
+| `plugins.updater.endpoints`                   | Source-tree, committed                                | Yes     |
+
+The two halves MUST match: every existing user has the old
+pubkey cached locally, so a release signed with a new private
+key is rejected with "Invalid signature" unless the same
+release also ships the new pubkey in the bundled
+`tauri.conf.json`. See `docs/developer/releases.md` →
+"Initial Setup" for the rotation procedure.
+
+The release workflow (`.github/workflows/release.yml`) maps
+the two secrets to the env-var names `tauri-action` reads
+(`TAURI_SIGNING_PRIVATE_KEY` and
+`TAURI_SIGNING_PRIVATE_KEY_PASSWORD`). The mapping is
+documented inline next to the `Build and release` step.
+
+The bundled config is exposed to the renderer via
+`commands.getAppMetadata()` for diagnostics; the pubkey is
+returned as a SHA-256 fingerprint (first 16 hex chars), never
+the raw base64 — so the E2E suite can detect "no pubkey
+configured" without ever leaking the signing material into a
+test log.
+
 ### Dependency Audits
 
 ```bash
