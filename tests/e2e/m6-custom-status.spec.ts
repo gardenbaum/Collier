@@ -101,6 +101,32 @@ function runBd(args: string[]): void {
   }
 }
 
+/** Variant of `runBd` that returns the captured stdout as a
+ * trimmed string. Used by the create-then-update flow below to
+ * pick up the just-created issue's id from `bd create
+ * --quiet`'s stdout (which prints just the id on success). */
+function runBdCapture(args: string[]): string {
+  try {
+    const out = execFileSync('bd', args, {
+      cwd: fixtureDir,
+      stdio: 'pipe',
+      env: { ...process.env, BEADS_DIR: path.join(fixtureDir, '.beads') },
+    })
+    return out.toString().trim()
+  } catch (err) {
+    const e = err as {
+      stdout?: Buffer
+      stderr?: Buffer
+      status?: number | null
+    }
+    const stdout = e.stdout?.toString().trim() ?? ''
+    const stderr = e.stderr?.toString().trim() ?? ''
+    throw new Error(
+      `bd ${args.join(' ')} failed (exit=${e.status ?? '?'}):\n  stdout: ${stdout}\n  stderr: ${stderr}`
+    )
+  }
+}
+
 describe('M6 — custom status end-to-end', () => {
   before(async () => {
     await openFixtureWorkspace('m6-custom-status')
@@ -189,15 +215,24 @@ describe('M6 — custom status end-to-end', () => {
     // Seed a single issue carrying the custom status so the
     // list renders a row. The fixture already has 25 issues, so
     // a fresh "test marker" issue is easy to find by its title.
+    //
+    // ponytail: bd 1.0.4 (the version CI pins) does NOT accept
+    // `bd create --status <name>` — the `--status` flag was
+    // added in bd 1.0.5+. We instead create the issue first
+    // (defaulting to `open`), then `bd update --status` to the
+    // custom value. The watcher refetches the list either way,
+    // and `runBd` already raises on non-zero exit so the test
+    // still fails loud if either step fails.
     const issueTitle = `M6 custom-status marker ${marker}`
-    runBd([
-      'create',
-      '--quiet',
-      '--status',
-      customStatusName,
-      '--title',
-      issueTitle,
-    ])
+    const issueId =
+      runBdCapture(['create', '--quiet', '--title', issueTitle])
+        .split('\n')
+        .pop()
+        ?.trim() ?? ''
+    if (!issueId) {
+      throw new Error('bd create returned no id')
+    }
+    runBd(['update', '--quiet', '--status', customStatusName, issueId])
 
     // Wait for the watcher to reconcile the new row. Reading
     // the cache is more reliable than the virtualized DOM (a

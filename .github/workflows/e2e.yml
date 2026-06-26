@@ -133,7 +133,7 @@ jobs:
           # colons make the YAML linter happy.
           mkdir -p "$HOME/.beads"
           cat >"$HOME/.beads/registry.json" <<'REGISTRY_END'
-          { "version" : 1, "workspaces" : [ { "path" : "/tmp/e2e-workspace" }, { "path" : "/tmp/e2e-workspace-b" } ] }
+          { "version" : 1, "workspaces" : [ { "path" : "/tmp/e2e-workspace" }, { "path" : "/tmp/e2e-workspace-b" }, { "path" : "/tmp/e2e-workspace-large" } ] }
           REGISTRY_END
           echo "Registry written to $HOME/.beads/registry.json"
           cat "$HOME/.beads/registry.json"
