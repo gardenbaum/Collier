@@ -33,10 +33,11 @@
  * hooks are in place so the follow-up can bind without touching the
  * DOM.
  */
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
+import { useVirtualizer } from '@tanstack/react-virtual'
 import { ChevronDown, ChevronRight, Layers } from 'lucide-react'
 import { commands } from '@/lib/tauri-bindings'
 import type { Issue } from '@/lib/bindings'
@@ -51,6 +52,62 @@ export interface EpicViewProps {
   cwd: string
   /** Called when a row is activated — opens the issue detail drawer. */
   onOpenIssue: (id: string) => void
+  /**
+   * M6 perf: explicit pixel height for the scroll container.
+   * The virtualizer reads `offsetHeight` to compute which rows
+   * are in view, so without a non-zero container the
+   * virtualizer falls back to mounting every row. Defaults
+   * to 600px (matches IssueListView's default) so the
+   * production layout always virtualises; tests can pass a
+   * smaller value for tighter DOM-shape assertions.
+   */
+  containerHeight?: number
+}
+
+/**
+ * M6 perf: the epic tree is virtualised with @tanstack/react-virtual.
+ * Each virtual row is one epic (header + optional children list).
+ * Heights are estimated from the expand state so the scrollbar
+ * stays honest when the user toggles an epic in a different
+ * viewport — `useVirtualizer` reads `estimateSize` on every layout
+ * and re-measures on `toggle` via the `measure()` invalidation in
+ * the effect below.
+ *
+ *   COLLAPSED_ROW_HEIGHT: the header alone (~72px including padding
+ *     + border). Matches the actual rendered height for an epic
+ *     with 0 children or an epic the user has collapsed.
+ *   CHILD_ROW_HEIGHT:     the height of one child row (~32px).
+ *   CHILD_GAP:            the 2px gap between children rows.
+ *
+ * `expandedHeight = COLLAPSED + (nChildren * CHILD_ROW) + ((nChildren - 1) * CHILD_GAP)`
+ * matches the rendered height within ~1px; the virtualizer
+ * measures actual heights on first paint and `measure()` after
+ * toggle, so the estimate only matters for the initial scrollbar
+ * position before the first measurement pass completes.
+ */
+export const COLLAPSED_ROW_HEIGHT = 72
+export const CHILD_ROW_HEIGHT = 32
+export const CHILD_GAP = 2
+export const ROW_OVERSCAN = 5
+export const DEFAULT_CONTAINER_HEIGHT = 600
+
+/**
+ * Pure height estimator. Exported so the unit test can verify the
+ * math without rendering. Production callers close over the live
+ * `childrenByParent` map so the estimate reflects the current
+ * data; the virtualizer measures actual heights on first paint
+ * and `measure()` after toggle invalidates the cache.
+ */
+export function estimateRowHeight(
+  isExpanded: boolean,
+  childCount: number
+): number {
+  if (!isExpanded) return COLLAPSED_ROW_HEIGHT
+  if (childCount === 0) return COLLAPSED_ROW_HEIGHT
+  // n children stacked vertically with 2px gap between each,
+  // plus a 4px top padding (space[1]) on the children list.
+  const childrenBlock = childCount * CHILD_ROW_HEIGHT + (childCount - 1) * CHILD_GAP
+  return COLLAPSED_ROW_HEIGHT + childrenBlock + 4
 }
 
 const containerStyle: CSSProperties = {
@@ -274,7 +331,11 @@ const priorityRank: Record<number, number> = {
   4: 4, // P4
 }
 
-export function EpicView({ cwd, onOpenIssue }: EpicViewProps) {
+export function EpicView({
+  cwd,
+  onOpenIssue,
+  containerHeight = DEFAULT_CONTAINER_HEIGHT,
+}: EpicViewProps) {
   const { t } = useTranslation()
   const { data, isLoading, error } = useQuery({
     queryKey: ['beads', 'list', cwd, {}],
@@ -351,6 +412,51 @@ export function EpicView({ cwd, onOpenIssue }: EpicViewProps) {
     })
   }
 
+  // M6 perf: virtualiser ref + state. The scroll container is
+  // the `<div data-testid="epic-tree-scroll">`; the virtualizer
+  // reads its scrollTop + offsetHeight to compute which rows are
+  // visible. We re-measure after every expand/collapse so a row
+  // whose height changed (collapsed -> expanded) doesn't leave
+  // a stale gap in the scrollbar.
+  const scrollRef = useRef<HTMLDivElement | null>(null)
+  const epics = tree.epics
+  const expandedKey = useMemo(() => {
+    // Cheap serialisation so the effect re-runs only when the
+    // EXPANSION SET changes (not on every render). Keeps the
+    // virtualizer measure cache hot for unchanged layouts.
+    const ids = [...expanded].sort()
+    return ids.join(',')
+  }, [expanded])
+
+  // ponytail: `useVirtualizer` returns a non-memoizable object
+  // (it re-creates internal callbacks on every render). React
+  // Compiler can't safely memoize through it, hence the
+  // `incompatible-library` warning. The virtualizer is the
+  // authoritative source of truth for `getVirtualItems()` /
+  // scroll metrics, so we accept the warning at this single
+  // call site (same pattern as IssueListView).
+  // eslint-disable-next-line react-hooks/incompatible-library
+  const rowVirtualizer = useVirtualizer({
+    count: epics.length,
+    getScrollElement: () => scrollRef.current,
+    estimateSize: index => {
+      const epic = epics[index]
+      if (!epic) return COLLAPSED_ROW_HEIGHT
+      const children = tree.childrenByParent.get(epic.id) ?? []
+      return estimateRowHeight(expanded.has(epic.id), children.length)
+    },
+    overscan: ROW_OVERSCAN,
+  })
+
+  useEffect(() => {
+    // Re-measure after every expansion change. The virtualizer
+    // recomputes total size on the next layout, which scrolls
+    // the user to the right place if the previously-selected
+    // row moved. Cheap (one cache invalidation); runs only when
+    // the expansion set changes, not on every render.
+    rowVirtualizer.measure()
+  }, [expandedKey, epics, rowVirtualizer])
+
   if (isLoading) {
     return (
       <section data-testid="epic-view" style={containerStyle} aria-busy="true">
@@ -372,8 +478,6 @@ export function EpicView({ cwd, onOpenIssue }: EpicViewProps) {
       </section>
     )
   }
-
-  const epics = tree.epics
 
   if (epics.length === 0) {
     return (
@@ -402,27 +506,65 @@ export function EpicView({ cwd, onOpenIssue }: EpicViewProps) {
       style={containerStyle}
       aria-label={t('beads.views.epic.title')}
     >
-      <ul
-        data-testid="epic-tree"
-        role="tree"
-        aria-label={t('beads.views.epic.title')}
-        style={listStyle}
+      <div
+        ref={scrollRef}
+        data-testid="epic-tree-scroll"
+        style={{ ...listStyle, height: containerHeight }}
       >
-        {epics.map((epic, idx) => (
-          <EpicTreeRow
-            key={epic.id}
-            epic={epic}
-            epicChildren={tree.childrenByParent.get(epic.id) ?? []}
-            isExpanded={expanded.has(epic.id)}
-            isKeyboardSelected={selectedRowId === epic.id}
-            selectedRowId={selectedRowId}
-            epicIndex={idx + 1}
-            epicCount={epics.length}
-            onToggle={() => toggle(epic.id)}
-            onOpenIssue={onOpenIssue}
-          />
-        ))}
-      </ul>
+        <ul
+          data-testid="epic-tree"
+          role="tree"
+          aria-label={t('beads.views.epic.title')}
+          style={{
+            height: rowVirtualizer.getTotalSize(),
+            position: 'relative',
+            width: '100%',
+            listStyle: 'none',
+            margin: 0,
+            padding: 0,
+          }}
+        >
+          {rowVirtualizer.getVirtualItems().map(virtualItem => {
+            const epic = epics[virtualItem.index]
+            if (!epic) return null
+            const epicChildren = tree.childrenByParent.get(epic.id) ?? []
+            return (
+              <EpicTreeRow
+                key={epic.id}
+                epic={epic}
+                epicChildren={epicChildren}
+                isExpanded={expanded.has(epic.id)}
+                isKeyboardSelected={selectedRowId === epic.id}
+                selectedRowId={selectedRowId}
+                epicIndex={virtualItem.index + 1}
+                epicCount={epics.length}
+                positionStyle={{
+                  position: 'absolute',
+                  top: 0,
+                  left: 0,
+                  width: '100%',
+                  transform: `translateY(${virtualItem.start}px)`,
+                }}
+                measureRef={(el: HTMLElement | null) => {
+                  // M6 perf: register the row element with the
+                  // virtualizer so it can measure the actual height
+                  // after first paint. Without this the
+                  // estimateSize guess is the only thing the
+                  // scrollbar knows, and rows that contain many
+                  // children would clip until the user toggles
+                  // them. The virtualizer no-ops on `null` and
+                  // deduplicates repeat refs to the same element.
+                  if (el) {
+                    rowVirtualizer.measureElement(el)
+                  }
+                }}
+                onToggle={() => toggle(epic.id)}
+                onOpenIssue={onOpenIssue}
+              />
+            )
+          })}
+        </ul>
+      </div>
     </section>
   )
 }
@@ -454,6 +596,20 @@ interface EpicTreeRowProps {
   epicIndex: number
   /** M5 a11y: total number of top-level epics, for `aria-setsize`. */
   epicCount: number
+  /**
+   * M6 perf: absolute-position style injected by the virtualizer
+   * (translateY(start) + full width). The row's own padding stays
+   * inline so the visual layout is unchanged from the non-
+   * virtualised version; only the positioning layer is added.
+   */
+  positionStyle: CSSProperties
+  /**
+   * M6 perf: ref callback the parent passes to `rowVirtualizer.
+   * measureElement` so the virtualizer learns each row's actual
+   * height after first paint (and on toggle when an expanded
+   * row grows).
+   */
+  measureRef: (el: HTMLElement | null) => void
   onToggle: () => void
   onOpenIssue: (id: string) => void
 }
@@ -466,6 +622,8 @@ function EpicTreeRow({
   selectedRowId,
   epicIndex,
   epicCount,
+  positionStyle,
+  measureRef,
   onToggle,
   onOpenIssue,
 }: EpicTreeRowProps) {
@@ -492,6 +650,7 @@ function EpicTreeRow({
       data-row-selected={isKeyboardSelected ? 'true' : 'false'}
       tabIndex={isKeyboardSelected ? 0 : -1}
       id={`${epic.id}-treeitem`}
+      ref={measureRef}
       onKeyDown={e => {
         // The global keyboard hook already routes Enter on the
         // selected row to `openIssue`, but if the user explicitly
@@ -506,6 +665,7 @@ function EpicTreeRow({
       }}
       style={{
         ...epicRowStyle,
+        ...positionStyle,
         ...(isKeyboardSelected ? epicRowSelectedStyle : null),
       }}
     >
