@@ -9,22 +9,69 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **M0 foundation (issue R1 + R2).** Deterministic Beads test
-  fixture (`scripts/make-fixture.sh`) seeds a clean `.beads/`
-  workspace with 25 issues covering all five statuses, two epics
-  with parent-child children, a 2-hop blocked dependency chain,
-  and a stable role-to-ID mapping written to
-  `.fixture-ids.json` (Beads IDs are non-deterministic — see the
-  script header for the contract). Seven Rust integration tests in
-  `src-tauri/tests/fixture.rs` load the fixture via the production
-  `run_bd` runner and assert the seeded shape (status counts,
-  epics + children, the blocked chain, dependency edge count,
-  label diversity, and a non-empty `bd ready` / `bd blocked` split).
-  The runner module is re-exported as
-  `tauri_app_lib::beads_export_for_tests::runner` so the
-  integration tests can drive production code without widening
-  the lib's public surface beyond what the Tauri command layer
-  already exposes.
+- **M5 — accessibility & vim-style keyboard navigation.** The
+  issue list is now a real ARIA grid (`role="grid"` with
+  `aria-rowcount` / `aria-colcount` / `aria-label` and per-row
+  `aria-selected`) so screen readers announce the focused row
+  and total count. The left / right sidebars expose
+  `aria-expanded` state to assistive tech, the modal dialogs
+  trap focus and announce their headings, and every interactive
+  control has a descriptive label (no "button with no
+  accessible name" violations). Vim-style `j` / `k` / `Enter` /
+  `Escape` / `/` / `h` / `l` navigation drives the list, ready,
+  blocked, and selected views via a new `useKeyboardNavigation`
+  hook; existing `Tab`-based navigation is unchanged.
+- **M6 — comments, custom statuses, gates, performance, and
+  release hardening.**
+  - **Issue comments.** A comments thread on the issue detail
+    drawer sorts chronologically (oldest → newest) so the
+    order is deterministic regardless of `bd`'s wire order.
+    Adding a comment via the UI is covered by a new E2E spec
+    that exercises the `bd add-comment` round-trip.
+  - **Custom statuses.** The sidebar status list is now
+    populated from `commands.bdStatuses()` instead of being
+    hard-coded; user-defined statuses defined in `.beads/`
+    render without a renderer change. Both the sidebar and the
+    issue row are covered by an E2E spec.
+  - **Gates GUI view.** A new `GatesView` (sidebar tab +
+    `ViewsRouter` case + i18n for en / de / fr / ar) reads from
+    `commands.bdGateList` and renders the gate definitions +
+    pass / fail state. See docs/specs/m6-foundation.md.
+  - **Performance pass for large backlogs.** A new
+    `scripts/make-large-fixture.sh` seeds 1200 issues (120
+    epics + 480 epic children + 600 standalones) via a single
+    `bd import` + `bd dep add --file` loop. `IssueListView`
+    and `EpicView` both virtualise with
+    `@tanstack/react-virtual`; sizing constants are extracted
+    to `src/components/beads/views/epicViewSizing.ts` so the
+    react-refresh lint rule can keep the component file pure.
+    `useBeadsRealtimeSync` patches per-issue cache entries so
+    watcher ticks never re-render the full list. A bundle-size
+    guard (`scripts/check-bundle-size.js`) asserts initial
+    payload < 600 KB gzipped and total bundle < 4 MB gzipped;
+    current numbers (257.7 / 258.8 KB) leave ~2x headroom for
+    future feature additions.
+  - **Release hardening.** `release.yml` is now gated on
+    `check:all` AND the Xvfb E2E harness (extracted into the
+    reusable `.github/workflows/e2e.yml` so ci.yml and
+    release.yml share one source of truth). The release docs
+    list the required GitHub secrets
+    (`TAURI_PRIVATE_KEY`,
+    `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`) and document the
+    pubkey-rotation procedure; SECURITY.md captures the same
+    contract in the security-policy table. A new
+    `commands.getAppMetadata()` Tauri command surfaces the
+    bundled `tauri.conf.json` to the renderer so the E2E
+    suite can pin the name / version / identifier / updater
+    endpoint / pubkey fingerprint without parsing the binary.
+
+### Changed
+
+- `IssueListView` no longer re-renders on every watcher tick;
+  only the affected row's cache entry is patched (see
+  `useBeadsRealtimeSync` in `src/hooks/`). The performance
+  delta is large enough that the 1200-issue fixture stays
+  smooth on a 30 Hz scroll.
 
 ## [0.1.0] - 2026-06-23
 
