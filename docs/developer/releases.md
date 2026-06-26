@@ -48,10 +48,10 @@ Configure these under **Settings → Secrets and variables →
 Actions** before the first tagged release. The release workflow
 maps them as follows:
 
-| Secret name                            | Purpose                                                | Source                                                         |
-| -------------------------------------- | ------------------------------------------------------ | -------------------------------------------------------------- |
-| `TAURI_PRIVATE_KEY`                    | Ed25519 private key used to sign release artifacts     | Contents of the file written by `tauri signer generate`        |
-| `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`   | Password that protects the private key (empty if none) | Whatever you passed to `tauri signer generate -p <password>`   |
+| Secret name                          | Purpose                                                | Source                                                       |
+| ------------------------------------ | ------------------------------------------------------ | ------------------------------------------------------------ |
+| `TAURI_PRIVATE_KEY`                  | Ed25519 private key used to sign release artifacts     | Contents of the file written by `tauri signer generate`      |
+| `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | Password that protects the private key (empty if none) | Whatever you passed to `tauri signer generate -p <password>` |
 
 These are mapped to the env-var names `tauri-action`
 consumes (`TAURI_SIGNING_PRIVATE_KEY` and
@@ -80,7 +80,7 @@ tauri signer generate -w ~/.tauri/collier.key
 In Settings → Secrets and variables → Actions:
 
 - **Name:** `TAURI_PRIVATE_KEY`
-- **Value:** the *entire contents* of `~/.tauri/collier.key`
+- **Value:** the _entire contents_ of `~/.tauri/collier.key`
   (the `-----BEGIN PRIVATE KEY-----` envelope is part of the
   payload — paste the full file).
 
@@ -115,7 +115,7 @@ grep '"pubkey"' src-tauri/tauri.conf.json
 ### 4. Pin the updater endpoint
 
 The `plugins.updater.endpoints` array must point at the GitHub
-Releases `latest.json` for *this* repo. A wrong endpoint (e.g.
+Releases `latest.json` for _this_ repo. A wrong endpoint (e.g.
 a fork's `latest.json`) silently misroutes updates.
 
 ```jsonc
@@ -155,7 +155,7 @@ The script (see `scripts/prepare-release.js`):
 4. Re-runs the build to confirm `cargo check` still passes
    after the version bump.
 5. Prints (and optionally executes) the `git add / commit /
-   tag / push` commands.
+tag / push` commands.
 
 Pushing the tag triggers `.github/workflows/release.yml`,
 which runs the two gates then publishes a draft GitHub
@@ -279,11 +279,11 @@ The `AppImage` is the only Linux artifact by default. If
 
 ## Troubleshooting
 
-| Issue                          | Solution                                                                                  |
-| ------------------------------ | ----------------------------------------------------------------------------------------- |
-| Workflow doesn't trigger       | Ensure the tag starts with `v` and is pushed (`git push origin --tags`)                   |
-| `check:all` gate fails         | Run `bun run check:all` locally and fix the reported file                                  |
-| `e2e` gate times out           | The xvfb harness takes 5-10 min cold; check `tauri-driver.log` in the CI artifact         |
-| `Invalid signature` on update  | `TAURI_PRIVATE_KEY` and `tauri.conf.json::pubkey` are out of sync — see step 3 above      |
-| Updates not detected           | Verify `plugins.updater.endpoints` points at the right GitHub repo's `latest.json`        |
-| `cargo check` fails post-bump  | A dependency changed its MSRV; investigate before re-running `prepare-release.js`         |
+| Issue                         | Solution                                                                             |
+| ----------------------------- | ------------------------------------------------------------------------------------ |
+| Workflow doesn't trigger      | Ensure the tag starts with `v` and is pushed (`git push origin --tags`)              |
+| `check:all` gate fails        | Run `bun run check:all` locally and fix the reported file                            |
+| `e2e` gate times out          | The xvfb harness takes 5-10 min cold; check `tauri-driver.log` in the CI artifact    |
+| `Invalid signature` on update | `TAURI_PRIVATE_KEY` and `tauri.conf.json::pubkey` are out of sync — see step 3 above |
+| Updates not detected          | Verify `plugins.updater.endpoints` points at the right GitHub repo's `latest.json`   |
+| `cargo check` fails post-bump | A dependency changed its MSRV; investigate before re-running `prepare-release.js`    |

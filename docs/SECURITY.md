@@ -62,12 +62,12 @@ Collier's auto-updater signs release artifacts with an
 Ed25519 key pair. The split between what lives in GitHub
 Secrets and what lives in the public repo:
 
-| Component                                     | Location                                              | Public? |
-| --------------------------------------------- | ----------------------------------------------------- | ------- |
-| `TAURI_PRIVATE_KEY`                           | GitHub repo Settings → Secrets and variables → Actions | No      |
-| `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`          | Same                                                  | No      |
-| `plugins.updater.pubkey` (in `tauri.conf.json`) | Source-tree, committed                                | Yes     |
-| `plugins.updater.endpoints`                   | Source-tree, committed                                | Yes     |
+| Component                                       | Location                                               | Public? |
+| ----------------------------------------------- | ------------------------------------------------------ | ------- |
+| `TAURI_PRIVATE_KEY`                             | GitHub repo Settings → Secrets and variables → Actions | No      |
+| `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`            | Same                                                   | No      |
+| `plugins.updater.pubkey` (in `tauri.conf.json`) | Source-tree, committed                                 | Yes     |
+| `plugins.updater.endpoints`                     | Source-tree, committed                                 | Yes     |
 
 The two halves MUST match: every existing user has the old
 pubkey cached locally, so a release signed with a new private
