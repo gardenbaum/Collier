@@ -103,8 +103,19 @@ function runBd(args: string[]): void {
 
 /** Variant of `runBd` that returns the captured stdout as a
  * trimmed string. Used by the create-then-update flow below to
- * pick up the just-created issue's id from `bd create
- * --quiet`'s stdout (which prints just the id on success). */
+ * pick up the just-created issue's id from `bd create`'s stdout.
+ *
+ * ponytail: bd 1.0.4 (the version CI pins) DOES NOT honour
+ * `bd create --quiet` — the CLI still emits the full
+ * "✓ Created issue: <id> — <title>\n  Priority: <P?>\n  Status: open"
+ * block on stdout regardless of the flag (verified 2026-06-29
+ * against `bd version 1.0.4 (ce242a879)`). The earlier helper
+ * captured stdout + took the last line, which on 1.0.4 was the
+ * literal string "Status: open" — `bd update --status <name>
+ * "Status: open"` then died with `no issue found matching
+ * "Status: open"`. We now parse the id from the first line via
+ * the `Created issue: <id>` prefix, which is stable across
+ * 1.0.4 / 1.0.5. */
 function runBdCapture(args: string[]): string {
   try {
     const out = execFileSync('bd', args, {
@@ -125,6 +136,33 @@ function runBdCapture(args: string[]): string {
       `bd ${args.join(' ')} failed (exit=${e.status ?? '?'}):\n  stdout: ${stdout}\n  stderr: ${stderr}`
     )
   }
+}
+
+/**
+ * Parse the just-created issue's id from `bd create`'s stdout.
+ *
+ * bd 1.0.4 emits three lines even with `--quiet`:
+ *   line 0: `✓ Created issue: <id> — <title>`
+ *   line 1: `  Priority: <P?>`
+ *   line 2: `  Status: open`
+ *
+ * bd 1.0.5 (when CI upgrades) emits just the id on stdout when
+ * `--quiet` is set — in that case the same regex still matches
+ * (it returns the bare id).
+ *
+ * The id format is `<repo-prefix>-<short-hex>` (e.g.
+ * `e2e-workspace-7xr4`); we capture everything between
+ * `Created issue: ` and the next whitespace so future separators
+ * (em-dash, en-dash, etc.) don't trip the parser.
+ */
+function parseCreateId(stdout: string): string {
+  const match = stdout.match(/Created issue:\s+(\S+)/)
+  if (!match) {
+    throw new Error(
+      `bd create did not return a parseable id (stdout: ${stdout.slice(0, 200)}...)`
+    )
+  }
+  return match[1] ?? ''
 }
 
 describe('M6 — custom status end-to-end', () => {
@@ -223,14 +261,24 @@ describe('M6 — custom status end-to-end', () => {
     // custom value. The watcher refetches the list either way,
     // and `runBd` already raises on non-zero exit so the test
     // still fails loud if either step fails.
+    //
+    // ponytail (M6 R10 follow-up, 2026-06-29): `bd create
+    // --quiet` does NOT suppress the "✓ Created issue: <id> —\n
+    //   Priority: ...\n  Status: open" stdout block on bd 1.0.4
+    // (verified locally + in the failing run 28360842696). The
+    // original helper took the last line, which surfaced
+    // "Status: open" as the captured id, so `bd update --status
+    // <name> "Status: open"` then died with `no issue found
+    // matching "Status: open"`. We now drop `--quiet` (it's a
+    // no-op on 1.0.4 anyway) and parse the id from the first
+    // line via the `Created issue: <id>` prefix. The same
+    // regex matches a 1.0.5 bare-id stdout, so the helper stays
+    // future-proof when CI bumps the pin.
     const issueTitle = `M6 custom-status marker ${marker}`
-    const issueId =
-      runBdCapture(['create', '--quiet', '--title', issueTitle])
-        .split('\n')
-        .pop()
-        ?.trim() ?? ''
+    const createOutput = runBdCapture(['create', '--title', issueTitle])
+    const issueId = parseCreateId(createOutput)
     if (!issueId) {
-      throw new Error('bd create returned no id')
+      throw new Error(`bd create returned empty id (stdout: ${createOutput})`)
     }
     runBd(['update', '--quiet', '--status', customStatusName, issueId])
 

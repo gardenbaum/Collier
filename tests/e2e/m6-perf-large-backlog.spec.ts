@@ -351,6 +351,29 @@ describe('M6 — large-backlog performance', () => {
   })
 
   it('navigating to the Epic view keeps the epic tree DOM bounded at the viewport slice', async () => {
+    // ponytail: the previous test leaves the issue detail drawer
+    // open. `IssueDetailDrawer` renders a full-viewport backdrop
+    // (`fixed inset-0 z-40`, see
+    // src/components/beads/IssueDetailDrawer.tsx:38) so the
+    // backdrop covers the sidebar — a wdio .click() on
+    // `sidebar-view-epic` is "element click intercepted" for as
+    // long as the drawer is mounted. Pressing Escape routes
+    // through `useDialogA11y` (IssueDetailDrawer.tsx:30) which
+    // invokes the drawer's `onClose` handler, removing the
+    // backdrop. If no drawer is open the keypress is a no-op
+    // (browser-level Escape has no side effects in the list /
+    // sidebar / chip surfaces covered by this spec). Discovered
+    // from run 28360842696 (2026-06-29) where the same epic-tab
+    // click retried every 10s for 180s and then timed out under
+    // the mocha 180_000ms budget.
+    await browser.keys('Escape')
+    // Tiny beat so the React commit + the backdrop unmount
+    // settle before the next click; wdio's element-interactable
+    // check on the backdrop otherwise races the unmount and
+    // surfaces as a single false-positive intercept on the first
+    // attempt.
+    await browser.pause(100)
+
     // Switch to the Epic view via the sidebar.
     const epicTab = await $('[data-testid="sidebar-view-epic"]')
     await epicTab.waitForDisplayed({ timeout: 5_000 })
