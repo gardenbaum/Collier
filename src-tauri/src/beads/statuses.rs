@@ -298,7 +298,11 @@ mod tests {
             }
         });
         let catalog = parse_statuses_envelope(value).expect("parses wrapped envelope");
-        assert_eq!(catalog.builtin.len(), 3, "all built-ins parsed through the data wrapper");
+        assert_eq!(
+            catalog.builtin.len(),
+            3,
+            "all built-ins parsed through the data wrapper"
+        );
         assert_eq!(catalog.custom.len(), 1);
         assert!(catalog.custom.iter().all(|s| !s.is_builtin));
         assert_eq!(
@@ -329,8 +333,13 @@ mod tests {
                 ]
             }
         });
-        let catalog = parse_statuses_envelope(value).expect("parses wrapped envelope with no custom key");
-        assert_eq!(catalog.builtin.len(), 7, "all seven bd 1.0.4 built-ins surface");
+        let catalog =
+            parse_statuses_envelope(value).expect("parses wrapped envelope with no custom key");
+        assert_eq!(
+            catalog.builtin.len(),
+            7,
+            "all seven bd 1.0.4 built-ins surface"
+        );
         assert_eq!(catalog.custom.len(), 0);
         assert_eq!(catalog.status_names.len(), 7);
         assert_eq!(catalog.status_names[0], "open");
