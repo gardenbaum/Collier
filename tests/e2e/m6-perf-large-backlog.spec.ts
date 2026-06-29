@@ -61,7 +61,7 @@ import path from 'node:path'
 import { execFileSync } from 'node:child_process'
 import { browser, expect, $ } from '@wdio/globals'
 
-import { openFixtureWorkspace } from './helpers'
+import { openFixtureWorkspace, openWorkspaceSwitcher } from './helpers'
 
 /**
  * Resolve the large fixture workspace directory. The default
@@ -110,6 +110,11 @@ async function readIssueCountFromFooter(): Promise<number | null> {
 }
 
 describe('M6 — large-backlog performance', () => {
+  const primaryFixtureDir = (() => {
+    if (process.env.E2E_FIXTURE_DIR) return process.env.E2E_FIXTURE_DIR
+    if (process.env.CI) return '/tmp/e2e-workspace'
+    return process.cwd()
+  })()
   before(async () => {
     // Sanity: the fixture must exist and have >= 1000 issues.
     // Failing fast here makes a "fixture missing" CI failure
@@ -143,6 +148,96 @@ describe('M6 — large-backlog performance', () => {
     // first row to mount; with 1200 issues that first mount
     // is what the virtualizer serves immediately.
     await openFixtureWorkspace('m6-perf-large-backlog')
+
+    // The shared helper lands us in /tmp/e2e-workspace (the
+    // default 25-issue fixture) so the bootstrap path is
+    // exercised uniformly across specs. The CI workflow
+    // registers /tmp/e2e-workspace-large in
+    // ~/.beads/registry.json alongside the other fixtures
+    // (see .github/workflows/e2e.yml), so we switch to it via
+    // the workspace dropdown before the perf assertions run.
+    // Without this switch the list keeps showing the 25-issue
+    // default fixture and every perf assertion times out
+    // waiting for the 1200-issue footer.
+    await openWorkspaceSwitcher()
+    const switched = await browser.execute((target: string) => {
+      const rows = Array.from(
+        document.querySelectorAll('[data-testid="workspace-switcher-item"]')
+      )
+      const match = rows.find(
+        r => r.getAttribute('data-workspace-path') === target
+      )
+      if (!(match instanceof HTMLElement)) return false
+      match.click()
+      return true
+    }, fixtureDir)
+    if (!switched) {
+      throw new Error(
+        `[m6-perf] workspace-switcher did not list ${fixtureDir}; CI must register the large fixture in ~/.beads/registry.json (see the 'Generate second E2E fixture workspace' step)`
+      )
+    }
+    // Wait for the 1200-issue footer to confirm the new
+    // workspace is live (Dolt cold-start on the large fixture
+    // takes a few seconds).
+    await browser.waitUntil(
+      async () => {
+        const text = await browser.execute(
+          () =>
+            document.querySelector('[data-testid="list-footer"]')
+              ?.textContent ?? null
+        )
+        return text !== null && /\b1[2-9]\d{2}\b|\b[2-9]\d{3,}\b/.test(text)
+      },
+      {
+        timeout: 30_000,
+        interval: 500,
+        timeoutMsg: `large-fixture footer never reported >= 1200 issues after switching to ${fixtureDir}`,
+      }
+    )
+  })
+
+  after(async () => {
+    // Switch back to the default fixture so the 12+ specs that
+    // follow this one in alphabetical order (`m6-release-hardening`,
+    // `r1-sort`, `r10-realtime-sync`, …, `smoke`) bootstrap against
+    // the 25-issue fixture their assertions are written for, not
+    // the 1200-issue workspace we needed for the perf assertions.
+    // The shared helper waits for the first issue row to mount, so
+    // a leftover switcher dropdown or stale watcher would fail
+    // loud here too — best-effort is wrong.
+    await openWorkspaceSwitcher()
+    const switched = await browser.execute((target: string) => {
+      const rows = Array.from(
+        document.querySelectorAll('[data-testid="workspace-switcher-item"]')
+      )
+      const match = rows.find(
+        r => r.getAttribute('data-workspace-path') === target
+      )
+      if (!(match instanceof HTMLElement)) return false
+      match.click()
+      return true
+    }, primaryFixtureDir)
+    if (!switched) {
+      throw new Error(
+        `[m6-perf] could not switch back to ${primaryFixtureDir} after the perf run`
+      )
+    }
+    await browser.waitUntil(
+      async () => {
+        const text = await browser.execute(
+          () =>
+            document.querySelector('[data-testid="list-footer"]')
+              ?.textContent ?? null
+        )
+        return text !== null && text.includes('25 issues')
+      },
+      {
+        timeout: 30_000,
+        interval: 500,
+        timeoutMsg:
+          'primary 25-issue fixture never re-mounted after switching back',
+      }
+    )
   })
 
   it('renders the 1200-issue count in the footer and keeps the DOM bounded under the 200-row virtualisation ceiling', async () => {
@@ -256,6 +351,29 @@ describe('M6 — large-backlog performance', () => {
   })
 
   it('navigating to the Epic view keeps the epic tree DOM bounded at the viewport slice', async () => {
+    // ponytail: the previous test leaves the issue detail drawer
+    // open. `IssueDetailDrawer` renders a full-viewport backdrop
+    // (`fixed inset-0 z-40`, see
+    // src/components/beads/IssueDetailDrawer.tsx:38) so the
+    // backdrop covers the sidebar — a wdio .click() on
+    // `sidebar-view-epic` is "element click intercepted" for as
+    // long as the drawer is mounted. Pressing Escape routes
+    // through `useDialogA11y` (IssueDetailDrawer.tsx:30) which
+    // invokes the drawer's `onClose` handler, removing the
+    // backdrop. If no drawer is open the keypress is a no-op
+    // (browser-level Escape has no side effects in the list /
+    // sidebar / chip surfaces covered by this spec). Discovered
+    // from run 28360842696 (2026-06-29) where the same epic-tab
+    // click retried every 10s for 180s and then timed out under
+    // the mocha 180_000ms budget.
+    await browser.keys('Escape')
+    // Tiny beat so the React commit + the backdrop unmount
+    // settle before the next click; wdio's element-interactable
+    // check on the backdrop otherwise races the unmount and
+    // surfaces as a single false-positive intercept on the first
+    // attempt.
+    await browser.pause(100)
+
     // Switch to the Epic view via the sidebar.
     const epicTab = await $('[data-testid="sidebar-view-epic"]')
     await epicTab.waitForDisplayed({ timeout: 5_000 })

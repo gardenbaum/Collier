@@ -4,11 +4,14 @@
 //! `bd config set status.custom "name:category,..."` (per the
 //! project constitution, see `docs/CONSTITUTION.md §3`). The CLI
 //! emits a `{ schema_version, built_in_statuses, custom_statuses }`
-//! envelope where every entry carries `{ name, category, [icon,
-//! description] }`. We surface the merged catalog to the frontend
-//! so the sidebar filter chips, the inline-edit dropdown, and the
-//! update panel all read from the same authoritative set — no
-//! hardcoded 5-status arrays survive past this command.
+//! envelope (when `BD_JSON_ENVELOPE=1` is NOT set) or wraps it in
+//! `{ schema_version, data: { ... } }` (when the runner does set
+//! the env var — see `runner::build_bd_command`). Every entry
+//! carries `{ name, category, [icon, description] }`. We surface
+//! the merged catalog to the frontend so the sidebar filter chips,
+//! the inline-edit dropdown, and the update panel all read from
+//! the same authoritative set — no hardcoded 5-status arrays
+//! survive past this command.
 
 use std::path::PathBuf;
 
@@ -127,11 +130,43 @@ pub async fn bd_statuses(cwd: String) -> BdResult<StatusCatalog> {
 /// older bd CLI builds may not emit both keys — the existing
 /// `serde(default)` on the envelope keeps the parse permissive.
 ///
+/// ## Two envelope shapes we have to accept
+///
+/// 1. **Wrapped** (the one the runner produces on bd >= 1.0.4):
+///    `runner::build_bd_command` sets `BD_JSON_ENVELOPE=1`, so the
+///    CLI returns `{ schema_version, data: { built_in_statuses,
+///    custom_statuses, schema_version? } }`. Without the `data`
+///    unwrap the deserialiser would read the top-level object,
+///    find no `built_in_statuses` / `custom_statuses` keys, and
+///    fall back to two empty Vecs — the symptom is a sidebar
+///    with zero status chips even though `bd statuses --json`
+///    clearly returned 7 built-ins (CI run 28218119962, 2026-06-26).
+///    This is the same envelope shape `bd_list`, `bd_label_list_all`,
+///    and `bd_assignee_list_all` already unwrap via
+///    `search_query::extract_data` / `value.get("data")` — see
+///    those commands for the analogous fixes.
+/// 2. **Unwrapped** (older / envelope-disabled builds): the bare
+///    `{ built_in_statuses, custom_statuses, schema_version? }`
+///    object. The existing tests in this file exercise this shape
+///    directly, so we must keep accepting it for unit-level
+///    fidelity.
+///
 /// The CLI may also emit the bare-array shape on some 1.0.5 builds
 /// (rare but observed). The fallback branch accepts that as a
 /// list of `RawStatusMeta` and treats them as built-in for parity
 /// with the existing label-list path.
 pub fn parse_statuses_envelope(value: serde_json::Value) -> BdResult<StatusCatalog> {
+    // ponytail: the runner sets BD_JSON_ENVELOPE=1, so the CLI
+    // returns the payload wrapped in `{ schema_version, data: ... }`.
+    // Peel the wrapper when present so the rest of the function can
+    // operate on the unwrapped shape. A `data` field that isn't an
+    // object is treated as missing (older CLI versions may have
+    // emitted a different top-level shape we don't recognise).
+    let value = match value.get("data") {
+        Some(inner) if inner.is_object() => inner.clone(),
+        _ => value,
+    };
+
     let envelope: RawStatusesEnvelope = if value.is_object() {
         serde_json::from_value(value).map_err(|e| BdError::ParseError {
             message: format!("bd statuses envelope: {e}"),
@@ -235,6 +270,80 @@ mod tests {
             vec!["open", "closed", "on_hold", "review"],
             "custom appended alphabetically (on_hold before review)"
         );
+    }
+
+    /// The wrapped envelope shape the runner actually produces on
+    /// bd >= 1.0.4: `{ schema_version, data: { built_in_statuses,
+    /// custom_statuses, schema_version? } }`. The CI e2e fixtures
+    /// exercise this path (the runner sets BD_JSON_ENVELOPE=1
+    /// unconditionally). Before the fix this returned a catalog
+    /// with `status_names: []` because the deserialiser read the
+    /// top-level object and found no built-in / custom keys,
+    /// defaulting both to empty Vecs. The sidebar then rendered
+    /// zero status chips and every chip-related assertion timed
+    /// out. Verified against `bd 1.0.4` (ce242a879) on 2026-06-29.
+    #[test]
+    fn parses_wrapped_envelope_with_data_field() {
+        let value = json!({
+            "schema_version": 1,
+            "data": {
+                "built_in_statuses": [
+                    {"name": "open", "category": "active", "icon": "○", "description": "Available"},
+                    {"name": "in_progress", "category": "wip", "icon": "◐", "description": "WIP"},
+                    {"name": "closed", "category": "done", "icon": "✓", "description": "Done"}
+                ],
+                "custom_statuses": [
+                    {"name": "review", "category": "wip"}
+                ]
+            }
+        });
+        let catalog = parse_statuses_envelope(value).expect("parses wrapped envelope");
+        assert_eq!(
+            catalog.builtin.len(),
+            3,
+            "all built-ins parsed through the data wrapper"
+        );
+        assert_eq!(catalog.custom.len(), 1);
+        assert!(catalog.custom.iter().all(|s| !s.is_builtin));
+        assert_eq!(
+            catalog.status_names,
+            vec!["open", "in_progress", "closed", "review"],
+            "custom appended alphabetically after built-ins"
+        );
+    }
+
+    /// The exact envelope shape CI e2e fixtures produce (bd 1.0.4
+    /// with BD_JSON_ENVELOPE=1). The CLI doesn't always emit a
+    /// `custom_statuses` key when no customs are configured — the
+    /// inner defaulting has to handle that too. The status names
+    /// must surface all 7 built-ins the CLI ships.
+    #[test]
+    fn parses_wrapped_envelope_missing_custom_statuses_key() {
+        let value = json!({
+            "schema_version": 1,
+            "data": {
+                "built_in_statuses": [
+                    {"name": "open", "category": "active"},
+                    {"name": "in_progress", "category": "wip"},
+                    {"name": "blocked", "category": "wip"},
+                    {"name": "deferred", "category": "frozen"},
+                    {"name": "closed", "category": "done"},
+                    {"name": "pinned", "category": "frozen"},
+                    {"name": "hooked", "category": "wip"}
+                ]
+            }
+        });
+        let catalog =
+            parse_statuses_envelope(value).expect("parses wrapped envelope with no custom key");
+        assert_eq!(
+            catalog.builtin.len(),
+            7,
+            "all seven bd 1.0.4 built-ins surface"
+        );
+        assert_eq!(catalog.custom.len(), 0);
+        assert_eq!(catalog.status_names.len(), 7);
+        assert_eq!(catalog.status_names[0], "open");
+        assert_eq!(catalog.status_names[6], "hooked");
     }
 
     /// Older CLI builds emit a bare array — treat that as the
