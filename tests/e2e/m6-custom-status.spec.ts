@@ -166,6 +166,17 @@ function parseCreateId(stdout: string): string {
 }
 
 describe('M6 — custom status end-to-end', () => {
+  // Captured by the second test so the after-hook can roll
+  // the fixture back to its pristine 25-issue state. The
+  // m6-perf-large-backlog spec's after-hook polls for
+  // "25 issues" specifically — a leftover marker issue
+  // bumps the count to 26 and trips a
+  // "primary 25-issue fixture never re-mounted after
+  // switching back" timeout that fails the suite even
+  // though the perf assertions themselves passed.
+  // (Discovered from run 28363022400, 2026-06-29.)
+  let createdIssueId = ''
+
   before(async () => {
     await openFixtureWorkspace('m6-custom-status')
     // Register a unique custom status on the fixture workspace.
@@ -183,6 +194,24 @@ describe('M6 — custom status end-to-end', () => {
       runBd(['config', 'unset', 'status.custom'])
     } catch (err) {
       console.warn('[m6-custom-status] cleanup failed:', err)
+    }
+    // Drop the test-marker issue too — see the comment on
+    // `createdIssueId` above. `bd delete` is silent on success
+    // (no stdout) and exits non-zero if the id has already
+    // been torn down, so we wrap it the same way as the
+    // config unset.
+    if (createdIssueId) {
+      // `--force` is mandatory on bd 1.0.4 — without it the
+      // command prints a destructive-op preview and exits
+      // without actually deleting. `--quiet` suppresses the
+      // multi-line "Deleted <id> / Removed 0 dependency link(s)
+      // / Updated text references in 0 issue(s)" confirmation
+      // block so the test log stays quiet.
+      try {
+        runBd(['delete', '--quiet', '--force', createdIssueId])
+      } catch (err) {
+        console.warn('[m6-custom-status] marker-issue cleanup failed:', err)
+      }
     }
   })
 
@@ -299,6 +328,10 @@ describe('M6 — custom status end-to-end', () => {
     if (!issueId) {
       throw new Error(`bd create returned empty id (stdout: ${createOutput})`)
     }
+    // Hand the id to the after-hook so it can roll the fixture
+    // back to its pristine 25-issue state. Captured at the
+    // describe-scope `let createdIssueId` above.
+    createdIssueId = issueId
     runBd(['update', '--quiet', '--status', customStatusName, issueId])
 
     // Force the list query to refetch — the watcher's
