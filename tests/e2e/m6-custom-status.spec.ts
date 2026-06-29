@@ -55,7 +55,7 @@ import path from 'node:path'
 import { execFileSync } from 'node:child_process'
 import { browser, expect, $ } from '@wdio/globals'
 
-import { openFixtureWorkspace } from './helpers'
+import { openFixtureWorkspace, getCachedIssue } from './helpers'
 
 /**
  * Resolve the fixture workspace directory the same way every
@@ -274,6 +274,25 @@ describe('M6 — custom status end-to-end', () => {
     // line via the `Created issue: <id>` prefix. The same
     // regex matches a 1.0.5 bare-id stdout, so the helper stays
     // future-proof when CI bumps the pin.
+    //
+    // ponytail (2026-06-29, run 28363022400): after fixing the
+    // id parsing, the row the test waits for still didn't
+    // surface within 10s. The cause was the test's reliance on
+    // the .beads/ file watcher to push the new issue through
+    // the realtime sync pipeline — on a busy CI runner the
+    // watcher's notify-debouncer can sit on a 250-500ms idle
+    // window + a few extra seconds for the cache refetch to
+    // round-trip through `bd list --json`, well past the 10s
+    // budget. We now (a) explicit-invalidate the list query
+    // through the E2E handle (same path the first test uses to
+    // bust the catalog's 5-minute staleTime) and (b) read the
+    // cache directly via the `getCachedIssue` helper instead
+    // of waiting for the virtualized DOM to render the row.
+    // The cache is the source of truth — every UI surface
+    // (the row, the status pill, the sidebar counter, the
+    // detail drawer) renders from it — so asserting on the
+    // cache is the contract the test actually cares about, and
+    // it's independent of the virtualizer's mount window.
     const issueTitle = `M6 custom-status marker ${marker}`
     const createOutput = runBdCapture(['create', '--title', issueTitle])
     const issueId = parseCreateId(createOutput)
@@ -282,19 +301,64 @@ describe('M6 — custom status end-to-end', () => {
     }
     runBd(['update', '--quiet', '--status', customStatusName, issueId])
 
-    // Wait for the watcher to reconcile the new row. Reading
-    // the cache is more reliable than the virtualized DOM (a
-    // row could be unmounted at any time), but for this spec
-    // we just need the row to surface in the list — a 10s
-    // waitFor with a title-based selector is good enough.
+    // Force the list query to refetch — the watcher's
+    // notify-debouncer can sit idle for a few hundred ms on
+    // a fresh runner, and a CI cold Dolt reload adds another
+    // 5-10s. The invalidate is a no-op if the watcher already
+    // fired.
+    await browser.execute(() => {
+      const handle = (
+        globalThis as unknown as {
+          __collierQueryClient__?: {
+            invalidateQueries: (opts: { queryKey: string[] }) => void
+          }
+        }
+      ).__collierQueryClient__
+      if (!handle) {
+        throw new Error(
+          'queryClient handle not exposed — main.tsx did not install __collierQueryClient__ (VITE_E2E flag)'
+        )
+      }
+      handle.invalidateQueries({ queryKey: ['beads', 'list'] })
+    })
+
+    // Wait for the cache to land the just-created issue with
+    // the custom status. Reading from the cache via the
+    // `getCachedIssue` helper is the contract every UI surface
+    // renders from, so this assertion is the same one the
+    // status pill, the row, and the sidebar counter all
+    // depend on — independent of the virtualizer's mount
+    // window. The 15s budget covers the Dolt cold-start case
+    // on a fresh CI runner; steady-state is <1s.
+    const cached = await browser.waitUntil(
+      async () => {
+        const issue = await getCachedIssue(issueId)
+        return issue?.status === customStatusName ? issue : null
+      },
+      {
+        timeout: 15_000,
+        interval: 250,
+        timeoutMsg: `cache never surfaced issue ${issueId} with status ${customStatusName} after 15s`,
+      }
+    )
+    expect(cached.status).toBe(customStatusName)
+    // Title carries the marker so the row selector below has
+    // something stable to scope to once the virtualizer
+    // actually mounts it. The marker is unique per spec run
+    // (Date.now().toString(36)) so local re-runs stay
+    // idempotent.
+    expect(cached.title).toBe(issueTitle)
+
+    // Belt-and-braces: also wait for the row to mount in the
+    // DOM, so a future change that reads the status from the
+    // pill (instead of the cache) keeps working. The cache
+    // assertion above is the strict contract; this DOM poll
+    // just guards against regressions in the row -> status-pill
+    // wiring.
     const row = await $(
       `[data-testid="issue-row"][data-title*="M6 custom-status marker"]`
     )
     await row.waitForDisplayed({ timeout: 10_000 })
-
-    // The inline StatusPill inside the row carries the custom
-    // status name as data-status, which is the stable selector
-    // contract for "what status is this row".
     const pill = await row.$('[data-testid="status-pill"]')
     await pill.waitForDisplayed({ timeout: 5_000 })
     expect(await pill.getAttribute('data-status')).toBe(customStatusName)
