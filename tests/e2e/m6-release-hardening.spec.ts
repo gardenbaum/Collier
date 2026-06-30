@@ -3,7 +3,7 @@
 /**
  * M6 spec E2E — release hardening contract.
  *
- * Background: docs/specs/m6-foundation.md (release-hardening card)
+ * Background: docs/specs/m6-comments-gates-statuses.md (release-hardening sub-section)
  * asks for the bundled `tauri.conf.json` to be pinned so a
  * release that accidentally points the auto-updater at the
  * wrong GitHub repo, strips the pubkey, or carries the wrong
