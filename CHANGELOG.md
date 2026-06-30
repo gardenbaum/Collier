@@ -36,7 +36,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **Gates GUI view.** A new `GatesView` (sidebar tab +
     `ViewsRouter` case + i18n for en / de / fr / ar) reads from
     `commands.bdGateList` and renders the gate definitions +
-    pass / fail state. See docs/specs/m6-foundation.md.
+    pass / fail state. See docs/specs/m6-comments-gates-statuses.md (Gates GUI section).
   - **Performance pass for large backlogs.** A new
     `scripts/make-large-fixture.sh` seeds 1200 issues (120
     epics + 480 epic children + 600 standalones) via a single

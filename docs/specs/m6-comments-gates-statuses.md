@@ -224,13 +224,14 @@ source-tree side.
   a **blocking item before the next tagged release**. Procedure
   documented in `docs/developer/releases.md → "Initial Setup"`.
 
-- **Stale cross-reference in `tests/e2e/m6-release-hardening.spec.ts`
-  header.** The spec's preamble cites `docs/specs/m6-foundation.md`
-  for the release-hardening sub-card, but no such file was
-  committed — M6 is documented here as a single spec rather than
-  split into per-card specs. Either delete the cross-reference or
-  split this card out into its own `m6-foundation.md`; tracked as
-  a follow-up.
+- **Stale cross-reference to `docs/specs/m6-foundation.md`.** _(Resolved.)_
+  M6 was documented here as a single spec rather than split into
+  per-card specs, so the planned `m6-foundation.md` was never
+  committed. Three pointers — the JSDoc preamble of
+  `tests/e2e/m6-release-hardening.spec.ts`, the JSDoc "Spec:" line
+  in `src/lib/release-pipeline.test.ts`, and the dangling "See
+  …" link at the end of the Gates-GUI bullet in `CHANGELOG.md` —
+  cited it anyway. Rewritten to point at this spec instead.
 
 ## What's NOT in M6
 
