@@ -34,7 +34,7 @@
  * the workflows ever get nested enough that regex parsing
  * becomes brittle, switch this test to `yaml.parse(...)`.
  *
- * Spec: docs/specs/m6-foundation.md (release-hardening card).
+ * Spec: docs/specs/m6-comments-gates-statuses.md (release-hardening sub-section).
  * See also: docs/developer/releases.md.
  */
 
