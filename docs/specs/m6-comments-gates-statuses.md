@@ -55,7 +55,7 @@ order `bd` returns them on the wire.
   not ship a comment-delete subcommand, so the spec can't roll the
   fixture back to its pristine state. The CI workflow regenerates
   the fixture before every e2e job (`rm -rf /tmp/e2e-workspace &&
-  scripts/make-fixture.sh /tmp/e2e-workspace`), so a stale comment
+scripts/make-fixture.sh /tmp/e2e-workspace`), so a stale comment
   from a previous run can't leak into the next run.
 
 E2E: `tests/e2e/m6-comments.spec.ts`. Two cases — empty state on
@@ -88,13 +88,13 @@ binding.
   operator who has configured a workflow with custom statuses sees
   those values end-to-end without a renderer change.
 - `<GatesView>` is a new sidebar tab (`data-testid="sidebar-view-gates"`)
-  + a `ViewsRouter` case + i18n for `en` / `de` / `fr` / `ar`. The
-  view reads from `commands.bdGateList(cwd, includeClosed)` and
-  renders the gate definitions + pass / fail state. Custom-status
-  bug-fix follow-ups (PR #17) added the bd-1.0.4 envelope-unwrap
-  helper (`parse_statuses_envelope`) and the `__collierQueryClient__`
-  E2E handle so the spec can invalidate the catalog query after a
-  `bd config set` lands without waiting out the 5-minute staleTime.
+  - a `ViewsRouter` case + i18n for `en` / `de` / `fr` / `ar`. The
+    view reads from `commands.bdGateList(cwd, includeClosed)` and
+    renders the gate definitions + pass / fail state. Custom-status
+    bug-fix follow-ups (PR #17) added the bd-1.0.4 envelope-unwrap
+    helper (`parse_statuses_envelope`) and the `__collierQueryClient__`
+    E2E handle so the spec can invalidate the catalog query after a
+    `bd config set` lands without waiting out the 5-minute staleTime.
 - Type-safe migration: the bd wire-format change is pinned via
   tauri-specta's `#[serde(rename_all = "camelCase")]` pass on the
   Rust side; the TypeScript bindings under `src/lib/bindings.ts`
@@ -166,7 +166,7 @@ contract that closes that gap.
   `__collierAppMetadataReady__` promise) exposes it on `globalThis`
   with the camelCased shape:
   `{ name, version, identifier, updaterEndpoint, updaterActive,
-  pubkeyFingerprint, buildRunNumber }`.
+pubkeyFingerprint, buildRunNumber }`.
 - The bundled `version` matches the committed `package.json` AND
   the committed `src-tauri/tauri.conf.json` (closes the gap where
   the vitest version-sync guard reads the source tree and the
