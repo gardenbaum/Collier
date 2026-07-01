@@ -29,5 +29,3 @@ export function SectionLabel({
     </span>
   )
 }
-
-export default SectionLabel

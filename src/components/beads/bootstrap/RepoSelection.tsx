@@ -242,5 +242,3 @@ export function RepoSelection({ onSelect }: RepoSelectionProps) {
     </div>
   )
 }
-
-export default RepoSelection

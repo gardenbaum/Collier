@@ -28,5 +28,3 @@ export function WorktreeListView({ cwd: _cwd }: WorktreeListViewProps) {
     </section>
   )
 }
-
-export default WorktreeListView

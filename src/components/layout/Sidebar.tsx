@@ -548,5 +548,3 @@ function ToggleChip({
     </button>
   )
 }
-
-export default Sidebar

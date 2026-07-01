@@ -14,5 +14,3 @@ export interface PriorityDotProps {
 export function PriorityDot({ priority }: PriorityDotProps) {
   return <PriorityBadge priority={priority} data-testid="priority-dot" />
 }
-
-export default PriorityDot

@@ -135,19 +135,6 @@ export const radius = {
   full: 9999,
 } as const
 
-// ponytail: shadow.focus is wired up in Task 1.3 via the `--ring` CSS
-// variable (the `--ring` var on :root maps to palette.accent, which feeds
-// the focus-visible:ring styles on the shadcn primitives). It's defined
-// here as a parallel export so non-CSS consumers (e.g. inline styles on
-// the search input) can pull the value directly.
-export const shadow = {
-  sm: '0 1px 0 rgba(0, 0, 0, 0.2), 0 1px 2px rgba(0, 0, 0, 0.16)',
-  md: '0 1px 0 rgba(0, 0, 0, 0.2), 0 4px 12px rgba(0, 0, 0, 0.24)',
-  lg: '0 1px 0 rgba(0, 0, 0, 0.2), 0 8px 24px rgba(0, 0, 0, 0.32)',
-  xl: '0 1px 0 rgba(0, 0, 0, 0.3), 0 16px 48px rgba(0, 0, 0, 0.4)',
-  focus: '0 0 0 2px rgba(94, 106, 210, 0.5)',
-} as const
-
 export const motion = {
   duration: { fast: 80, normal: 140, slow: 220, sheet: 280 },
   easing: {

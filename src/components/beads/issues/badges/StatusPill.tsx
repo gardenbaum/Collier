@@ -17,5 +17,3 @@ export function StatusPill({ status }: StatusPillProps) {
     <StatusDot status={status} data-testid="status-pill" data-status={status} />
   )
 }
-
-export default StatusPill

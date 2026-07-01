@@ -163,5 +163,3 @@ const outgoingTextStyle: CSSProperties = {
   lineHeight: type.lineHeight.tight,
   color: palette.textMuted,
 }
-
-export default DependencyBadge

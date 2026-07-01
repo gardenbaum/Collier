@@ -53,5 +53,3 @@ export function StatusDot({
     />
   )
 }
-
-export default StatusDot
