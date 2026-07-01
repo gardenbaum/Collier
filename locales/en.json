@@ -189,7 +189,7 @@
   "menu.preferences": "Preferences...",
   "menu.quit": "Quit {{appName}}",
   "menu.showAll": "Show All",
-  "menu.toggleLeftSidebar": "Toggle Left Sidebar",
+  "menu.toggleSidebar": "Toggle Sidebar",
   "menu.view": "View",
   "preferences.advanced": "Advanced",
   "preferences.advanced.clearRecoveryFiles": "Clear recovery files",

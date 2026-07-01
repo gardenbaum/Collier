@@ -46,10 +46,10 @@ useState (component) → Zustand (global UI) → TanStack Query (persistent data
 
 ```typescript
 // ✅ GOOD: Selector syntax - only re-renders when specific value changes
-const leftSidebarVisible = useUIStore(state => state.leftSidebarVisible)
+const sidebarVisible = useUIStore(state => state.sidebarVisible)
 
 // ❌ BAD: Destructuring causes render cascades (caught by ast-grep)
-const { leftSidebarVisible } = useUIStore()
+const { sidebarVisible } = useUIStore()
 
 // ✅ GOOD: Use getState() in callbacks for current state
 const handleAction = () => {

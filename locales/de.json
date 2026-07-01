@@ -189,7 +189,7 @@
   "menu.preferences": "Einstellungen...",
   "menu.quit": "{{appName}} beenden",
   "menu.showAll": "Alle anzeigen",
-  "menu.toggleLeftSidebar": "Linke Seitenleiste ein-/ausblenden",
+  "menu.toggleSidebar": "Seitenleiste ein-/ausblenden",
   "menu.view": "Ansicht",
   "preferences.advanced": "Erweitert",
   "preferences.advanced.clearRecoveryFiles": "Recovery-Dateien löschen",

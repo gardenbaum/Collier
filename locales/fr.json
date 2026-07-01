@@ -189,7 +189,7 @@
   "menu.preferences": "Préférences...",
   "menu.quit": "Quitter {{appName}}",
   "menu.showAll": "Tout afficher",
-  "menu.toggleLeftSidebar": "Afficher/Masquer la barre latérale gauche",
+  "menu.toggleSidebar": "Afficher/Masquer la barre latérale",
   "menu.view": "Affichage",
   "preferences.advanced": "Avancé",
   "preferences.advanced.clearRecoveryFiles": "Effacer les fichiers de récupération",
