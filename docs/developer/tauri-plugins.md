@@ -73,29 +73,6 @@ Automatically saves and restores window position, size, and state (maximized, et
 
 **No frontend code needed** - works automatically.
 
-### Context Menus
-
-Native context menus using the built-in Tauri Menu API (no plugin required).
-
-**Usage** (`src/lib/context-menu.ts`):
-
-```typescript
-import { showContextMenu, showEditContextMenu } from '@/lib/context-menu'
-
-// Custom menu
-await showContextMenu([
-  { id: 'copy', label: 'Copy', accelerator: 'CmdOrCtrl+C', action: handleCopy },
-  { type: 'separator' },
-  { id: 'delete', label: 'Delete', action: handleDelete },
-])
-
-// Standard edit menu (Cut, Copy, Paste, Select All)
-await showEditContextMenu()
-
-// Text input menu (includes Undo/Redo)
-await showTextInputContextMenu()
-```
-
 ### Dialog
 
 Native file open/save dialogs and message boxes.
@@ -180,7 +157,6 @@ Built into Tauri v2 via the `tray-icon` feature. See [Tauri docs](https://v2.tau
 The Menu API is built into `@tauri-apps/api/menu`. This app uses it for:
 
 - Application menu (File, Edit, View, etc.)
-- Context menus via `src/lib/context-menu.ts`
 
 ## Plugins to Consider Adding
 
