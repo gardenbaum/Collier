@@ -74,5 +74,3 @@ export function TypeIcon({ type, size = 14 }: TypeIconProps) {
     </span>
   )
 }
-
-export default TypeIcon

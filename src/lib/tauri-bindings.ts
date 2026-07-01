@@ -23,15 +23,3 @@
 
 export { commands, type Result } from './bindings'
 export type { AppPreferences, JsonValue, BdError } from './bindings'
-
-/**
- * Helper to unwrap a Result type, throwing on error
- */
-export function unwrapResult<T, E>(
-  result: { status: 'ok'; data: T } | { status: 'error'; error: E }
-): T {
-  if (result.status === 'ok') {
-    return result.data
-  }
-  throw result.error
-}

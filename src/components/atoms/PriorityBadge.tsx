@@ -40,5 +40,3 @@ export function PriorityBadge({
     </span>
   )
 }
-
-export default PriorityBadge

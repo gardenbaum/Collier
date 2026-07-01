@@ -43,5 +43,3 @@ export function Monogram({
     </span>
   )
 }
-
-export default Monogram

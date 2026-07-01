@@ -137,19 +137,3 @@ export function useStatusCatalog(cwd: string | null): StatusCatalogState {
     error: query.error,
   }
 }
-
-/**
- * Look up a built-in status meta by name from the catalog, with
- * a defensive fallback when the catalog hasn't loaded or the
- * status isn't in the built-in half.
- *
- * Custom statuses return `undefined` — callers should fall back
- * to the neutral palette + raw label path (see `StatusPill`).
- */
-export function findBuiltinStatus(
-  catalog: StatusCatalog | undefined,
-  name: string
-): StatusMeta | undefined {
-  if (!catalog) return undefined
-  return catalog.builtin.find(s => s.name === name)
-}

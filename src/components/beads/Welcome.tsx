@@ -93,5 +93,3 @@ export function Welcome({ onCreate }: WelcomeProps) {
     </div>
   )
 }
-
-export default Welcome

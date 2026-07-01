@@ -29,5 +29,3 @@ export function SwarmView({ cwd: _cwd }: SwarmViewProps) {
     </section>
   )
 }
-
-export default SwarmView

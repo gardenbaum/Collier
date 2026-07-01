@@ -194,5 +194,3 @@ export function OutputRenderer({ value, error }: OutputRendererProps) {
     </pre>
   )
 }
-
-export default OutputRenderer

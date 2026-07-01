@@ -28,5 +28,3 @@ export function SyncStatusView({ cwd: _cwd }: SyncStatusViewProps) {
     </section>
   )
 }
-
-export default SyncStatusView

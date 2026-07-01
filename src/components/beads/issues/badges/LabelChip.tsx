@@ -70,5 +70,3 @@ export function LabelChip({ label, onRemove }: LabelChipProps) {
     </span>
   )
 }
-
-export default LabelChip
