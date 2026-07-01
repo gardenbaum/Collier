@@ -627,5 +627,3 @@ function formatError(err: unknown): string {
   }
   return String(err)
 }
-
-export default DepGraphView

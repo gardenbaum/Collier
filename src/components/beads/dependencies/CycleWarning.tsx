@@ -87,5 +87,3 @@ const dismissButtonStyle: CSSProperties = {
   borderColor: colors.mono3,
   cursor: 'pointer',
 }
-
-export default CycleWarning

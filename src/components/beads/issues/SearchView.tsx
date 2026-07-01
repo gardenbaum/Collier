@@ -452,5 +452,3 @@ function formatError(err: unknown): string {
   if (err instanceof Error) return err.message
   return 'Search failed.'
 }
-
-export default SearchView

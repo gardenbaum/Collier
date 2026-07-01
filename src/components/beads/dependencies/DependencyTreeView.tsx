@@ -205,5 +205,3 @@ const typeStyle = {
 const idStyle = {
   color: colors.mono0,
 }
-
-export default DependencyTreeView

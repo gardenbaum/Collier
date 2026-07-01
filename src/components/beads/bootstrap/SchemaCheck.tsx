@@ -152,5 +152,3 @@ export function SchemaCheck({ cwd, onPass }: SchemaCheckProps) {
     </Dialog>
   )
 }
-
-export default SchemaCheck

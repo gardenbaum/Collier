@@ -923,5 +923,3 @@ const historyDetailsStyle: CSSProperties = {
   whiteSpace: 'pre-wrap',
   margin: 0,
 }
-
-export default IssueDetailView

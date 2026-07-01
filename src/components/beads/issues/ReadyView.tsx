@@ -223,5 +223,3 @@ function formatError(err: unknown): string {
   if (err instanceof Error) return err.message
   return 'Failed to load ready issues.'
 }
-
-export default ReadyView
