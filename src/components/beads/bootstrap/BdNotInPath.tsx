@@ -204,5 +204,3 @@ export function BdNotInPath() {
     </Dialog>
   )
 }
-
-export default BdNotInPath

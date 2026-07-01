@@ -139,5 +139,3 @@ export function BdInitFlow({
     </section>
   )
 }
-
-export default BdInitFlow

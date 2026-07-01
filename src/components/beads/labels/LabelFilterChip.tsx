@@ -128,5 +128,3 @@ const removeButtonStyle: CSSProperties = {
   color: colors.mono0,
   cursor: 'pointer',
 }
-
-export default LabelFilterChip

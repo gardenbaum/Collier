@@ -1130,5 +1130,3 @@ const assigneeCellStyle: CSSProperties = {
   textOverflow: 'ellipsis',
   whiteSpace: 'nowrap',
 }
-
-export default IssueListView

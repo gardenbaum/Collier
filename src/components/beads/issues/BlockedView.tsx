@@ -224,5 +224,3 @@ function formatError(err: unknown): string {
   if (err instanceof Error) return err.message
   return 'Failed to load blocked issues.'
 }
-
-export default BlockedView

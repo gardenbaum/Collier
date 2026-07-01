@@ -304,5 +304,3 @@ export function GatesView({ cwd, onOpenIssue }: GatesViewProps) {
     </section>
   )
 }
-
-export default GatesView

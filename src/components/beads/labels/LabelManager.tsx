@@ -477,5 +477,3 @@ const errorBoxStyle: CSSProperties = {
   paddingInline: space[3],
   paddingBlock: space[2],
 }
-
-export default LabelManager

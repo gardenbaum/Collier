@@ -204,5 +204,3 @@ export function QuickPane({
     </section>
   )
 }
-
-export default QuickPane

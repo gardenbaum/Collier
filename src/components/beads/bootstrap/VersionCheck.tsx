@@ -194,5 +194,3 @@ export function VersionCheck({ cwd, onPass }: VersionCheckProps) {
     </Dialog>
   )
 }
-
-export default VersionCheck
