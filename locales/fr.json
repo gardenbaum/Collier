@@ -1,5 +1,5 @@
 {
-  "app.name": "Tauri Template",
+  "app.name": "Collier",
   "beads.beadsPane.bdPath": "Chemin bd personnalisé",
   "beads.beadsPane.bdPathHelp": "Laisser vide pour utiliser bd depuis PATH.",
   "beads.beadsPane.timeout": "Timeout par défaut (secondes)",

@@ -1,5 +1,5 @@
 {
-  "app.name": "Tauri Template",
+  "app.name": "Collier",
   "beads.beadsPane.bdPath": "bd path override",
   "beads.beadsPane.bdPathHelp": "Leave empty to use bd from PATH.",
   "beads.beadsPane.timeout": "Default timeout (seconds)",
