@@ -196,7 +196,7 @@ describe('menu item action handlers', () => {
     expect(mockLogger.info).toHaveBeenCalledWith('About menu item clicked')
     expect(alertSpy).toHaveBeenCalledTimes(1)
     const message = alertSpy.mock.calls[0]?.[0] as string
-    expect(message).toContain('Tauri Template')
+    expect(message).toContain('Collier')
     expect(message).toContain('Version: 0.1.0-test')
     expect(message).toContain('Built with Tauri v2')
   })
