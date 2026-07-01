@@ -2,8 +2,8 @@ id: no-destructure-zustand
 message: |
   Never destructure from Zustand stores. Use selector syntax instead.
 
-  BAD: const { leftSidebarVisible } = useUIStore()
-  GOOD: const leftSidebarVisible = useUIStore(state => state.leftSidebarVisible)
+  BAD: const { sidebarVisible } = useUIStore()
+  GOOD: const sidebarVisible = useUIStore(state => state.sidebarVisible)
 
   For multiple values, use multiple selectors or useShallow.
 severity: error

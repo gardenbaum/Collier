@@ -189,7 +189,7 @@
   "menu.preferences": "التفضيلات...",
   "menu.quit": "إنهاء {{appName}}",
   "menu.showAll": "إظهار الكل",
-  "menu.toggleLeftSidebar": "تبديل الشريط الجانبي الأيسر",
+  "menu.toggleSidebar": "تبديل الشريط الجانبي",
   "menu.view": "عرض",
   "preferences.advanced": "متقدم",
   "preferences.advanced.clearRecoveryFiles": "مسح ملفات الاسترداد",

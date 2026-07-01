@@ -30,7 +30,6 @@ describe('useKeyboardShortcuts (kebab-case module)', () => {
   beforeEach(() => {
     useUIStore.setState({
       sidebarVisible: true,
-      leftSidebarVisible: true,
     })
   })
 
@@ -63,18 +62,16 @@ describe('useKeyboardShortcuts (kebab-case module)', () => {
     pressKey('1', { meta: true })
 
     expect(useUIStore.getState().sidebarVisible).toBe(false)
-    expect(useUIStore.getState().leftSidebarVisible).toBe(false)
   })
 
   it('toggles the sidebar when Ctrl+1 is pressed (hidden -> visible)', () => {
-    useUIStore.setState({ sidebarVisible: false, leftSidebarVisible: false })
+    useUIStore.setState({ sidebarVisible: false })
     const ctx = makeContext()
     renderHook(() => useKeyboardShortcuts(ctx))
 
     pressKey('1', { ctrl: true })
 
     expect(useUIStore.getState().sidebarVisible).toBe(true)
-    expect(useUIStore.getState().leftSidebarVisible).toBe(true)
   })
 
   it('ignores the bare key when no modifier is held', () => {

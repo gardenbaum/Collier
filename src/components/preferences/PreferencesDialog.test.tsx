@@ -7,7 +7,6 @@ describe('PreferencesDialog', () => {
   beforeEach(() => {
     useUIStore.setState({
       sidebarVisible: true,
-      leftSidebarVisible: true,
       commandPaletteOpen: false,
       preferencesOpen: true,
       lastQuickPaneEntry: null,

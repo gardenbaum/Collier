@@ -105,7 +105,6 @@ describe('useKeyboardNavigation', () => {
     useUIStore.setState({
       commandPaletteOpen: false,
       sidebarVisible: true,
-      leftSidebarVisible: true,
     })
     useWorkspaceStore.setState({
       repoPath: '/test',

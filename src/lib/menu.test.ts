@@ -40,7 +40,7 @@ const { mockCheck, mockNotifications, mockLogger, mockUIStore } = vi.hoisted(
       getState: vi.fn(() => ({
         preferencesOpen: false,
         sidebarVisible: true,
-        toggleLeftSidebar: vi.fn(),
+        toggleSidebar: vi.fn(),
         setPreferencesOpen: vi.fn(),
       })),
     },
@@ -183,7 +183,7 @@ describe('menu item action handlers', () => {
     mockUIStore.getState.mockReturnValue({
       preferencesOpen: false,
       sidebarVisible: true,
-      toggleLeftSidebar: vi.fn(),
+      toggleSidebar: vi.fn(),
       setPreferencesOpen: vi.fn(),
     })
   })
@@ -250,7 +250,7 @@ describe('menu item action handlers', () => {
     mockUIStore.getState.mockReturnValue({
       preferencesOpen: false,
       sidebarVisible: true,
-      toggleLeftSidebar: vi.fn(),
+      toggleSidebar: vi.fn(),
       setPreferencesOpen,
     })
     await buildAppMenu()
@@ -263,12 +263,12 @@ describe('menu item action handlers', () => {
     expect(setPreferencesOpen).toHaveBeenCalledWith(true)
   })
 
-  it('handleToggleLeftSidebar: invokes toggleLeftSidebar on the UI store', async () => {
-    const toggleLeftSidebar = vi.fn()
+  it('handleToggleSidebar: invokes toggleSidebar on the UI store', async () => {
+    const toggleSidebar = vi.fn()
     mockUIStore.getState.mockReturnValue({
       preferencesOpen: false,
       sidebarVisible: true,
-      toggleLeftSidebar,
+      toggleSidebar,
       setPreferencesOpen: vi.fn(),
     })
     await buildAppMenu()
@@ -278,7 +278,7 @@ describe('menu item action handlers', () => {
     expect(mockLogger.info).toHaveBeenCalledWith(
       'Toggle Sidebar menu item clicked'
     )
-    expect(toggleLeftSidebar).toHaveBeenCalledTimes(1)
+    expect(toggleSidebar).toHaveBeenCalledTimes(1)
   })
 })
 

@@ -5,7 +5,6 @@ describe('useUIStore', () => {
   beforeEach(() => {
     useUIStore.setState({
       sidebarVisible: true,
-      leftSidebarVisible: true,
       commandPaletteOpen: false,
       preferencesOpen: false,
       lastQuickPaneEntry: null,
@@ -16,7 +15,6 @@ describe('useUIStore', () => {
     it('starts with sidebar visible, palette closed, preferences closed, no recent quick-pane entry', () => {
       const s = useUIStore.getState()
       expect(s.sidebarVisible).toBe(true)
-      expect(s.leftSidebarVisible).toBe(true)
       expect(s.commandPaletteOpen).toBe(false)
       expect(s.preferencesOpen).toBe(false)
       expect(s.lastQuickPaneEntry).toBeNull()
@@ -24,36 +22,18 @@ describe('useUIStore', () => {
   })
 
   describe('toggleSidebar / setSidebarVisible', () => {
-    it('toggleSidebar flips sidebarVisible and the legacy alias', () => {
+    it('toggleSidebar flips sidebarVisible', () => {
       useUIStore.getState().toggleSidebar()
       const s = useUIStore.getState()
       expect(s.sidebarVisible).toBe(false)
-      expect(s.leftSidebarVisible).toBe(false)
       useUIStore.getState().toggleSidebar()
       expect(useUIStore.getState().sidebarVisible).toBe(true)
     })
 
-    it('setSidebarVisible updates sidebarVisible and the legacy alias together', () => {
+    it('setSidebarVisible updates sidebarVisible explicitly', () => {
       useUIStore.getState().setSidebarVisible(false)
       const s = useUIStore.getState()
       expect(s.sidebarVisible).toBe(false)
-      expect(s.leftSidebarVisible).toBe(false)
-    })
-  })
-
-  describe('legacy left-sidebar aliases', () => {
-    it('toggleLeftSidebar flips both sidebarVisible and leftSidebarVisible', () => {
-      useUIStore.getState().toggleLeftSidebar()
-      const s = useUIStore.getState()
-      expect(s.sidebarVisible).toBe(false)
-      expect(s.leftSidebarVisible).toBe(false)
-    })
-
-    it('setLeftSidebarVisible updates both visibility fields together', () => {
-      useUIStore.getState().setLeftSidebarVisible(false)
-      const s = useUIStore.getState()
-      expect(s.sidebarVisible).toBe(false)
-      expect(s.leftSidebarVisible).toBe(false)
     })
   })
 
