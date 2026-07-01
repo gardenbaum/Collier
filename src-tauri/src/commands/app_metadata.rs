@@ -20,7 +20,7 @@
 //! assert "a pubkey is configured" without ever echoing the raw
 //! signing key into test logs or DOM dumps.
 //!
-//! Spec: docs/specs/m6-foundation.md (release-hardening card).
+//! Spec: docs/specs/m6-comments-gates-statuses.md (release-hardening sub-section).
 //! Contract: docs/developer/releases.md → "Auto-update system".
 
 use serde::{Deserialize, Serialize};
