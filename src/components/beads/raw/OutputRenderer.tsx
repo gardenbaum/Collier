@@ -52,19 +52,6 @@ const preStyle: CSSProperties = {
   wordBreak: 'break-word',
 }
 
-const errorStyle: CSSProperties = {
-  fontFamily: 'ui-monospace, SFMono-Regular, monospace',
-  fontSize: type.fontSize.sm,
-  lineHeight: type.lineHeight.normal,
-  color: colors.mono0,
-  backgroundColor: colors.mono9,
-  borderTop: `1px solid ${colors.mono7}`,
-  padding: space[3],
-  margin: 0,
-  whiteSpace: 'pre-wrap',
-  wordBreak: 'break-word',
-}
-
 const emptyStyle: CSSProperties = {
   fontSize: type.fontSize.sm,
   color: colors.mono3,
@@ -109,7 +96,7 @@ export function OutputRenderer({ value, error }: OutputRendererProps) {
   if (error !== undefined && error !== null) {
     return (
       <div data-testid="output-error" style={containerStyle}>
-        <pre style={errorStyle} role="alert">
+        <pre style={preStyle} role="alert">
           {formatError(error)}
         </pre>
       </div>
