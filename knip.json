@@ -4,9 +4,10 @@
   "project": ["src/**/*.{ts,tsx}"],
   "ignore": [
     "src/components/ui/**",
-    "src/test/**",
-    "**/index.ts",
-    "src/lib/platform-strings.ts"
+    "src/components/quick-pane/QuickPaneApp.tsx",
+    "src/hooks/use-mobile.ts",
+    "src/quick-pane-main.tsx",
+    "**/index.ts"
   ],
   "ignoreDependencies": [
     "@tauri-apps/*",
@@ -15,6 +16,7 @@
     "tw-animate-css",
     "react-day-picker",
     "@testing-library/*",
+    "@wdio/*",
     "babel-plugin-react-compiler"
   ],
   "ignoreExportsUsedInFile": true
