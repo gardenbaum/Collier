@@ -13,6 +13,11 @@
  * Selector pattern (per AGENTS.md): never destructure the whole store
  * in a component — `useIssueFilterStore(state => state.status)` for
  * the dimension you need.
+ *
+ * Wiring the store to the workspace-store lives in
+ * `./attach-to-workspace-store.ts` — call
+ * `attachToWorkspaceStore(workspaceStore, useIssueFilterStore)` from
+ * the app boot path.
  */
 import { create } from 'zustand'
 import { devtools, persist } from 'zustand/middleware'
@@ -235,37 +240,6 @@ export const useIssueFilterStore = create<IssueFilterState>()(
 // the latest persisted map when swapping repos. Their underscore
 // prefix marks them as "not part of the public API — call the
 // actions, don't poke the fields directly".
-
-/**
- * Wire the issue-filter store to the workspace store so workspace
- * switches swap the active filter set automatically. Idempotent —
- * re-calling replaces any previous subscription (so tests can
- * re-attach after `setState` resets). Returns an unsubscribe fn
- * the caller can use for cleanup; in production the app keeps
- * the store alive for the whole session, so cleanup is a no-op.
- */
-export function attachToWorkspaceStore(workspaceStore: {
-  getState: () => { repoPath: string | null }
-  subscribe: (
-    listener: (state: { repoPath: string | null }) => void
-  ) => () => void
-}): () => void {
-  const prev = useIssueFilterStore.getState()._unsubscribeWorkspace
-  if (prev) prev()
-
-  // Initial sync: load the active repo's filter if one is set.
-  const initialPath = workspaceStore.getState().repoPath
-  if (initialPath !== null) {
-    useIssueFilterStore.getState()._setActiveRepoPath(initialPath)
-  }
-
-  const unsubscribe = workspaceStore.subscribe(state => {
-    useIssueFilterStore.getState()._setActiveRepoPath(state.repoPath)
-  })
-
-  useIssueFilterStore.setState({ _unsubscribeWorkspace: unsubscribe })
-  return unsubscribe
-}
 
 /**
  * Test-only: reset every piece of the store (in-memory filter,

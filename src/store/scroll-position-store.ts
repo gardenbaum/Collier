@@ -16,6 +16,11 @@
  * One position per view, keyed by `view` string (the workspace-store's
  * `WorkspaceView` enum). The list view, graph view, blocked view, etc.
  * each maintain their own scroll offset per workspace.
+ *
+ * Wiring the store to the workspace-store lives in
+ * `./attach-to-workspace-store.ts` — call
+ * `attachToWorkspaceStore(workspaceStore, useScrollPositionStore)` from
+ * the app boot path.
  */
 import { create } from 'zustand'
 import { devtools, persist } from 'zustand/middleware'
@@ -144,32 +149,6 @@ export const useScrollPositionStore = create<ScrollPositionState>()(
     { name: 'scroll-position-store' }
   )
 )
-
-/**
- * Wire the scroll-position store to the workspace-store so workspace
- * switches swap the active positions automatically. Idempotent.
- * See `issue-filter-store.attachToWorkspaceStore` for the same
- * pattern — the two stores are intentionally isomorphic so the
- * `App.tsx` wiring reads as two parallel lines.
- */
-export function attachToWorkspaceStore(workspaceStore: {
-  getState: () => { repoPath: string | null }
-  subscribe: (
-    listener: (state: { repoPath: string | null }) => void
-  ) => () => void
-}): () => void {
-  const prev = useScrollPositionStore.getState()._unsubscribeWorkspace
-  if (prev) prev()
-  const initialPath = workspaceStore.getState().repoPath
-  if (initialPath !== null) {
-    useScrollPositionStore.getState()._setActiveRepoPath(initialPath)
-  }
-  const unsubscribe = workspaceStore.subscribe(state => {
-    useScrollPositionStore.getState()._setActiveRepoPath(state.repoPath)
-  })
-  useScrollPositionStore.setState({ _unsubscribeWorkspace: unsubscribe })
-  return unsubscribe
-}
 
 /**
  * Test-only: reset the store to a clean slate. Production never

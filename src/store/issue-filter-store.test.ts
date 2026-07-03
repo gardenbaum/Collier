@@ -1,10 +1,10 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import {
-  attachToWorkspaceStore,
   getIssueFilterCounts,
   resetIssueFilterStoreForTests,
   useIssueFilterStore,
 } from './issue-filter-store'
+import { attachToWorkspaceStore } from './attach-to-workspace-store'
 
 // Minimal workspace-store stand-in. The real store has more fields,
 // but `attachToWorkspaceStore` only reads `repoPath` via `getState()`
@@ -146,7 +146,7 @@ describe('useIssueFilterStore', () => {
     // subscription wiring is what we're exercising.
     function bootWorkspace(initial: string | null) {
       const ws = makeWorkspaceStub(initial)
-      attachToWorkspaceStore(ws)
+      attachToWorkspaceStore(ws, useIssueFilterStore)
       return ws
     }
 
