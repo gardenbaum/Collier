@@ -22,6 +22,7 @@ import { commands } from '@/lib/tauri-bindings'
 import type { Issue } from '@/lib/bindings'
 import { useWorkspaceStore } from '@/store/workspace-store'
 import { colors, space, type } from '@/lib/design-tokens'
+import { formatError } from '@/lib/error-format'
 import { EmptyState } from '@/components/atoms'
 import { StatusPill } from './badges/StatusPill'
 import { PriorityDot } from './badges/PriorityDot'
@@ -129,7 +130,7 @@ export function BlockedView({ cwd }: BlockedViewProps) {
 
       {error ? (
         <div data-testid="blocked-error" style={errorStyle} role="alert">
-          {formatError(error)}
+          {formatError(error, 'Failed to load blocked issues.')}
         </div>
       ) : null}
 
@@ -209,18 +210,4 @@ function BlockedSkeleton() {
       ))}
     </div>
   )
-}
-
-// ponytail: BdError is a tagged union with 10 variants; we collapse to a
-// human-readable string. Falsy values fall through to a generic message so
-// the user never sees `undefined`.
-function formatError(err: unknown): string {
-  if (err && typeof err === 'object' && 'type' in err) {
-    const e = err as { type: string; message?: string; stderr?: string }
-    if (e.type === 'NonZeroExit' && e.stderr) return `bd failed: ${e.stderr}`
-    if ('message' in e && e.message) return e.message
-    return e.type
-  }
-  if (err instanceof Error) return err.message
-  return 'Failed to load blocked issues.'
 }

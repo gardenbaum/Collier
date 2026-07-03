@@ -41,6 +41,7 @@ import { Network } from 'lucide-react'
 import { commands } from '@/lib/tauri-bindings'
 import type { Graph, GraphNode } from '@/lib/bindings'
 import { colors, palette, radius, space, type } from '@/lib/design-tokens'
+import { formatError } from '@/lib/error-format'
 import { EmptyState } from '@/components/atoms'
 import {
   computeLayout,
@@ -615,15 +616,4 @@ export function DepGraphView({ cwd, onOpenIssue }: DepGraphViewProps) {
       </div>
     </section>
   )
-}
-
-/** Extract a human-readable message from a bd error union. Mirrors
- * the EpicView / StatusOverviewView helpers. */
-function formatError(err: unknown): string {
-  if (typeof err === 'object' && err !== null) {
-    const e = err as { stderr?: string; message?: string }
-    if (typeof e.stderr === 'string' && e.stderr.length > 0) return e.stderr
-    if (typeof e.message === 'string' && e.message.length > 0) return e.message
-  }
-  return String(err)
 }

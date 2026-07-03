@@ -24,6 +24,7 @@ import { commands } from '@/lib/tauri-bindings'
 import type { Issue } from '@/lib/bindings'
 import { colors, space, type } from '@/lib/design-tokens'
 import { useWorkspaceStore } from '@/store/workspace-store'
+import { formatError } from '@/lib/error-format'
 import { EmptyState } from '@/components/atoms'
 import { StatusPill } from './badges/StatusPill'
 import { PriorityDot } from './badges/PriorityDot'
@@ -333,7 +334,7 @@ export function SearchView({ cwd, onOpenIssue }: SearchViewProps) {
           <SearchSkeleton />
         ) : error ? (
           <div data-testid="search-error" style={errorStyle} role="alert">
-            Search failed: {formatError(error)}
+            Search failed: {formatError(error, '')}
           </div>
         ) : issues.length === 0 ? (
           <div data-testid="search-empty">
@@ -440,15 +441,4 @@ function SearchSkeleton() {
       ))}
     </div>
   )
-}
-
-function formatError(err: unknown): string {
-  if (err && typeof err === 'object' && 'type' in err) {
-    const e = err as { type: string; message?: string; stderr?: string }
-    if (e.type === 'NonZeroExit' && e.stderr) return `bd failed: ${e.stderr}`
-    if ('message' in e && e.message) return e.message
-    return e.type
-  }
-  if (err instanceof Error) return err.message
-  return 'Search failed.'
 }

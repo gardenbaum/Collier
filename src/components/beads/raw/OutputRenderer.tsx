@@ -23,6 +23,7 @@
  */
 import type { CSSProperties } from 'react'
 import { colors, space, type } from '@/lib/design-tokens'
+import { formatError } from '@/lib/error-format'
 
 export interface OutputRendererProps {
   /** BdOutput to render. Either `value` (success) or `error` (failure)
@@ -79,17 +80,6 @@ const tdStyle: CSSProperties = {
   borderTop: `1px solid ${colors.mono7}`,
   padding: space[2],
   textAlign: 'start',
-}
-
-function formatError(err: unknown): string {
-  if (err && typeof err === 'object' && 'type' in err) {
-    const e = err as { type: string; message?: string; stderr?: string }
-    if (e.type === 'NonZeroExit' && e.stderr) return `bd failed: ${e.stderr}`
-    if ('message' in e && e.message) return e.message
-    return e.type
-  }
-  if (err instanceof Error) return err.message
-  return String(err)
 }
 
 export function OutputRenderer({ value, error }: OutputRendererProps) {
