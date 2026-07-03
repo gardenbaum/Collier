@@ -1,9 +1,9 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import {
-  attachToWorkspaceStore,
   resetScrollPositionStoreForTests,
   useScrollPositionStore,
 } from './scroll-position-store'
+import { attachToWorkspaceStore } from './attach-to-workspace-store'
 
 function makeWorkspaceStub(initialPath: string | null = null): {
   repoPath: string | null
@@ -45,7 +45,10 @@ describe('useScrollPositionStore', () => {
 
   describe('setForView / getForView (single workspace)', () => {
     it('round-trips an offset for the active view', () => {
-      attachToWorkspaceStore(makeWorkspaceStub('/repo-a'))
+      attachToWorkspaceStore(
+        makeWorkspaceStub('/repo-a'),
+        useScrollPositionStore
+      )
       useScrollPositionStore.getState().setForView('list', 1234)
       expect(
         useScrollPositionStore.getState().getForView('/repo-a', 'list')
@@ -53,7 +56,10 @@ describe('useScrollPositionStore', () => {
     })
 
     it('isolates positions per view', () => {
-      attachToWorkspaceStore(makeWorkspaceStub('/repo-a'))
+      attachToWorkspaceStore(
+        makeWorkspaceStub('/repo-a'),
+        useScrollPositionStore
+      )
       useScrollPositionStore.getState().setForView('list', 100)
       useScrollPositionStore.getState().setForView('graph', 200)
       expect(
@@ -65,14 +71,20 @@ describe('useScrollPositionStore', () => {
     })
 
     it('returns 0 for an unsaved view', () => {
-      attachToWorkspaceStore(makeWorkspaceStub('/repo-a'))
+      attachToWorkspaceStore(
+        makeWorkspaceStub('/repo-a'),
+        useScrollPositionStore
+      )
       expect(
         useScrollPositionStore.getState().getForView('/repo-a', 'list')
       ).toBe(0)
     })
 
     it('rejects negative offsets', () => {
-      attachToWorkspaceStore(makeWorkspaceStub('/repo-a'))
+      attachToWorkspaceStore(
+        makeWorkspaceStub('/repo-a'),
+        useScrollPositionStore
+      )
       useScrollPositionStore.getState().setForView('list', -50)
       expect(
         useScrollPositionStore.getState().getForView('/repo-a', 'list')
@@ -80,7 +92,10 @@ describe('useScrollPositionStore', () => {
     })
 
     it('rejects non-finite offsets', () => {
-      attachToWorkspaceStore(makeWorkspaceStub('/repo-a'))
+      attachToWorkspaceStore(
+        makeWorkspaceStub('/repo-a'),
+        useScrollPositionStore
+      )
       useScrollPositionStore.getState().setForView('list', Number.NaN)
       expect(
         useScrollPositionStore.getState().getForView('/repo-a', 'list')
@@ -105,7 +120,7 @@ describe('useScrollPositionStore', () => {
   describe('per-workspace persistence (M4)', () => {
     it('restores positions on a round-trip workspace switch', () => {
       const ws = makeWorkspaceStub('/repo-a')
-      attachToWorkspaceStore(ws)
+      attachToWorkspaceStore(ws, useScrollPositionStore)
       useScrollPositionStore.getState().setForView('list', 1234)
       ws.setRepoPath('/repo-b')
       // B has no saved positions yet — list reads as 0.
@@ -121,7 +136,7 @@ describe('useScrollPositionStore', () => {
 
     it('keeps two repos positions isolated', () => {
       const ws = makeWorkspaceStub('/repo-a')
-      attachToWorkspaceStore(ws)
+      attachToWorkspaceStore(ws, useScrollPositionStore)
       useScrollPositionStore.getState().setForView('list', 100)
       ws.setRepoPath('/repo-b')
       useScrollPositionStore.getState().setForView('list', 999)
@@ -137,7 +152,7 @@ describe('useScrollPositionStore', () => {
 
     it('isolates positions per view across workspaces', () => {
       const ws = makeWorkspaceStub('/repo-a')
-      attachToWorkspaceStore(ws)
+      attachToWorkspaceStore(ws, useScrollPositionStore)
       useScrollPositionStore.getState().setForView('list', 100)
       useScrollPositionStore.getState().setForView('graph', 500)
       ws.setRepoPath('/repo-b')
@@ -161,7 +176,7 @@ describe('useScrollPositionStore', () => {
 
     it('survives closing the workspace (null) and reopening', () => {
       const ws = makeWorkspaceStub('/repo-a')
-      attachToWorkspaceStore(ws)
+      attachToWorkspaceStore(ws, useScrollPositionStore)
       useScrollPositionStore.getState().setForView('list', 777)
       ws.setRepoPath(null)
       // Active repo path is null, but the map still holds /repo-a.
@@ -174,11 +189,11 @@ describe('useScrollPositionStore', () => {
 
     it('attaching twice replaces the previous subscription', () => {
       const ws1 = makeWorkspaceStub('/repo-a')
-      attachToWorkspaceStore(ws1)
+      attachToWorkspaceStore(ws1, useScrollPositionStore)
       useScrollPositionStore.getState().setForView('list', 100)
       // A second attach must drop ws1's listener.
       const ws2 = makeWorkspaceStub('/repo-b')
-      attachToWorkspaceStore(ws2)
+      attachToWorkspaceStore(ws2, useScrollPositionStore)
       expect(useScrollPositionStore.getState()._activeRepoPath).toBe('/repo-b')
       // ws1 firing must not change the active repo.
       ws1.setRepoPath('/repo-c')

@@ -38,8 +38,9 @@ import { ErrorBoundary } from './components/ErrorBoundary'
 import { BdNotInPath, RepoSelection } from './components/beads/bootstrap'
 import { useSquareCornersEffect } from './hooks/useSquareCornersEffect'
 import { useWorkspaceStore } from './store/workspace-store'
-import { attachToWorkspaceStore as attachFilterToWorkspace } from './store/issue-filter-store'
-import { attachToWorkspaceStore as attachScrollToWorkspace } from './store/scroll-position-store'
+import { useIssueFilterStore } from './store/issue-filter-store'
+import { useScrollPositionStore } from './store/scroll-position-store'
+import { attachToWorkspaceStore } from './store/attach-to-workspace-store'
 
 /**
  * Run the Tauri updater flow. Lifted to a module-level function so
@@ -163,8 +164,8 @@ function App() {
   // previous subscription. Runs on mount only; we don't tear down
   // for the session lifetime.
   useEffect(() => {
-    const u1 = attachFilterToWorkspace(useWorkspaceStore)
-    const u2 = attachScrollToWorkspace(useWorkspaceStore)
+    const u1 = attachToWorkspaceStore(useWorkspaceStore, useIssueFilterStore)
+    const u2 = attachToWorkspaceStore(useWorkspaceStore, useScrollPositionStore)
     return () => {
       u1()
       u2()
