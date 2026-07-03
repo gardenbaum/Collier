@@ -301,7 +301,8 @@ interface CurrentWorkspaceRowProps extends React.HTMLAttributes<HTMLDivElement> 
  * The "current" row is rendered as a label (not an item) so the
  * user can't click-to-switch to the workspace they're already in.
  * Showing the check icon + bold name makes it obvious which one is
- * active when the list has 3+ entries.
+ * active when the list has 3+ entries. The shared inner label body
+ * lives in `WorkspaceEntryLabel` (variant="current").
  */
 function CurrentWorkspaceRow({
   entry,
@@ -317,38 +318,7 @@ function CurrentWorkspaceRow({
       data-active="true"
       {...rest}
     >
-      <Check
-        className="size-3.5 text-[color:var(--primary)] shrink-0"
-        aria-hidden
-      />
-      <Folder
-        className={cn(
-          'size-3.5 shrink-0',
-          entry.exists
-            ? 'text-[color:var(--foreground)]'
-            : 'text-[color:var(--muted-foreground)]'
-        )}
-        aria-hidden
-      />
-      <div className="flex flex-col leading-tight min-w-0 flex-1">
-        <span
-          className="text-[12px] font-semibold text-[color:var(--foreground)] truncate"
-          data-testid="workspace-switcher-current-name"
-        >
-          {entry.name}
-        </span>
-        <span
-          className="text-[10px] text-[color:var(--muted-foreground)] font-mono truncate"
-          title={entry.path}
-        >
-          {entry.path}
-        </span>
-      </div>
-      {!entry.exists ? (
-        <span className="text-[10px] uppercase tracking-wider text-[color:var(--destructive)]">
-          missing
-        </span>
-      ) : null}
+      <WorkspaceEntryLabel entry={entry} variant="current" />
     </div>
   )
 }
@@ -358,6 +328,8 @@ interface WorkspaceRowProps {
   onSelect: () => void
 }
 
+/** A single non-current workspace entry. The shared inner label body
+ *  lives in `WorkspaceEntryLabel` (variant="row"). */
 function WorkspaceRow({
   entry,
   onSelect,
@@ -365,29 +337,77 @@ function WorkspaceRow({
   return (
     <DropdownMenuItem
       onSelect={onSelect}
-      data-testid={`workspace-switcher-item`}
+      data-testid="workspace-switcher-item"
       data-workspace-path={entry.path}
       data-workspace-source={entry.source}
       data-workspace-exists={entry.exists ? 'true' : 'false'}
     >
-      <Folder
-        className={cn(
-          'size-3.5 shrink-0',
-          entry.exists
-            ? 'text-[color:var(--muted-foreground)]'
-            : 'text-[color:var(--destructive)]'
-        )}
-        aria-hidden
-      />
+      <WorkspaceEntryLabel entry={entry} variant="row" />
+    </DropdownMenuItem>
+  )
+}
+
+interface WorkspaceEntryLabelProps {
+  entry: WorkspaceEntry
+  /**
+   * `'current'` renders a Check icon + a fixed bold/foreground name;
+   * the parent (CurrentWorkspaceRow) renders this as a non-clickable
+   * label. `'row'` renders only the Folder icon + a missing-aware
+   * name (line-through when !entry.exists) + an `ml-auto` missing
+   * badge; the parent (WorkspaceRow) wraps it in a DropdownMenuItem.
+   */
+  variant: 'current' | 'row'
+}
+
+/**
+ * Shared inner body for both the "current" label and the per-entry
+ * dropdown rows. Both call sites render the same folder icon + name
+ * + path + optional missing badge; the only differences are the
+ * presence of a Check icon, the Folder colour rule, the missing-state
+ * styling on the name, and an `ml-auto` push on the missing badge for
+ * the non-current variant. Extracted here to remove a self-duplicate
+ * flagged by `bun run jscpd`.
+ */
+function WorkspaceEntryLabel({
+  entry,
+  variant,
+}: WorkspaceEntryLabelProps): React.JSX.Element {
+  const isCurrent = variant === 'current'
+
+  const folderClass = isCurrent
+    ? entry.exists
+      ? 'text-[color:var(--foreground)]'
+      : 'text-[color:var(--muted-foreground)]'
+    : entry.exists
+      ? 'text-[color:var(--muted-foreground)]'
+      : 'text-[color:var(--destructive)]'
+
+  const nameClass = isCurrent
+    ? 'text-[12px] font-semibold text-[color:var(--foreground)] truncate'
+    : cn(
+        'text-[12px] truncate',
+        entry.exists
+          ? 'text-[color:var(--foreground)]'
+          : 'text-[color:var(--muted-foreground)] line-through'
+      )
+
+  return (
+    <>
+      {isCurrent ? (
+        <Check
+          className="size-3.5 text-[color:var(--primary)] shrink-0"
+          aria-hidden
+        />
+      ) : null}
+      <Folder className={cn('size-3.5 shrink-0', folderClass)} aria-hidden />
       <div className="flex flex-col leading-tight min-w-0 flex-1">
         <span
-          className={cn(
-            'text-[12px] truncate',
-            entry.exists
-              ? 'text-[color:var(--foreground)]'
-              : 'text-[color:var(--muted-foreground)] line-through'
-          )}
-          data-testid="workspace-switcher-item-name"
+          className={nameClass}
+          data-testid={
+            isCurrent
+              ? 'workspace-switcher-current-name'
+              : 'workspace-switcher-item-name'
+          }
         >
           {entry.name}
         </span>
@@ -399,10 +419,15 @@ function WorkspaceRow({
         </span>
       </div>
       {!entry.exists ? (
-        <span className="text-[10px] uppercase tracking-wider text-[color:var(--destructive)] ml-auto">
+        <span
+          className={cn(
+            'text-[10px] uppercase tracking-wider text-[color:var(--destructive)]',
+            !isCurrent && 'ml-auto'
+          )}
+        >
           missing
         </span>
       ) : null}
-    </DropdownMenuItem>
+    </>
   )
 }
