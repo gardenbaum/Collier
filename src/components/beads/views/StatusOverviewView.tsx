@@ -44,6 +44,7 @@ import { BarChart3 } from 'lucide-react'
 import { commands } from '@/lib/tauri-bindings'
 import type { Issue } from '@/lib/bindings'
 import { colors, palette, radius, space, type } from '@/lib/design-tokens'
+import { formatError } from '@/lib/error-format'
 import { EmptyState } from '@/components/atoms'
 import { useWorkspaceStore } from '@/store/workspace-store'
 import { useIssueFilterStore } from '@/store/issue-filter-store'
@@ -428,17 +429,4 @@ function StatusCardButton({ card, onActivate }: StatusCardButtonProps) {
       </span>
     </button>
   )
-}
-
-/** Extract a human-readable message from a bd error union.
- * Mirrors the EpicView helper so the test can match the same
- * text. Kept local — it's not exported because it's only useful
- * inside this view's error branch. */
-function formatError(err: unknown): string {
-  if (typeof err === 'object' && err !== null) {
-    const e = err as { stderr?: string; message?: string }
-    if (typeof e.stderr === 'string' && e.stderr.length > 0) return e.stderr
-    if (typeof e.message === 'string' && e.message.length > 0) return e.message
-  }
-  return String(err)
 }

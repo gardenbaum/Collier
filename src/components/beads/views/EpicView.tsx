@@ -43,6 +43,7 @@ import { commands } from '@/lib/tauri-bindings'
 import type { Issue } from '@/lib/bindings'
 import { colors, palette, radius, space, type } from '@/lib/design-tokens'
 import { useWorkspaceStore } from '@/store/workspace-store'
+import { formatError } from '@/lib/error-format'
 import { EmptyState } from '@/components/atoms'
 import { StatusPill } from '../issues/badges/StatusPill'
 import { PriorityDot } from '../issues/badges/PriorityDot'
@@ -433,7 +434,7 @@ export function EpicView({
     return (
       <section data-testid="epic-view" style={containerStyle}>
         <div data-testid="epic-error" style={errorStyle} role="alert">
-          {formatError(error)}
+          {formatError(error, 'Failed to load epics.')}
         </div>
       </section>
     )
@@ -779,18 +780,4 @@ function ChildrenList({
       })}
     </ul>
   )
-}
-
-// ponytail: BdError is a tagged union with many variants; we collapse
-// to a human-readable string. Non-zero exit surfaces stderr so the
-// user sees the real failure reason.
-function formatError(err: unknown): string {
-  if (err && typeof err === 'object' && 'type' in err) {
-    const e = err as { type: string; message?: string; stderr?: string }
-    if (e.type === 'NonZeroExit' && e.stderr) return `bd failed: ${e.stderr}`
-    if ('message' in e && e.message) return e.message
-    return e.type
-  }
-  if (err instanceof Error) return err.message
-  return 'Failed to load epics.'
 }

@@ -41,6 +41,7 @@ import { Hourglass } from 'lucide-react'
 import { commands } from '@/lib/tauri-bindings'
 import type { GateEntry, Issue } from '@/lib/bindings'
 import { colors, palette, radius, space, type } from '@/lib/design-tokens'
+import { formatError } from '@/lib/error-format'
 import { EmptyState } from '@/components/atoms'
 import { StatusPill } from '@/components/beads/issues/badges/StatusPill'
 import { PriorityDot } from '@/components/beads/issues/badges/PriorityDot'
@@ -161,19 +162,6 @@ function relativeAge(iso: string): string {
   if (diffMs < 3_600_000) return `${Math.round(diffMs / 60_000)}m ago`
   if (diffMs < 86_400_000) return `${Math.round(diffMs / 3_600_000)}h ago`
   return `${Math.round(diffMs / 86_400_000)}d ago`
-}
-
-/** Extract a human-readable message from a bd error union. Mirrors
- * the helpers in EpicView and StatusOverviewView so the rendered
- * text matches what other views show. Kept local — only used
- * inside the error branch. */
-function formatError(err: unknown): string {
-  if (typeof err === 'object' && err !== null) {
-    const e = err as { stderr?: string; message?: string }
-    if (typeof e.stderr === 'string' && e.stderr.length > 0) return e.stderr
-    if (typeof e.message === 'string' && e.message.length > 0) return e.message
-  }
-  return String(err)
 }
 
 /**
