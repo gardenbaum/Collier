@@ -20,17 +20,10 @@ import { useTranslation } from 'react-i18next'
 import { ExternalLink } from 'lucide-react'
 import { commands } from '@/lib/tauri-bindings'
 import type { BdInfo } from '@/lib/bindings'
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
-import { colors, space } from '@/lib/design-tokens'
+import { colors } from '@/lib/design-tokens'
 import { cn } from '@/lib/utils'
 import { logger } from '@/lib/logger'
+import { BootstrapDialog } from './BootstrapDialog'
 import { QuitButton } from './QuitButton'
 
 const RELEASES_URL = 'https://github.com/gastownhall/beads/releases'
@@ -110,42 +103,13 @@ export function VersionCheck({ cwd, onPass }: VersionCheckProps) {
   const versionStr = `${major}.${minor}.${patch}`
 
   return (
-    <Dialog open={open}>
-      <DialogContent
-        data-testid="version-check-modal"
-        showCloseButton={false}
-        onEscapeKeyDown={event => event.preventDefault()}
-        onPointerDownOutside={event => event.preventDefault()}
-        onInteractOutside={event => event.preventDefault()}
-        className={cn('max-w-2xl gap-6 p-8', 'border-2', 'rounded-none')}
-        style={{
-          borderColor: colors.mono0,
-          padding: space[8],
-          borderRadius: 0,
-        }}
-      >
-        <DialogHeader className="gap-3">
-          <DialogTitle
-            className="text-2xl font-bold"
-            style={{ color: colors.mono0 }}
-          >
-            {t('beads.bootstrap.unsupportedVersion', { version: versionStr })}
-          </DialogTitle>
-          <DialogDescription
-            className="text-sm"
-            style={{ color: colors.mono3 }}
-          >
-            {`Beads ${versionStr} is outside the supported range 1.0–2.0`}
-          </DialogDescription>
-        </DialogHeader>
-
-        <div
-          data-testid="version-check-body"
-          className="text-sm"
-          style={{ color: colors.mono2 }}
-        />
-
-        <DialogFooter className="gap-3 sm:justify-end">
+    <BootstrapDialog
+      open={open}
+      contentTestid="version-check-modal"
+      title={t('beads.bootstrap.unsupportedVersion', { version: versionStr })}
+      description={`Beads ${versionStr} is outside the supported range 1.0–2.0`}
+      footer={
+        <>
           <a
             href={RELEASES_URL}
             target="_blank"
@@ -167,8 +131,14 @@ export function VersionCheck({ cwd, onPass }: VersionCheckProps) {
             <span>Update Beads</span>
           </a>
           <QuitButton />
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        </>
+      }
+    >
+      <div
+        data-testid="version-check-body"
+        className="text-sm"
+        style={{ color: colors.mono2 }}
+      />
+    </BootstrapDialog>
   )
 }

@@ -18,17 +18,10 @@ import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ExternalLink } from 'lucide-react'
 import { commands } from '@/lib/tauri-bindings'
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
-import { colors, space } from '@/lib/design-tokens'
+import { colors } from '@/lib/design-tokens'
 import { cn } from '@/lib/utils'
 import { logger } from '@/lib/logger'
+import { BootstrapDialog } from './BootstrapDialog'
 import { QuitButton } from './QuitButton'
 
 export interface SchemaCheckProps {
@@ -71,39 +64,15 @@ export function SchemaCheck({ cwd, onPass }: SchemaCheckProps) {
   if (!open) return null
 
   return (
-    <Dialog open={open}>
-      <DialogContent
-        showCloseButton={false}
-        onEscapeKeyDown={event => event.preventDefault()}
-        onPointerDownOutside={event => event.preventDefault()}
-        onInteractOutside={event => event.preventDefault()}
-        className={cn('max-w-2xl gap-6 p-8', 'border-2', 'rounded-none')}
-        style={{
-          borderColor: colors.mono0,
-          padding: space[8],
-          borderRadius: 0,
-        }}
-      >
-        <DialogHeader className="gap-3">
-          <DialogTitle
-            className="text-2xl font-bold"
-            style={{ color: colors.mono0 }}
-            data-testid="schema-check-title"
-          >
-            {t('beads.bootstrap.unsupportedSchema', {
-              version: schemaVersion,
-            })}
-          </DialogTitle>
-          <DialogDescription
-            className="text-sm"
-            style={{ color: colors.mono3 }}
-          >
-            Beads schema version {schemaVersion} detected. Collier supports
-            schema 1. Please update Collier.
-          </DialogDescription>
-        </DialogHeader>
-
-        <DialogFooter className="gap-3 sm:justify-end">
+    <BootstrapDialog
+      open={open}
+      titleTestid="schema-check-title"
+      title={t('beads.bootstrap.unsupportedSchema', {
+        version: schemaVersion,
+      })}
+      description={`Beads schema version ${schemaVersion} detected. Collier supports schema 1. Please update Collier.`}
+      footer={
+        <>
           <a
             href={RELEASES_URL}
             target="_blank"
@@ -125,8 +94,8 @@ export function SchemaCheck({ cwd, onPass }: SchemaCheckProps) {
             <span>Open Collier Releases</span>
           </a>
           <QuitButton />
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        </>
+      }
+    />
   )
 }

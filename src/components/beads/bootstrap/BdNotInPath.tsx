@@ -16,18 +16,10 @@ import { useTranslation } from 'react-i18next'
 import { Copy } from 'lucide-react'
 import { writeText } from '@tauri-apps/plugin-clipboard-manager'
 import { commands } from '@/lib/tauri-bindings'
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
-import { colors, space } from '@/lib/design-tokens'
-import { cn } from '@/lib/utils'
+import { colors } from '@/lib/design-tokens'
 import { logger } from '@/lib/logger'
+import { BootstrapDialog } from './BootstrapDialog'
 import { QuitButton } from './QuitButton'
 
 const INSTALL_COMMAND = 'brew install beads'
@@ -93,73 +85,12 @@ export function BdNotInPath() {
   const open = state === 'missing'
 
   return (
-    <Dialog open={open}>
-      <DialogContent
-        showCloseButton={false}
-        onEscapeKeyDown={event => event.preventDefault()}
-        onPointerDownOutside={event => event.preventDefault()}
-        onInteractOutside={event => event.preventDefault()}
-        className={cn('max-w-2xl gap-6 p-8', 'border-2', 'rounded-none')}
-        style={{
-          borderColor: colors.mono0,
-          padding: space[8],
-          borderRadius: 0,
-        }}
-      >
-        <DialogHeader className="gap-3">
-          <DialogTitle
-            className="text-2xl font-bold"
-            style={{ color: colors.mono0 }}
-          >
-            {t('beads.bootstrap.bdNotInPath')}
-          </DialogTitle>
-          <DialogDescription
-            className="text-sm"
-            style={{ color: colors.mono3 }}
-          >
-            {t('beads.bootstrap.installInstructions')}
-          </DialogDescription>
-        </DialogHeader>
-
-        <div
-          data-testid="install-command-block"
-          className="flex items-stretch gap-0 border-2"
-          style={{
-            backgroundColor: colors.mono9,
-            borderColor: colors.mono0,
-            borderRadius: 0,
-          }}
-        >
-          <pre
-            data-testid="install-command"
-            className="m-0 flex-1 overflow-x-auto p-4 font-mono text-sm"
-            style={{
-              backgroundColor: colors.mono9,
-              color: colors.mono0,
-              borderRadius: 0,
-            }}
-          >
-            {INSTALL_COMMAND}
-          </pre>
-          <Button
-            type="button"
-            onClick={handleCopy}
-            variant="outline"
-            aria-label="Copy install command"
-            className="border-0 border-l-2 px-4"
-            style={{
-              backgroundColor: colors.mono9,
-              color: colors.mono0,
-              borderLeftColor: colors.mono0,
-              borderRadius: 0,
-            }}
-          >
-            <Copy className="size-4" aria-hidden="true" />
-            <span>{t('beads.bootstrap.copy', 'Copy')}</span>
-          </Button>
-        </div>
-
-        <DialogFooter className="gap-3 sm:justify-end">
+    <BootstrapDialog
+      open={open}
+      title={t('beads.bootstrap.bdNotInPath')}
+      description={t('beads.bootstrap.installInstructions')}
+      footer={
+        <>
           <Button
             type="button"
             onClick={handleRecheck}
@@ -178,8 +109,46 @@ export function BdNotInPath() {
               : t('beads.bootstrap.recheck', 'Recheck')}
           </Button>
           <QuitButton />
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        </>
+      }
+    >
+      <div
+        data-testid="install-command-block"
+        className="flex items-stretch gap-0 border-2"
+        style={{
+          backgroundColor: colors.mono9,
+          borderColor: colors.mono0,
+          borderRadius: 0,
+        }}
+      >
+        <pre
+          data-testid="install-command"
+          className="m-0 flex-1 overflow-x-auto p-4 font-mono text-sm"
+          style={{
+            backgroundColor: colors.mono9,
+            color: colors.mono0,
+            borderRadius: 0,
+          }}
+        >
+          {INSTALL_COMMAND}
+        </pre>
+        <Button
+          type="button"
+          onClick={handleCopy}
+          variant="outline"
+          aria-label="Copy install command"
+          className="border-0 border-l-2 px-4"
+          style={{
+            backgroundColor: colors.mono9,
+            color: colors.mono0,
+            borderLeftColor: colors.mono0,
+            borderRadius: 0,
+          }}
+        >
+          <Copy className="size-4" aria-hidden="true" />
+          <span>{t('beads.bootstrap.copy', 'Copy')}</span>
+        </Button>
+      </div>
+    </BootstrapDialog>
   )
 }
