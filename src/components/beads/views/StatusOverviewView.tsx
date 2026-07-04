@@ -38,16 +38,15 @@
  */
 import { useMemo } from 'react'
 import type { CSSProperties } from 'react'
-import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { BarChart3 } from 'lucide-react'
-import { commands } from '@/lib/tauri-bindings'
 import type { Issue } from '@/lib/bindings'
 import { colors, palette, radius, space, type } from '@/lib/design-tokens'
 import { formatError } from '@/lib/error-format'
 import { EmptyState } from '@/components/atoms'
 import { useWorkspaceStore } from '@/store/workspace-store'
 import { useIssueFilterStore } from '@/store/issue-filter-store'
+import { useBeadList } from '@/hooks/useBeadList'
 
 export interface StatusOverviewViewProps {
   /** Repository root passed to `bd list`. */
@@ -274,14 +273,7 @@ export function StatusOverviewView({ cwd }: StatusOverviewViewProps) {
   const setActiveView = useWorkspaceStore(s => s.setActiveView)
   const setStatus = useIssueFilterStore(s => s.toggleStatus)
 
-  const { data, isLoading, error } = useQuery({
-    queryKey: ['beads', 'list', cwd, {}],
-    queryFn: async () => {
-      const result = await commands.bdList(cwd, {})
-      if (result.status === 'ok') return result.data
-      throw result.error
-    },
-  })
+  const { data, isLoading, error } = useBeadList(cwd)
 
   const cards = useMemo<StatusCard[]>(
     () =>
