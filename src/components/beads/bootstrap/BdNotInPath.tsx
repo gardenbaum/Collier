@@ -13,8 +13,7 @@
  */
 import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Copy, X } from 'lucide-react'
-import { getCurrentWindow } from '@tauri-apps/api/window'
+import { Copy } from 'lucide-react'
 import { writeText } from '@tauri-apps/plugin-clipboard-manager'
 import { commands } from '@/lib/tauri-bindings'
 import {
@@ -29,6 +28,7 @@ import { Button } from '@/components/ui/button'
 import { colors, space } from '@/lib/design-tokens'
 import { cn } from '@/lib/utils'
 import { logger } from '@/lib/logger'
+import { QuitButton } from './QuitButton'
 
 const INSTALL_COMMAND = 'brew install beads'
 
@@ -79,14 +79,6 @@ export function BdNotInPath() {
       setState('missing')
     } finally {
       setIsRechecking(false)
-    }
-  }, [])
-
-  const handleQuit = useCallback(async () => {
-    try {
-      await getCurrentWindow().close()
-    } catch (err) {
-      logger.error('Failed to close window', { err })
     }
   }, [])
 
@@ -185,20 +177,7 @@ export function BdNotInPath() {
               ? t('beads.bootstrap.rechecking', 'Rechecking…')
               : t('beads.bootstrap.recheck', 'Recheck')}
           </Button>
-          <Button
-            type="button"
-            onClick={handleQuit}
-            className="border-2"
-            style={{
-              backgroundColor: colors.accent,
-              color: colors.mono9,
-              borderColor: colors.accent,
-              borderRadius: 0,
-            }}
-          >
-            <X className="size-4" aria-hidden="true" />
-            <span>{t('beads.bootstrap.quit', 'Quit')}</span>
-          </Button>
+          <QuitButton />
         </DialogFooter>
       </DialogContent>
     </Dialog>
