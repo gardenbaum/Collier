@@ -26,6 +26,8 @@ import { useTranslation } from 'react-i18next'
 import { commands } from '@/lib/tauri-bindings'
 import type { CreateInput, IssuePriority, IssueType } from '@/lib/bindings'
 import { useDialogA11y } from '@/hooks/useDialogA11y'
+import { IssueTypeField } from './IssueTypeField'
+import { IssuePriorityField } from './IssuePriorityField'
 
 export interface IssueCreateFormProps {
   /** Repository root. Passed to `commands.bdCreate`. */
@@ -38,18 +40,6 @@ export interface IssueCreateFormProps {
    */
   onCreated: (issueId: string) => void
 }
-
-const ISSUE_TYPES: IssueType[] = [
-  'bug',
-  'feature',
-  'task',
-  'epic',
-  'chore',
-  'decision',
-  'gate',
-]
-
-const PRIORITIES: IssuePriority[] = ['P0', 'P1', 'P2', 'P3', 'P4']
 
 const DEFAULT_PRIORITY: IssuePriority = 'P2'
 
@@ -215,47 +205,23 @@ export function IssueCreateForm({
           </Field>
 
           <Field label={t('beads.issueCreateForm.type', 'Type')}>
-            <select
-              data-testid="create-type"
+            <IssueTypeField
               value={issueType}
-              onChange={e => setIssueType(e.target.value as IssueType)}
-              className={selectClass}
-            >
-              {ISSUE_TYPES.map(t => (
-                <option key={t} value={t}>
-                  {t}
-                </option>
-              ))}
-            </select>
+              onChange={setIssueType}
+              testId="create-type"
+              selectClassName={selectClass}
+            />
           </Field>
 
           <Field label={t('beads.issueCreateForm.priority', 'Priority')}>
-            <div
-              className="flex gap-1"
-              role="radiogroup"
-              aria-label={t('beads.issueCreateForm.priority', 'Priority')}
-            >
-              {PRIORITIES.map(p => {
-                const selected = p === priority
-                return (
-                  <button
-                    key={p}
-                    type="button"
-                    role="radio"
-                    aria-checked={selected}
-                    data-testid={`create-priority-${p}`}
-                    onClick={() => setPriority(p)}
-                    className={
-                      selected
-                        ? priorityButtonSelectedClass
-                        : priorityButtonClass
-                    }
-                  >
-                    {p}
-                  </button>
-                )
-              })}
-            </div>
+            <IssuePriorityField
+              value={priority}
+              onChange={setPriority}
+              testIdPrefix="create-priority"
+              ariaLabel={t('beads.issueCreateForm.priority', 'Priority')}
+              buttonClassName={priorityButtonClass}
+              buttonSelectedClassName={priorityButtonSelectedClass}
+            />
           </Field>
 
           <Field label={t('beads.issueCreateForm.assignee', 'Assignee')}>
