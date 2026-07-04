@@ -3,8 +3,9 @@
  * the issue list and the issue detail header. Spec M1 R3.
  *
  * ponytail: three sibling subcomponents share one mutation hook
- * (`useInlineUpdate`) so the optimistic-update + reconcile-via-
- * watcher pattern lives in one place. The pattern is:
+ * (`useIssueFieldUpdate`, from `@/hooks/useIssueFieldUpdate`) so
+ * the optimistic-update + reconcile-via-watcher pattern lives
+ * in one place. The pattern is:
  *
  *   1. User picks a new value in the dropdown.
  *   2. The TanStack Query cache for `['beads', 'list', cwd]` (and the
@@ -47,13 +48,13 @@
  * no transitions, no shadow, no radius.
  */
 import { useState, type CSSProperties } from 'react'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQuery } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { useTranslation } from 'react-i18next'
 import { commands } from '@/lib/tauri-bindings'
 import type { Issue, IssuePriority, UpdateInput } from '@/lib/bindings'
 import { useStatusCatalog } from '@/hooks/useStatusCatalog'
-import { logger } from '@/lib/logger'
+import { useIssueFieldUpdate } from '@/hooks/useIssueFieldUpdate'
 import { colors, radius, space, type } from '@/lib/design-tokens'
 import { PriorityDot } from './badges/PriorityDot'
 import { StatusPill } from './badges/StatusPill'
@@ -116,169 +117,108 @@ interface InlineCellBaseProps {
 }
 
 /**
- * `useInlineUpdate` — single mutation hook shared by the three
- * subcomponents. The shape of the call is identical: `bd update
- * <id> --status/--priority/--assignee <newValue>`. We model the
- * "new value" as a single discriminated union (`Field`) so a
- * future inline-editable field (e.g. `type`) can be added without
- * adding a parallel mutation hook.
+ * The three cells (status / priority / assignee) share a single
+ * mutation hook, [`useIssueFieldUpdate`], which owns the
+ * optimistic-patch lifecycle. They differ only in:
  *
- * ponytail: optimistic update strategy. The issue list view keys
- * its query as `['beads', 'list', cwd, filters]` — the `filters`
- * segment carries the active sidebar selection, so a query exists
- * for EVERY (status, priority, type, label, assignee) combination
- * the user has visited, not just one cache slot. Patching only
- * `['beads', 'list', cwd]` (no filters) leaves the rendered list
- * stale until the watcher tick reconciles, which is exactly what
- * the r3-inline-edit E2E observed as "row X status never updated
- * to open optimistically". We instead walk every list cache
- * variant for this cwd and patch each one in place. The detail
- * drawer (`['beads', 'show', cwd, issueId]`) is single-keyed, so
- * it patches as before.
+ *   1. which `UpdateInput` key they set (`status` / `priority` /
+ *      `assignee`) and
+ *   2. which `Issue` key they patch in the cache (`status` /
+ *      `priority` / `owner` — note the `owner` rename for
+ *      assignee).
+ *
+ * The `Field` discriminated union below is the typed payload
+ * for that shared hook: each cell constructs the matching
+ * variant in its `handleChange`, then `.mutate(field)` it. The
+ * `buildFieldInput` / `applyFieldToIssue` pair translates the
+ * typed payload into the two asymmetric shapes, and the
+ * [`useInlineFieldMutation`] wrapper closes over both so each
+ * cell's call site collapses to a single `useInlineFieldMutation(
+ * cwd, issue.id)` line.
+ *
+ * ponytail: optimistic update strategy. The issue list view
+ * keys its query as `['beads', 'list', cwd, filters]` — the
+ * `filters` segment carries the active sidebar selection, so a
+ * query exists for EVERY (status, priority, type, label,
+ * assignee) combination the user has visited, not just one
+ * cache slot. Patching only `['beads', 'list', cwd]` (no
+ * filters) leaves the rendered list stale until the watcher
+ * tick reconciles, which is exactly what the r3-inline-edit E2E
+ * observed as "row X status never updated to open
+ * optimistically". The shared hook walks every list cache
+ * variant for this cwd and patches each one in place. The
+ * detail drawer (`['beads', 'show', cwd, issueId]`) is
+ * single-keyed, so it patches as before.
  *
  * The watcher tick (which always fires after a successful bd
  * write) will refetch every list variant and confirm the
- * optimistic value. On mutation error, we revert every patch we
- * made and toast the error.
+ * optimistic value. On mutation error, the hook reverts every
+ * patch and toasts the error.
  */
 type Field =
   | { kind: 'status'; value: string }
   | { kind: 'priority'; value: IssuePriority }
   | { kind: 'assignee'; value: string | null }
 
-interface UseInlineUpdateArgs {
-  cwd: string
-  issueId: string
-}
-
-function useInlineUpdate({ cwd, issueId }: UseInlineUpdateArgs) {
-  const queryClient = useQueryClient()
-
-  return useMutation({
-    mutationFn: async (field: Field) => {
-      // ponytail: build a minimal UpdateInput — only the field
-      // the user just edited. Sending the full struct would
-      // cause the CLI to write a no-op history entry for every
-      // unchanged field.
-      const input: UpdateInput = {}
-      switch (field.kind) {
-        case 'status':
-          input.status = field.value
-          break
-        case 'priority':
-          input.priority = field.value
-          break
-        case 'assignee':
-          // ponytail: empty string means "unassign" per the
-          // bindings contract (UpdateInput.assignee: Option<String>,
-          // Some("") is treated as "not set" — `bd update --assignee ""`
-          // would error on bd). null sends an explicit unassign.
-          input.assignee = field.value ?? ''
-          break
-      }
-      const result = await commands.bdUpdate(cwd, issueId, input)
-      if (result.status === 'ok') return result.data
-      throw result.error
-    },
-    onMutate: async (field: Field) => {
-      // ponytail: cancel any in-flight refetch for every list
-      // variant for this cwd BEFORE we patch. Otherwise a stale
-      // refetch from another filter combination could overwrite
-      // our optimistic value between the patch and the cache
-      // write. The detail drawer's query is single-keyed.
-      await queryClient.cancelQueries({ queryKey: ['beads', 'list', cwd] })
-      await queryClient.cancelQueries({
-        queryKey: ['beads', 'show', cwd, issueId],
-      })
-
-      const showKey = ['beads', 'show', cwd, issueId]
-      const previousShow = queryClient.getQueryData<Issue>(showKey)
-
-      const apply = (issue: Issue): Issue => {
-        switch (field.kind) {
-          case 'status':
-            return { ...issue, status: field.value }
-          case 'priority':
-            return { ...issue, priority: field.value }
-          case 'assignee':
-            return { ...issue, owner: field.value }
-        }
-      }
-
-      // ponytail: `setQueriesData` returns the POST-update data,
-      // not the pre-update snapshot — confirmed in the TanStack
-      // source (`queryClient.setQueryData` returns the new value).
-      // For the optimistic-patch / revert-on-error pattern we
-      // need the pre-update snapshot, so we read it from
-      // `getQueriesData` first and feed it to the rollback in
-      // `onError`. The filter payloads differ across variants
-      // (status, priority, type, label, assignee combinations),
-      // so the patch applies correctly whether the user has the
-      // unfiltered list, a status=open list, or any other open.
-      const previousLists = queryClient.getQueriesData<Issue[]>({
-        queryKey: ['beads', 'list', cwd],
-      })
-      queryClient.setQueriesData<Issue[]>(
-        { queryKey: ['beads', 'list', cwd] },
-        prev => (prev ? prev.map(i => (i.id === issueId ? apply(i) : i)) : prev)
-      )
-      if (previousShow) {
-        queryClient.setQueryData<Issue>(showKey, apply(previousShow))
-      }
-
-      return { previousLists, previousShow }
-    },
-    onError: (err, _field, context) => {
-      // ponytail: revert every cache slot we touched. The context
-      // is typed as `unknown` by TanStack; we know the shape
-      // because we own onMutate. The cast is the standard TanStack
-      // escape hatch for the same reason.
-      const ctx = context as
-        | {
-            previousLists: [readonly unknown[], Issue[] | undefined][]
-            previousShow: Issue | undefined
-          }
-        | undefined
-      if (ctx?.previousLists) {
-        for (const [key, prev] of ctx.previousLists) {
-          queryClient.setQueryData(key, prev)
-        }
-      }
-      if (ctx?.previousShow) {
-        queryClient.setQueryData(
-          ['beads', 'show', cwd, issueId],
-          ctx.previousShow
-        )
-      }
-      logger.error('inline issue edit failed', { err })
-      toast.error(formatMutationError(err))
-    },
-    onSuccess: updated => {
-      // ponytail: the watcher will fire beads-data-changed within
-      // ~1s and TanStack will refetch every list variant. We also
-      // patch them with the freshly-returned issue here so the UI
-      // is instantly correct even if the watcher is slow.
-      queryClient.setQueriesData<Issue[]>(
-        { queryKey: ['beads', 'list', cwd] },
-        prev =>
-          prev ? prev.map(i => (i.id === updated.id ? updated : i)) : prev
-      )
-      queryClient.setQueryData<Issue>(['beads', 'show', cwd, issueId], updated)
-    },
-  })
-}
-
-/** Format a mutation error into a user-readable string. Mirrors the
- *  shape used elsewhere in the codebase (IssueActions / IssueUpdatePanel). */
-function formatMutationError(err: unknown): string {
-  if (err && typeof err === 'object' && 'type' in err) {
-    const e = err as { type: string; message?: string; stderr?: string }
-    if (e.type === 'NonZeroExit' && e.stderr) return e.stderr
-    if ('message' in e && e.message) return e.message
-    return e.type
+/**
+ * Translate a `Field` into the minimal-diff `UpdateInput` that
+ * bd writes. Only the field the user just changed is set;
+ * sending the full struct would cause the CLI to write a
+ * no-op history entry for every unchanged field.
+ */
+function buildFieldInput(field: Field): UpdateInput {
+  const input: UpdateInput = {}
+  switch (field.kind) {
+    case 'status':
+      input.status = field.value
+      break
+    case 'priority':
+      input.priority = field.value
+      break
+    case 'assignee':
+      // ponytail: empty string means "unassign" per the
+      // bindings contract (UpdateInput.assignee: Option<String>,
+      // Some("") is treated as "not set" — `bd update --assignee ""`
+      // would error on bd). null sends an explicit unassign.
+      input.assignee = field.value ?? ''
+      break
   }
-  if (err instanceof Error) return err.message
-  return 'Failed to update issue.'
+  return input
+}
+
+/**
+ * Translate a `Field` into the matching field on the cached
+ * `Issue`. Note the rename: `assignee` on the Input side maps
+ * to `owner` on the Issue side.
+ */
+function applyFieldToIssue(issue: Issue, field: Field): Issue {
+  switch (field.kind) {
+    case 'status':
+      return { ...issue, status: field.value }
+    case 'priority':
+      return { ...issue, priority: field.value }
+    case 'assignee':
+      return { ...issue, owner: field.value }
+  }
+}
+
+/**
+ * Thin wrapper around [`useIssueFieldUpdate`] that closes over
+ * the field-specific `buildFieldInput` / `applyFieldToIssue`
+ * callbacks and the diagnostic labels, so each cell's call
+ * site is a single line. The generic `Field` payload still
+ * travels through the wrapper so each cell's `.mutate(...)`
+ * call stays typed.
+ */
+function useInlineFieldMutation(cwd: string, issueId: string) {
+  return useIssueFieldUpdate<Field>({
+    cwd,
+    issueId,
+    buildInput: buildFieldInput,
+    applyToIssue: applyFieldToIssue,
+    errorLogMessage: 'inline issue edit failed',
+    errorFallback: 'Failed to update issue.',
+  })
 }
 
 interface InlineStatusEditProps extends InlineCellBaseProps {
@@ -305,7 +245,7 @@ export function InlineStatusEdit({
   swallowHostEvents,
 }: InlineStatusEditProps) {
   const { t } = useTranslation()
-  const mutation = useInlineUpdate({ cwd, issueId: issue.id })
+  const mutation = useInlineFieldMutation(cwd, issue.id)
   const [hovered, setHovered] = useState(false)
   const guard = hostGuardProps(swallowHostEvents)
   const statusCatalog = useStatusCatalog(cwd)
@@ -381,7 +321,7 @@ export function InlinePriorityEdit({
   swallowHostEvents,
 }: InlinePriorityEditProps) {
   const { t } = useTranslation()
-  const mutation = useInlineUpdate({ cwd, issueId: issue.id })
+  const mutation = useInlineFieldMutation(cwd, issue.id)
   const [hovered, setHovered] = useState(false)
   const guard = hostGuardProps(swallowHostEvents)
 
@@ -391,7 +331,7 @@ export function InlinePriorityEdit({
     // for `IssuePriority` is the variant-name string union, but
     // our deserialiser accepts both shapes. Pass the wire shape
     // through directly so the optimistic patch in
-    // useInlineUpdate lands the same value the next `bd list`
+    // useIssueFieldUpdate lands the same value the next `bd list`
     // refetch will see — no shape round-trip, no String() vs
     // Number drift between the cache and the rendered DOM.
     //
@@ -474,7 +414,7 @@ export function InlineAssigneeEdit({
   swallowHostEvents,
 }: InlineAssigneeEditProps) {
   const { t } = useTranslation()
-  const mutation = useInlineUpdate({ cwd, issueId: issue.id })
+  const mutation = useInlineFieldMutation(cwd, issue.id)
   const [hovered, setHovered] = useState(false)
   const guard = hostGuardProps(swallowHostEvents)
 
@@ -557,15 +497,6 @@ export function InlineAssigneeEdit({
     </span>
   )
 }
-
-/**
- * `useInlineUpdate` — single mutation hook shared by the three
- * subcomponents. The shape of the call is identical: `bd update
- * <id> --status/--priority/--assignee <newValue>`. We model the
- * "new value" as a single discriminated union (`Field`) so a
- * future inline-editable field (e.g. `type`) can be added without
- * adding a parallel mutation hook.
- */
 
 // ponytail: shared styles for the three cells. The wrapper is
 // `position: relative` so the absolutely-positioned <select> overlay

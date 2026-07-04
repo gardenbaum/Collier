@@ -39,12 +39,11 @@
  * no transitions, no shadow, no radius.
  */
 import { useState, type CSSProperties } from 'react'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { toast } from 'sonner'
 import { useTranslation } from 'react-i18next'
-import { commands } from '@/lib/tauri-bindings'
-import type { Issue, UpdateInput } from '@/lib/bindings'
-import { logger } from '@/lib/logger'
+import { toast } from 'sonner'
+import type { Issue } from '@/lib/bindings'
+import { useIssueFieldUpdate } from '@/hooks/useIssueFieldUpdate'
+import { formatError } from '@/lib/error-format'
 import { colors, space, type } from '@/lib/design-tokens'
 
 export interface InlineDescriptionEditProps {
@@ -58,16 +57,17 @@ export interface InlineDescriptionEditProps {
   issue: Issue
 }
 
-interface UseDescriptionUpdateArgs {
-  cwd: string
-  issueId: string
-}
-
 /**
- * `useDescriptionUpdate` — single mutation hook for description
- * edits. Mirrors `useInlineUpdate` from `InlineIssueEdit.tsx`
- * except the payload is a free-form string|null instead of a
- * discriminated union.
+ * The mutation hook for description edits is
+ * [`useIssueFieldUpdate`](@/hooks/useIssueFieldUpdate), which
+ * owns the optimistic-patch lifecycle (cancel both caches,
+ * snapshot them, patch both, revert on error, reconcile on
+ * success) — the same machinery used by the three
+ * `InlineIssueEdit` cells. We supply two short callbacks:
+ * `buildInput` translates the `string | null` payload into a
+ * minimal-diff `UpdateInput` (only `description` set, no other
+ * fields), and `applyToIssue` patches the matching field on
+ * the cached `Issue`.
  *
  * ponytail: optimistic-update strategy. We patch the two caches
  * the user might be looking at:
@@ -80,110 +80,20 @@ interface UseDescriptionUpdateArgs {
  *
  * The watcher tick (which always fires after a successful bd
  * write) will refetch both caches and confirm the optimistic
- * value. On mutation error, we revert the patch and toast the
- * error.
+ * value. On mutation error, the hook reverts the patch and
+ * toasts `formatError(err)`.
  */
-function useDescriptionUpdate({ cwd, issueId }: UseDescriptionUpdateArgs) {
-  const queryClient = useQueryClient()
-
-  return useMutation({
-    mutationFn: async (description: string | null) => {
-      // ponytail: build a minimal UpdateInput — only the field
-      // the user just edited. Sending the full struct would
-      // cause the CLI to write a no-op history entry for every
-      // unchanged field.
-      const input: UpdateInput = { description }
-      const result = await commands.bdUpdate(cwd, issueId, input)
-      if (result.status === 'ok') return result.data
-      throw result.error
-    },
-    onMutate: async (description: string | null) => {
-      // ponytail: cancel any in-flight refetch for every list
-      // variant for this cwd BEFORE we patch — same pattern as
-      // the inline status/priority/assignee cells (see
-      // InlineIssueEdit). The list view keys its query as
-      // `['beads', 'list', cwd, filters]`, so multiple variants
-      // are live at once; patching only the bare `['beads',
-      // 'list', cwd]` slot leaves the rendered list stale until
-      // the watcher reconciles.
-      await queryClient.cancelQueries({ queryKey: ['beads', 'list', cwd] })
-      await queryClient.cancelQueries({
-        queryKey: ['beads', 'show', cwd, issueId],
-      })
-
-      const showKey = ['beads', 'show', cwd, issueId]
-      const previousShow = queryClient.getQueryData<Issue>(showKey)
-
-      const apply = (issue: Issue): Issue => ({ ...issue, description })
-
-      // ponytail: `setQueriesData` returns the POST-update data,
-      // not the pre-update snapshot. Read the pre-update state
-      // with `getQueriesData` first so the rollback in `onError`
-      // can restore it.
-      const previousLists = queryClient.getQueriesData<Issue[]>({
-        queryKey: ['beads', 'list', cwd],
-      })
-      queryClient.setQueriesData<Issue[]>(
-        { queryKey: ['beads', 'list', cwd] },
-        prev => (prev ? prev.map(i => (i.id === issueId ? apply(i) : i)) : prev)
-      )
-      if (previousShow) {
-        queryClient.setQueryData<Issue>(showKey, apply(previousShow))
-      }
-
-      return { previousLists, previousShow }
-    },
-    onError: (err, _description, context) => {
-      // ponytail: revert every cache slot we touched. The context
-      // is typed as `unknown` by TanStack; we know the shape
-      // because we own onMutate. The cast is the standard
-      // TanStack escape hatch for the same reason.
-      const ctx = context as
-        | {
-            previousLists: [readonly unknown[], Issue[] | undefined][]
-            previousShow: Issue | undefined
-          }
-        | undefined
-      if (ctx?.previousLists) {
-        for (const [key, prev] of ctx.previousLists) {
-          queryClient.setQueryData(key, prev)
-        }
-      }
-      if (ctx?.previousShow) {
-        queryClient.setQueryData(
-          ['beads', 'show', cwd, issueId],
-          ctx.previousShow
-        )
-      }
-      logger.error('description update failed', { err })
-      toast.error(formatMutationError(err))
-    },
-    onSuccess: updated => {
-      // ponytail: the watcher will fire beads-data-changed within
-      // ~1s and TanStack will refetch every list variant. We also
-      // patch them with the freshly-returned issue here so the UI
-      // is instantly correct even if the watcher is slow.
-      queryClient.setQueriesData<Issue[]>(
-        { queryKey: ['beads', 'list', cwd] },
-        prev =>
-          prev ? prev.map(i => (i.id === updated.id ? updated : i)) : prev
-      )
-      queryClient.setQueryData<Issue>(['beads', 'show', cwd, issueId], updated)
-    },
-  })
+function buildDescriptionInput(description: string | null): {
+  description: string | null
+} {
+  return { description }
 }
 
-/** Format a mutation error into a user-readable string. Mirrors
- *  the shape used by InlineIssueEdit and the comment form. */
-function formatMutationError(err: unknown): string {
-  if (err && typeof err === 'object' && 'type' in err) {
-    const e = err as { type: string; message?: string; stderr?: string }
-    if (e.type === 'NonZeroExit' && e.stderr) return e.stderr
-    if ('message' in e && e.message) return e.message
-    return e.type
-  }
-  if (err instanceof Error) return err.message
-  return 'Failed to update description.'
+function applyDescriptionToIssue(
+  issue: Issue,
+  description: string | null
+): Issue {
+  return { ...issue, description }
 }
 
 /** Normalise the current description for equality checks.
@@ -201,7 +111,14 @@ export function InlineDescriptionEdit({
   issue,
 }: InlineDescriptionEditProps) {
   const { t } = useTranslation()
-  const mutation = useDescriptionUpdate({ cwd, issueId: issue.id })
+  const mutation = useIssueFieldUpdate<string | null>({
+    cwd,
+    issueId: issue.id,
+    buildInput: buildDescriptionInput,
+    applyToIssue: applyDescriptionToIssue,
+    errorLogMessage: 'description update failed',
+    errorFallback: 'Failed to update description.',
+  })
 
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState('')
@@ -268,7 +185,7 @@ export function InlineDescriptionEdit({
             role="alert"
             style={errorStyle}
           >
-            {formatMutationError(mutation.error)}
+            {formatError(mutation.error)}
           </div>
         ) : null}
         <div style={actionsStyle}>
