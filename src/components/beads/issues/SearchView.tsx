@@ -30,6 +30,7 @@ import { StatusPill } from './badges/StatusPill'
 import { PriorityDot } from './badges/PriorityDot'
 import { TypeIcon } from './badges/TypeIcon'
 import { DependencyBadge } from './badges/DependencyBadge'
+import { IssueSummarySkeleton } from './IssueSummarySkeleton'
 import { hasQueryOperator } from './search-syntax'
 
 const RECENT_KEY = 'collier-recent-searches'
@@ -176,20 +177,6 @@ const errorStyle: CSSProperties = {
   borderTop: `1px solid ${colors.mono7}`,
 }
 
-const skeletonStyle: CSSProperties = {
-  display: 'flex',
-  alignItems: 'center',
-  gap: space[3],
-  padding: space[3],
-  backgroundColor: colors.mono9,
-  borderTop: `1px solid ${colors.mono7}`,
-}
-
-const skeletonBarStyle: CSSProperties = {
-  height: 12,
-  backgroundColor: colors.mono7,
-}
-
 export interface SearchViewProps {
   /** Repository root. Hardcoded to '/fake' in the bootstrap pattern. */
   cwd: string
@@ -331,7 +318,7 @@ export function SearchView({ cwd, onOpenIssue }: SearchViewProps) {
             />
           </div>
         ) : isLoading ? (
-          <SearchSkeleton />
+          <IssueSummarySkeleton testidPrefix="search" />
         ) : error ? (
           <div data-testid="search-error" style={errorStyle} role="alert">
             Search failed: {formatError(error, '')}
@@ -424,21 +411,5 @@ function SearchRow({
       </button>
       <span style={idStyle}>{issue.id}</span>
     </li>
-  )
-}
-
-function SearchSkeleton() {
-  return (
-    <div data-testid="search-loading" style={containerStyle}>
-      {[0, 1, 2].map(i => (
-        <div key={i} style={skeletonStyle}>
-          <div style={{ ...skeletonBarStyle, width: 8, height: 8 }} />
-          <div style={{ ...skeletonBarStyle, width: 14, height: 14 }} />
-          <div
-            style={{ ...skeletonBarStyle, width: 80, height: 16, flex: 1 }}
-          />
-        </div>
-      ))}
-    </div>
   )
 }
