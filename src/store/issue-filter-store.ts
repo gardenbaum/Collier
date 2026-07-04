@@ -31,7 +31,7 @@ export interface IssueFilter {
   assignees: string[]
 }
 
-interface IssueFilterState extends IssueFilter {
+export interface IssueFilterState extends IssueFilter {
   /** Wired during boot via `attachToWorkspaceStore`. Internal. */
   _activeRepoPath: string | null
   /** Subscribed to workspace-store changes. Internal. */

@@ -29,7 +29,7 @@ import {
   WORKSPACE_VIEWS,
   type WorkspaceView,
 } from '@/store/workspace-store'
-import { useIssueFilterStore } from '@/store/issue-filter-store'
+import { useIssueFilterStateAndActions } from '@/store/use-issue-filter-state'
 import { commands } from '@/lib/tauri-bindings'
 import type {
   AssigneeWithCount,
@@ -115,21 +115,27 @@ export function Sidebar() {
   const setActiveView = useWorkspaceStore(s => s.setActiveView)
   const repoPath = useWorkspaceStore(s => s.repoPath)
 
-  // ponytail: 7 separate selectors — never destructure the whole
-  // store (per AGENTS.md, that would re-render on every unrelated
-  // change). The store exposes one toggle action per dimension
-  // and a clearAll() for the "Clear all" button.
-  const status = useIssueFilterStore(s => s.status)
-  const priority = useIssueFilterStore(s => s.priority)
-  const issueType = useIssueFilterStore(s => s.type)
-  const labels = useIssueFilterStore(s => s.labels)
-  const assignees = useIssueFilterStore(s => s.assignees)
-  const toggleStatus = useIssueFilterStore(s => s.toggleStatus)
-  const togglePriority = useIssueFilterStore(s => s.togglePriority)
-  const toggleType = useIssueFilterStore(s => s.toggleType)
-  const toggleLabel = useIssueFilterStore(s => s.toggleLabel)
-  const toggleAssignee = useIssueFilterStore(s => s.toggleAssignee)
-  const clearAll = useIssueFilterStore(s => s.clearAll)
+  // ponytail: collapsed from 11 inline selectors into one hook
+  // call — see `src/store/use-issue-filter-state.ts` for the
+  // subscription model. The hook keeps per-field selectors
+  // internally, so this component still only re-renders when
+  // one of the fields it actually reads changes (per AGENTS.md).
+  // The variable name `issueType` is preserved for downstream
+  // code; the hook returns the field as `type` and we rename on
+  // destructure.
+  const {
+    status,
+    priority,
+    type: issueType,
+    labels,
+    assignees,
+    toggleStatus,
+    togglePriority,
+    toggleType,
+    toggleLabel,
+    toggleAssignee,
+    clearAll,
+  } = useIssueFilterStateAndActions()
 
   const hasAnyFilter =
     status.length > 0 ||

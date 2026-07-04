@@ -37,7 +37,7 @@ import { useQuery } from '@tanstack/react-query'
 import { ArrowDown, ArrowUp, ArrowUpDown, X } from 'lucide-react'
 import { commands } from '@/lib/tauri-bindings'
 import type { Issue, ListFilters } from '@/lib/bindings'
-import { useIssueFilterStore } from '@/store/issue-filter-store'
+import { useIssueFilterStateAndActions } from '@/store/use-issue-filter-state'
 import { useScrollPositionStore } from '@/store/scroll-position-store'
 import { useWorkspaceStore } from '@/store/workspace-store'
 import { colors, radius, space, type } from '@/lib/design-tokens'
@@ -198,19 +198,27 @@ export function IssueListView({
   onOpenIssue,
   containerHeight = 600,
 }: IssueListViewProps) {
-  // ponytail: 5 separate selectors — never destructure the whole store
-  // (per AGENTS.md, that would re-render on every unrelated change).
-  const status = useIssueFilterStore(s => s.status)
-  const priority = useIssueFilterStore(s => s.priority)
-  const storeType = useIssueFilterStore(s => s.type)
-  const labels = useIssueFilterStore(s => s.labels)
-  const assignees = useIssueFilterStore(s => s.assignees)
-  const toggleStatus = useIssueFilterStore(s => s.toggleStatus)
-  const togglePriority = useIssueFilterStore(s => s.togglePriority)
-  const toggleType = useIssueFilterStore(s => s.toggleType)
-  const toggleLabel = useIssueFilterStore(s => s.toggleLabel)
-  const toggleAssignee = useIssueFilterStore(s => s.toggleAssignee)
-  const clearAll = useIssueFilterStore(s => s.clearAll)
+  // ponytail: collapsed from 11 inline selectors into one hook
+  // call — see `src/store/use-issue-filter-state.ts` for the
+  // subscription model. The hook preserves per-field selectors
+  // internally, so this component still only re-renders when
+  // one of the fields it actually reads changes (per AGENTS.md).
+  // The variable name `storeType` is preserved for downstream
+  // code; the hook returns the field as `type` and we rename on
+  // destructure.
+  const {
+    status,
+    priority,
+    type: storeType,
+    labels,
+    assignees,
+    toggleStatus,
+    togglePriority,
+    toggleType,
+    toggleLabel,
+    toggleAssignee,
+    clearAll,
+  } = useIssueFilterStateAndActions()
 
   // Build the ListFilters payload. `useMemo` keeps the queryKey stable
   // when the user toggles a checkbox on and off (the resulting array
