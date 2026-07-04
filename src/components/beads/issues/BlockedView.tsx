@@ -15,92 +15,24 @@
  * Hardcoded English: matches the Wave 1 / T20 bootstrap pattern. i18n
  * keys for the issues namespace are a future task.
  */
-import type { CSSProperties } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Ban } from 'lucide-react'
 import { commands } from '@/lib/tauri-bindings'
-import type { Issue } from '@/lib/bindings'
 import { useWorkspaceStore } from '@/store/workspace-store'
-import { colors, space, type } from '@/lib/design-tokens'
 import { formatError } from '@/lib/error-format'
 import { EmptyState } from '@/components/atoms'
-import { StatusPill } from './badges/StatusPill'
-import { PriorityDot } from './badges/PriorityDot'
-import { TypeIcon } from './badges/TypeIcon'
-import { DependencyBadge } from './badges/DependencyBadge'
+import { IssueSummaryRow } from './IssueSummaryRow'
+import { IssueSummarySkeleton } from './IssueSummarySkeleton'
+import {
+  containerStyle,
+  headingStyle,
+  errorStyle,
+} from './issue-summary-styles'
 
 export interface BlockedViewProps {
   /** Repository root. Hardcoded to '/fake' in the bootstrap pattern; the
    *  Wave 8 layout will thread the real selected repo through. */
   cwd: string
-}
-
-const containerStyle: CSSProperties = {
-  display: 'flex',
-  flexDirection: 'column',
-  gap: space[3],
-  padding: space[4],
-  color: colors.mono0,
-  fontFamily: type.fontFamily.sans,
-}
-
-const headingStyle: CSSProperties = {
-  fontSize: type.fontSize.xl,
-  fontWeight: type.fontWeight.bold,
-  lineHeight: type.lineHeight.tight,
-  margin: 0,
-}
-
-const rowStyle: CSSProperties = {
-  display: 'flex',
-  alignItems: 'center',
-  gap: space[3],
-  padding: space[3],
-  backgroundColor: colors.mono9,
-  borderTop: `1px solid ${colors.mono7}`,
-  fontSize: type.fontSize.sm,
-  lineHeight: type.lineHeight.normal,
-}
-
-const titleStyle: CSSProperties = {
-  fontWeight: type.fontWeight.medium,
-  color: colors.mono0,
-}
-
-const idStyle: CSSProperties = {
-  fontFamily: 'ui-monospace, SFMono-Regular, monospace',
-  fontSize: type.fontSize.xs,
-  color: colors.mono5,
-  marginInlineStart: 'auto',
-}
-
-const errorStyle: CSSProperties = {
-  fontSize: type.fontSize.sm,
-  color: colors.mono0,
-  padding: space[4],
-  backgroundColor: colors.mono9,
-  borderTop: `1px solid ${colors.mono7}`,
-}
-
-const skeletonStyle: CSSProperties = {
-  display: 'flex',
-  alignItems: 'center',
-  gap: space[3],
-  padding: space[3],
-  backgroundColor: colors.mono9,
-  borderTop: `1px solid ${colors.mono7}`,
-}
-
-const skeletonBarStyle: CSSProperties = {
-  height: 12,
-  backgroundColor: colors.mono7,
-}
-
-// ponytail: M5 keyboard cursor indicator — matches the rest of the
-// app's selected-row visual.
-const rowSelectedStyle: CSSProperties = {
-  backgroundColor: 'rgba(94, 106, 210, 0.18)',
-  boxShadow: 'inset 2px 0 0 0 rgb(94, 106, 210)',
 }
 
 /**
@@ -126,7 +58,7 @@ export function BlockedView({ cwd }: BlockedViewProps) {
     <section data-testid="blocked-view" style={containerStyle}>
       <h2 style={headingStyle}>Blocked ({count})</h2>
 
-      {isLoading ? <BlockedSkeleton /> : null}
+      {isLoading ? <IssueSummarySkeleton testidPrefix="blocked" /> : null}
 
       {error ? (
         <div data-testid="blocked-error" style={errorStyle} role="alert">
@@ -150,64 +82,15 @@ export function BlockedView({ cwd }: BlockedViewProps) {
           style={{ listStyle: 'none', margin: 0, padding: 0 }}
         >
           {issues.map(issue => (
-            <BlockedRow
+            <IssueSummaryRow
               key={issue.id}
               issue={issue}
               isKeyboardSelected={issue.id === selectedRowId}
+              testidPrefix="blocked"
             />
           ))}
         </ul>
       ) : null}
     </section>
-  )
-}
-
-function BlockedRow({
-  issue,
-  isKeyboardSelected,
-}: {
-  issue: Issue
-  /** M5 keyboard navigation: highlights the row matching the cursor. */
-  isKeyboardSelected: boolean
-}) {
-  return (
-    <li
-      data-testid="blocked-row"
-      data-kbd-nav="row"
-      data-row-id={issue.id}
-      data-issue-id={issue.id}
-      data-row-selected={isKeyboardSelected ? 'true' : 'false'}
-      aria-selected={isKeyboardSelected}
-      style={{
-        ...rowStyle,
-        ...(isKeyboardSelected ? rowSelectedStyle : null),
-      }}
-    >
-      <PriorityDot priority={issue.priority} />
-      <TypeIcon type={issue.issue_type} />
-      <StatusPill status={issue.status} />
-      <span style={titleStyle}>{issue.title}</span>
-      <DependencyBadge
-        blockedBy={issue.dependency_count ?? 0}
-        blocks={issue.dependent_count ?? 0}
-      />
-      <span style={idStyle}>{issue.id}</span>
-    </li>
-  )
-}
-
-function BlockedSkeleton() {
-  return (
-    <div data-testid="blocked-loading" style={containerStyle}>
-      {[0, 1, 2].map(i => (
-        <div key={i} style={skeletonStyle}>
-          <div style={{ ...skeletonBarStyle, width: 8, height: 8 }} />
-          <div style={{ ...skeletonBarStyle, width: 14, height: 14 }} />
-          <div
-            style={{ ...skeletonBarStyle, width: 80, height: 16, flex: 1 }}
-          />
-        </div>
-      ))}
-    </div>
   )
 }
