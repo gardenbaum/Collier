@@ -35,14 +35,13 @@
  */
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties } from 'react'
-import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { ChevronDown, ChevronRight, Layers } from 'lucide-react'
-import { commands } from '@/lib/tauri-bindings'
 import type { Issue } from '@/lib/bindings'
 import { colors, palette, radius, space, type } from '@/lib/design-tokens'
 import { useWorkspaceStore } from '@/store/workspace-store'
+import { useBeadList } from '@/hooks/useBeadList'
 import { formatError } from '@/lib/error-format'
 import { EmptyState } from '@/components/atoms'
 import { StatusPill } from '../issues/badges/StatusPill'
@@ -298,14 +297,7 @@ export function EpicView({
   containerHeight = DEFAULT_CONTAINER_HEIGHT,
 }: EpicViewProps) {
   const { t } = useTranslation()
-  const { data, isLoading, error } = useQuery({
-    queryKey: ['beads', 'list', cwd, {}],
-    queryFn: async () => {
-      const result = await commands.bdList(cwd, {})
-      if (result.status === 'ok') return result.data
-      throw result.error
-    },
-  })
+  const { data, isLoading, error } = useBeadList(cwd)
   // M5 keyboard navigation: the cursor highlights the active epic
   // (or epic child) so `j`/`k` give visible feedback and `h`/`l`
   // can collapse/expand the selected epic.
