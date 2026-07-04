@@ -37,6 +37,8 @@ import type {
 } from '@/lib/bindings'
 import { useDialogA11y } from '@/hooks/useDialogA11y'
 import { useStatusCatalog } from '@/hooks/useStatusCatalog'
+import { IssueTypeField } from './IssueTypeField'
+import { IssuePriorityField } from './IssuePriorityField'
 
 export interface IssueUpdatePanelProps {
   /** Repository root. Passed to `commands.bdUpdate`. */
@@ -48,18 +50,6 @@ export interface IssueUpdatePanelProps {
   /** Fires with the updated issue after a successful save. */
   onUpdated: (issue: Issue) => void
 }
-
-const ISSUE_TYPES: IssueType[] = [
-  'bug',
-  'feature',
-  'task',
-  'epic',
-  'chore',
-  'decision',
-  'gate',
-]
-
-const PRIORITIES: IssuePriority[] = ['P0', 'P1', 'P2', 'P3', 'P4']
 
 // Status set is read from `useStatusCatalog` (which reads
 // `bd statuses --json`) — the M6 contract. A workspace with
@@ -217,47 +207,23 @@ export function IssueUpdatePanel({
           </Field>
 
           <Field label={t('beads.issueUpdatePanel.type', 'Type')}>
-            <select
-              data-testid="update-type"
+            <IssueTypeField
               value={issueType}
-              onChange={e => setIssueType(e.target.value as IssueType)}
-              className={selectClass}
-            >
-              {ISSUE_TYPES.map(t => (
-                <option key={t} value={t}>
-                  {t}
-                </option>
-              ))}
-            </select>
+              onChange={setIssueType}
+              testId="update-type"
+              selectClassName={selectClass}
+            />
           </Field>
 
           <Field label={t('beads.issueUpdatePanel.priority', 'Priority')}>
-            <div
-              className="flex gap-1"
-              role="radiogroup"
-              aria-label={t('beads.issueUpdatePanel.priority', 'Priority')}
-            >
-              {PRIORITIES.map(p => {
-                const selected = p === priority
-                return (
-                  <button
-                    key={p}
-                    type="button"
-                    role="radio"
-                    aria-checked={selected}
-                    data-testid={`update-priority-${p}`}
-                    onClick={() => setPriority(p)}
-                    className={
-                      selected
-                        ? priorityButtonSelectedClass
-                        : priorityButtonClass
-                    }
-                  >
-                    {p}
-                  </button>
-                )
-              })}
-            </div>
+            <IssuePriorityField
+              value={priority}
+              onChange={setPriority}
+              testIdPrefix="update-priority"
+              ariaLabel={t('beads.issueUpdatePanel.priority', 'Priority')}
+              buttonClassName={priorityButtonClass}
+              buttonSelectedClassName={priorityButtonSelectedClass}
+            />
           </Field>
 
           <Field label={t('beads.issueUpdatePanel.status', 'Status')}>
