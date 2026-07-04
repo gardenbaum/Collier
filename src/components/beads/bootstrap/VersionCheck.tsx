@@ -17,8 +17,7 @@
  */
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { ExternalLink, X } from 'lucide-react'
-import { getCurrentWindow } from '@tauri-apps/api/window'
+import { ExternalLink } from 'lucide-react'
 import { commands } from '@/lib/tauri-bindings'
 import type { BdInfo } from '@/lib/bindings'
 import {
@@ -29,10 +28,10 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import { Button } from '@/components/ui/button'
 import { colors, space } from '@/lib/design-tokens'
 import { cn } from '@/lib/utils'
 import { logger } from '@/lib/logger'
+import { QuitButton } from './QuitButton'
 
 const RELEASES_URL = 'https://github.com/gastownhall/beads/releases'
 
@@ -110,14 +109,6 @@ export function VersionCheck({ cwd, onPass }: VersionCheckProps) {
   const [major, minor, patch] = version
   const versionStr = `${major}.${minor}.${patch}`
 
-  const handleQuit = async () => {
-    try {
-      await getCurrentWindow().close()
-    } catch (err) {
-      logger.error('Failed to close window', { err })
-    }
-  }
-
   return (
     <Dialog open={open}>
       <DialogContent
@@ -175,20 +166,7 @@ export function VersionCheck({ cwd, onPass }: VersionCheckProps) {
             <ExternalLink className="size-4" aria-hidden="true" />
             <span>Update Beads</span>
           </a>
-          <Button
-            type="button"
-            onClick={handleQuit}
-            className="border-2"
-            style={{
-              backgroundColor: colors.accent,
-              color: colors.mono9,
-              borderColor: colors.accent,
-              borderRadius: 0,
-            }}
-          >
-            <X className="size-4" aria-hidden="true" />
-            <span>{t('beads.bootstrap.quit', 'Quit')}</span>
-          </Button>
+          <QuitButton />
         </DialogFooter>
       </DialogContent>
     </Dialog>
