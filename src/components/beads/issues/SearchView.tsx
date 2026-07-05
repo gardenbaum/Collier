@@ -31,6 +31,8 @@ import { PriorityDot } from './badges/PriorityDot'
 import { TypeIcon } from './badges/TypeIcon'
 import { DependencyBadge } from './badges/DependencyBadge'
 import { IssueSummarySkeleton } from './IssueSummarySkeleton'
+import { KeyboardNavRow } from './KeyboardNavRow'
+import { titleStyle, idStyle } from './issue-summary-styles'
 import { hasQueryOperator } from './search-syntax'
 
 const RECENT_KEY = 'collier-recent-searches'
@@ -136,37 +138,6 @@ const headingStyle: CSSProperties = {
   fontWeight: type.fontWeight.bold,
   lineHeight: type.lineHeight.tight,
   margin: 0,
-}
-
-const rowStyle: CSSProperties = {
-  display: 'flex',
-  alignItems: 'center',
-  gap: space[3],
-  padding: space[3],
-  backgroundColor: colors.mono9,
-  borderTop: `1px solid ${colors.mono7}`,
-  fontSize: type.fontSize.sm,
-  lineHeight: type.lineHeight.normal,
-}
-
-// ponytail: M5 keyboard cursor indicator — matches the IssueListView
-// visual (same neutral palette, same 2px left-edge ring) so the
-// cursor feels uniform across views.
-const rowSelectedStyle: CSSProperties = {
-  backgroundColor: 'rgba(94, 106, 210, 0.18)',
-  boxShadow: 'inset 2px 0 0 0 rgb(94, 106, 210)',
-}
-
-const titleStyle: CSSProperties = {
-  fontWeight: type.fontWeight.medium,
-  color: colors.mono0,
-}
-
-const idStyle: CSSProperties = {
-  fontFamily: 'ui-monospace, SFMono-Regular, monospace',
-  fontSize: type.fontSize.xs,
-  color: colors.mono5,
-  marginInlineStart: 'auto',
 }
 
 const errorStyle: CSSProperties = {
@@ -368,17 +339,10 @@ function SearchRow({
   isKeyboardSelected: boolean
 }) {
   return (
-    <li
-      data-testid="search-result-row"
-      data-kbd-nav="row"
-      data-row-id={issue.id}
-      data-issue-id={issue.id}
-      data-row-selected={isKeyboardSelected ? 'true' : 'false'}
-      aria-selected={isKeyboardSelected}
-      style={{
-        ...rowStyle,
-        ...(isKeyboardSelected ? rowSelectedStyle : null),
-      }}
+    <KeyboardNavRow
+      testid="search-result-row"
+      rowId={issue.id}
+      isSelected={isKeyboardSelected}
     >
       <button
         type="button"
@@ -410,6 +374,6 @@ function SearchRow({
         />
       </button>
       <span style={idStyle}>{issue.id}</span>
-    </li>
+    </KeyboardNavRow>
   )
 }
