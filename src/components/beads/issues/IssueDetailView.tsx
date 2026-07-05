@@ -25,6 +25,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { commands } from '@/lib/tauri-bindings'
 import type { Comment, HistoryEntry, Issue } from '@/lib/bindings'
 import { colors, space, type } from '@/lib/design-tokens'
+import { formatError } from '@/lib/error-format'
 import { TypeIcon } from './badges/TypeIcon'
 import { LabelChip } from './badges/LabelChip'
 import { DependencyBadge } from './badges/DependencyBadge'
@@ -413,7 +414,7 @@ function CommentsTab({
           style={mutationErrorStyle}
           role="alert"
         >
-          {formatMutationError(mutation.error)}
+          {formatError(mutation.error, 'Failed to post comment.')}
         </div>
       ) : null}
 
@@ -496,19 +497,6 @@ function HistoryTab({
       ))}
     </ul>
   )
-}
-
-// ponytail: short-circuit on the common shape, fall back to a generic
-// line. Keeps the toast/alert from showing `undefined` or `{type: …}`.
-function formatMutationError(err: unknown): string {
-  if (err && typeof err === 'object' && 'type' in err) {
-    const e = err as { type: string; message?: string; stderr?: string }
-    if (e.type === 'NonZeroExit' && e.stderr) return e.stderr
-    if ('message' in e && e.message) return e.message
-    return e.type
-  }
-  if (err instanceof Error) return err.message
-  return 'Failed to post comment.'
 }
 
 /**

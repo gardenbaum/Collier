@@ -41,6 +41,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { commands } from '@/lib/tauri-bindings'
 import type { Dependency, DependencyType } from '@/lib/bindings'
 import { colors, space, type } from '@/lib/design-tokens'
+import { formatError } from '@/lib/error-format'
 
 export interface DependencyListViewProps {
   /** Repository root. Passed to every command. */
@@ -332,22 +333,11 @@ export function DependencyListView({
 
       {addMutation.isError ? (
         <div data-testid="dep-add-error" style={errorBoxStyle} role="alert">
-          {formatMutationError(addMutation.error)}
+          {formatError(addMutation.error, 'Action failed.')}
         </div>
       ) : null}
     </div>
   )
-}
-
-function formatMutationError(err: unknown): string {
-  if (err && typeof err === 'object' && 'type' in err) {
-    const e = err as { type: string; message?: string; stderr?: string }
-    if (e.type === 'NonZeroExit' && e.stderr) return e.stderr
-    if ('message' in e && e.message) return e.message
-    return e.type
-  }
-  if (err instanceof Error) return err.message
-  return 'Action failed.'
 }
 
 const containerStyle: CSSProperties = {
