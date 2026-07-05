@@ -25,18 +25,20 @@
  * ponytail: the testid-prefix contract here is what binds this
  * component to its two callers — do not rename `${prefix}-row` to
  * anything else without also updating both test files.
+ *
+ * The `<li>` shell (data attributes + style spread) is delegated to
+ * `./KeyboardNavRow` so the same nav contract is shared with
+ * `SearchView.SearchRow`. The unit tests for the nav contract live
+ * on the wrapper; this component only asserts its own
+ * testid-prefix contract.
  */
 import type { Issue } from '@/lib/bindings'
 import { PriorityDot } from './badges/PriorityDot'
 import { TypeIcon } from './badges/TypeIcon'
 import { StatusPill } from './badges/StatusPill'
 import { DependencyBadge } from './badges/DependencyBadge'
-import {
-  rowStyle,
-  rowSelectedStyle,
-  titleStyle,
-  idStyle,
-} from './issue-summary-styles'
+import { titleStyle, idStyle } from './issue-summary-styles'
+import { KeyboardNavRow } from './KeyboardNavRow'
 
 export interface IssueSummaryRowProps {
   /** The issue to render. */
@@ -56,17 +58,10 @@ export function IssueSummaryRow({
   testidPrefix,
 }: IssueSummaryRowProps) {
   return (
-    <li
-      data-testid={`${testidPrefix}-row`}
-      data-kbd-nav="row"
-      data-row-id={issue.id}
-      data-issue-id={issue.id}
-      data-row-selected={isKeyboardSelected ? 'true' : 'false'}
-      aria-selected={isKeyboardSelected}
-      style={{
-        ...rowStyle,
-        ...(isKeyboardSelected ? rowSelectedStyle : null),
-      }}
+    <KeyboardNavRow
+      testid={`${testidPrefix}-row`}
+      rowId={issue.id}
+      isSelected={isKeyboardSelected}
     >
       <PriorityDot priority={issue.priority} />
       <TypeIcon type={issue.issue_type} />
@@ -77,6 +72,6 @@ export function IssueSummaryRow({
         blocks={issue.dependent_count ?? 0}
       />
       <span style={idStyle}>{issue.id}</span>
-    </li>
+    </KeyboardNavRow>
   )
 }
