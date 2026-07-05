@@ -40,6 +40,7 @@ import { useMutation } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { commands } from '@/lib/tauri-bindings'
 import type { Issue } from '@/lib/bindings'
+import { formatError } from '@/lib/error-format'
 
 export interface IssueActionsProps {
   /** Repository root. Passed to every command. */
@@ -348,7 +349,7 @@ export function IssueActions({
           role="alert"
           className="border border-mono-3 bg-mono-8 px-3 py-2 font-sans text-xs text-mono-0"
         >
-          {formatMutationError(anyError)}
+          {formatError(anyError, 'Action failed.')}
         </div>
       ) : null}
     </div>
@@ -357,13 +358,3 @@ export function IssueActions({
 
 // ponytail: short-circuit on the common shape, fall back to a generic
 // line. Keeps the error from showing `undefined` or `{type: …}`.
-function formatMutationError(err: unknown): string {
-  if (err && typeof err === 'object' && 'type' in err) {
-    const e = err as { type: string; message?: string; stderr?: string }
-    if (e.type === 'NonZeroExit' && e.stderr) return e.stderr
-    if ('message' in e && e.message) return e.message
-    return e.type
-  }
-  if (err instanceof Error) return err.message
-  return 'Action failed.'
-}

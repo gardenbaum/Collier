@@ -26,6 +26,7 @@ import { useTranslation } from 'react-i18next'
 import { commands } from '@/lib/tauri-bindings'
 import type { CreateInput, IssuePriority, IssueType } from '@/lib/bindings'
 import { useDialogA11y } from '@/hooks/useDialogA11y'
+import { formatError } from '@/lib/error-format'
 import { IssueTypeField } from './IssueTypeField'
 import { IssuePriorityField } from './IssuePriorityField'
 
@@ -287,7 +288,9 @@ export function IssueCreateForm({
               role="alert"
               className="flex items-center justify-between gap-2 rounded-[var(--radius)] border border-[color:var(--destructive)]/40 bg-[color:var(--destructive)]/10 px-3 py-2 font-sans text-xs text-[color:var(--foreground)]"
             >
-              <span>{formatMutationError(createMutation.error)}</span>
+              <span>
+                {formatError(createMutation.error, 'Failed to create issue.')}
+              </span>
               <button
                 type="button"
                 data-testid="create-retry"
@@ -391,15 +394,4 @@ function buildInput(state: {
     labels: state.labels.length > 0 ? state.labels : null,
     externalRef: state.externalRef.trim() || null,
   }
-}
-
-function formatMutationError(err: unknown): string {
-  if (err && typeof err === 'object' && 'type' in err) {
-    const e = err as { type: string; message?: string; stderr?: string }
-    if (e.type === 'NonZeroExit' && e.stderr) return e.stderr
-    if ('message' in e && e.message) return e.message
-    return e.type
-  }
-  if (err instanceof Error) return err.message
-  return 'Failed to create issue.'
 }

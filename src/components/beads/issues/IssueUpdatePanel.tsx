@@ -37,6 +37,7 @@ import type {
 } from '@/lib/bindings'
 import { useDialogA11y } from '@/hooks/useDialogA11y'
 import { useStatusCatalog } from '@/hooks/useStatusCatalog'
+import { formatError } from '@/lib/error-format'
 import { IssueTypeField } from './IssueTypeField'
 import { IssuePriorityField } from './IssuePriorityField'
 
@@ -269,7 +270,7 @@ export function IssueUpdatePanel({
               role="alert"
               className="border border-mono-3 bg-mono-8 px-3 py-2 font-sans text-xs text-mono-0"
             >
-              {formatMutationError(updateMutation.error)}
+              {formatError(updateMutation.error, 'Failed to update issue.')}
             </div>
           ) : null}
 
@@ -321,15 +322,4 @@ function Field({
       {children}
     </label>
   )
-}
-
-function formatMutationError(err: unknown): string {
-  if (err && typeof err === 'object' && 'type' in err) {
-    const e = err as { type: string; message?: string; stderr?: string }
-    if (e.type === 'NonZeroExit' && e.stderr) return e.stderr
-    if ('message' in e && e.message) return e.message
-    return e.type
-  }
-  if (err instanceof Error) return err.message
-  return 'Failed to update issue.'
 }
