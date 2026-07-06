@@ -23,6 +23,7 @@ import { Search } from 'lucide-react'
 import { commands } from '@/lib/tauri-bindings'
 import type { Issue } from '@/lib/bindings'
 import { colors, space, type } from '@/lib/design-tokens'
+import { buttonStyle } from '@/lib/form-styles'
 import { useWorkspaceStore } from '@/store/workspace-store'
 import { formatError } from '@/lib/error-format'
 import { EmptyState } from '@/components/atoms'
@@ -81,20 +82,6 @@ const formStyle: CSSProperties = {
   display: 'flex',
   gap: space[2],
   alignItems: 'center',
-}
-
-const submitStyle: CSSProperties = {
-  fontFamily: type.fontFamily.sans,
-  fontSize: type.fontSize.sm,
-  fontWeight: type.fontWeight.medium,
-  color: colors.mono0,
-  backgroundColor: colors.mono8,
-  borderWidth: 1,
-  borderStyle: 'solid',
-  borderColor: colors.mono3,
-  paddingInline: space[3],
-  paddingBlock: space[2],
-  cursor: 'pointer',
 }
 
 const recentToggleStyle: CSSProperties = {
@@ -247,7 +234,7 @@ export function SearchView({ cwd, onOpenIssue }: SearchViewProps) {
         <button
           type="submit"
           data-testid="search-submit-button"
-          style={submitStyle}
+          style={buttonStyle}
         >
           Search
         </button>

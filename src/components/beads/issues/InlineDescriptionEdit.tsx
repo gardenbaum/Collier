@@ -45,6 +45,7 @@ import type { Issue } from '@/lib/bindings'
 import { useIssueFieldUpdate } from '@/hooks/useIssueFieldUpdate'
 import { formatError } from '@/lib/error-format'
 import { colors, space, type } from '@/lib/design-tokens'
+import { primaryButtonStyle, textareaStyle } from '@/lib/form-styles'
 
 export interface InlineDescriptionEditProps {
   /** Repository root — passed to `commands.bdUpdate`. */
@@ -194,7 +195,7 @@ export function InlineDescriptionEdit({
             data-testid="inline-description-cancel"
             onClick={handleCancel}
             disabled={mutation.isPending}
-            style={cancelButtonStyle}
+            style={primaryButtonStyle}
           >
             {t('beads.descriptionEdit.cancel', 'Cancel')}
           </button>
@@ -295,67 +296,22 @@ const formStyle: CSSProperties = {
   gap: space[2],
 }
 
-const textareaStyle: CSSProperties = {
-  fontFamily: type.fontFamily.sans,
-  fontSize: type.fontSize.sm,
-  color: colors.mono0,
-  backgroundColor: colors.mono9,
-  borderWidth: 1,
-  borderStyle: 'solid',
-  borderColor: colors.mono3,
-  paddingInline: space[2],
-  paddingBlock: space[2],
-  outline: 'none',
-  resize: 'vertical',
-  width: '100%',
-  minHeight: 96,
-  boxSizing: 'border-box',
-}
-
 const actionsStyle: CSSProperties = {
   display: 'flex',
   gap: space[2],
 }
 
-const cancelButtonStyle: CSSProperties = {
-  fontFamily: type.fontFamily.sans,
-  fontSize: type.fontSize.sm,
-  fontWeight: type.fontWeight.medium,
-  color: colors.mono0,
-  backgroundColor: colors.mono8,
-  borderWidth: 1,
-  borderStyle: 'solid',
-  borderColor: colors.mono3,
-  paddingInline: space[4],
-  paddingBlock: space[2],
-  cursor: 'pointer',
-}
-
+// Primary save button: mono0 border reads as a highlight against the
+// mono3 of the cancel button next to it.
 const submitButtonStyle: CSSProperties = {
-  fontFamily: type.fontFamily.sans,
-  fontSize: type.fontSize.sm,
-  fontWeight: type.fontWeight.medium,
-  color: colors.mono0,
-  backgroundColor: colors.mono8,
-  borderWidth: 1,
-  borderStyle: 'solid',
+  ...primaryButtonStyle,
   borderColor: colors.mono0,
-  paddingInline: space[4],
-  paddingBlock: space[2],
-  cursor: 'pointer',
 }
 
 const submitButtonDisabledStyle: CSSProperties = {
-  fontFamily: type.fontFamily.sans,
-  fontSize: type.fontSize.sm,
-  fontWeight: type.fontWeight.medium,
+  ...primaryButtonStyle,
   color: colors.mono5,
-  backgroundColor: colors.mono8,
-  borderWidth: 1,
-  borderStyle: 'solid',
   borderColor: colors.mono7,
-  paddingInline: space[4],
-  paddingBlock: space[2],
   cursor: 'not-allowed',
 }
 
