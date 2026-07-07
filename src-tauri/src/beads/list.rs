@@ -2,19 +2,16 @@
 //!
 //! Wraps `runner::run_bd` to invoke `bd list <flags> --json` based on the
 //! frontend's `ListFilters` struct, then extracts the issue array from the
-//! `{ schema_version, data }` envelope. Shares the envelope-extraction
-//! helper with `search_query` (T15 is the third caller — extraction
-//! justified per the T19 follow-up in the notepad).
+//! `{ schema_version, data }` envelope via `beads::envelope::extract_issues`.
 
-use crate::beads::{runner, search_query, BdError, BdResult, Issue};
+use crate::beads::{envelope, runner, BdError, BdResult, Issue};
 use crate::bindings::types::ListFilters;
 
 /// Run `bd list <filters> --json` in `cwd` and return the matching issues.
 ///
 /// `ListFilters::to_args` produces the flag argv; the runner's envelope
 /// parsing kicks in because we append `--json`. The envelope's `data`
-/// field is decoded into `Vec<Issue>` by `search_query::extract_data`
-/// (made `pub(super)` for this caller).
+/// field is decoded into `Vec<Issue>` by `envelope::extract_issues`.
 #[tauri::command]
 #[specta::specta]
 pub async fn bd_list(cwd: String, filters: ListFilters) -> BdResult<Vec<Issue>> {
@@ -41,7 +38,7 @@ pub async fn bd_list(cwd: String, filters: ListFilters) -> BdResult<Vec<Issue>> 
             });
         }
     };
-    search_query::extract_data(value)
+    envelope::extract_issues(value)
 }
 
 #[cfg(test)]
@@ -101,8 +98,7 @@ mod tests {
     }
 
     /// Verifies the list envelope shape parses through the shared
-    /// `search_query::extract_data` helper — confirms T15's cross-module
-    /// use works end-to-end.
+    /// `envelope::extract_issues` helper.
     #[test]
     fn test_extract_data_parses_valid_list_envelope() {
         let envelope = serde_json::json!({
@@ -130,7 +126,7 @@ mod tests {
                 }
             ]
         });
-        let issues = search_query::extract_data(envelope).expect("should parse");
+        let issues = envelope::extract_issues(envelope).expect("should parse");
         assert_eq!(issues.len(), 1);
         assert_eq!(issues[0].id, "beads-list-1");
         assert_eq!(issues[0].status, ISSUE_STATUS_IN_PROGRESS.to_string());
