@@ -5,7 +5,7 @@
 //! `ListFilters` struct. The envelope JSON parsing is folded into
 //! `run_bd_envelope`, so `bd_list` only owns argv construction.
 
-use crate::beads::{envelope, runner, BdResult, Issue};
+use crate::beads::{runner, BdResult, Issue};
 use crate::bindings::types::ListFilters;
 
 /// Run `bd list <filters> --json` in `cwd` and return the matching issues.
@@ -35,6 +35,7 @@ pub async fn bd_list(cwd: String, filters: ListFilters) -> BdResult<Vec<Issue>> 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::beads::envelope;
     use crate::beads::{
         IssuePriority, IssueType, ISSUE_STATUS_CLOSED, ISSUE_STATUS_IN_PROGRESS, ISSUE_STATUS_OPEN,
     };

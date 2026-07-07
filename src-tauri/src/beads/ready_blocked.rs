@@ -7,7 +7,7 @@
 //! `envelope::extract<T>` pipeline so each command body stays one
 //! or two lines.
 
-use crate::beads::{envelope, runner, BdResult, Issue, ISSUE_STATUS_BLOCKED};
+use crate::beads::{runner, BdResult, Issue, ISSUE_STATUS_BLOCKED};
 use std::path::PathBuf;
 
 /// Run `bd ready --json` in `cwd` and return the list of ready issues.
@@ -44,6 +44,7 @@ pub async fn bd_blocked(cwd: String) -> BdResult<Vec<Issue>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::beads::envelope;
 
     // ponytail: unit test with a mocked run_bd would require a test harness.
     // Integration tests against real `bd` would follow the skip_if_no_bd pattern

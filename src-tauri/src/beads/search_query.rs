@@ -5,7 +5,7 @@
 //! parsing (run_bd → match → extract) is folded into the helper,
 //! so each command is a single call.
 
-use crate::beads::{envelope, runner, BdResult, Issue};
+use crate::beads::{runner, BdResult, Issue};
 use std::path::PathBuf;
 
 /// Run `bd search <query> --json` in `cwd` and return matching issues.
@@ -25,6 +25,7 @@ pub async fn bd_query(cwd: String, query: String) -> BdResult<Vec<Issue>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::beads::envelope;
 
     // ponytail: same envelope-extraction contract as `ready_blocked.rs` —
     // the public command path is verified end-to-end by the SearchView
