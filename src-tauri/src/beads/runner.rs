@@ -18,7 +18,7 @@ use tokio::io::AsyncWriteExt;
 use tokio::process::Command;
 use tokio::time::timeout;
 
-use crate::beads::{BdError, BdResult};
+use crate::beads::{envelope, BdError, BdResult};
 
 /// Hard ceiling on every `bd` invocation. Chosen to be large enough
 /// for cold `bd list` on a large repo, small enough that a hung CLI
@@ -143,6 +143,41 @@ pub async fn run_bd(args: &[&str], cwd: &Path) -> BdResult<BdOutput> {
     spawn_and_collect(&mut cmd, BD_TIMEOUT_SECS, None).await
 }
 
+/// Run `bd <args>` in `cwd`, classify the output as a JSON envelope,
+/// and deserialise the `data` field into `T`. Folds the pipeline
+/// shared by every list-style `bd` command (`bd list`, `bd ready`,
+/// `bd blocked`, `bd search`, `bd query`) so the per-command files
+/// stay focused on argv construction and any post-filter.
+///
+/// Sequence:
+///   1. `runner::run_bd(args, cwd)` — spawn + classify
+///      (`BdOutput::Json { value }` on success, `BdOutput::Text`
+///      on human-readable output like `bd --version`).
+///   2. Reject `Text` as a `ParseError` — the list-style commands
+///      all append `--json` and expect an envelope; anything else
+///      is a CLI drift we want to surface loudly.
+///   3. `envelope::extract::<T>(value)` — pull `data` and parse into
+///      `T`. Pinning `T` to `Vec<Issue>` keeps the show/history/
+///      comments path on `show_history::extract_data_vec<T>`, which
+///      needs a friendly empty-array error after deserialise.
+///
+/// New callers should reach for this rather than hand-rolling the
+/// `run_bd` + `match BdOutput` + `extract` triple.
+pub async fn run_bd_envelope<T>(args: &[&str], cwd: &Path) -> BdResult<T>
+where
+    T: serde::de::DeserializeOwned,
+{
+    let output = run_bd(args, cwd).await?;
+    let value = match output {
+        BdOutput::Json { value } => value,
+        BdOutput::Text { value } => {
+            return Err(BdError::ParseError {
+                message: format!("expected JSON envelope, got text: {value}"),
+            });
+        }
+    };
+    envelope::extract(value)
+}
 // run_bd_with_input was reserved for `bd init` (which T43 never
 // actually needed; we go through the argv-only path). v1 doesn't
 // surface this — when v1.1 needs stdin-driven commands, re-add

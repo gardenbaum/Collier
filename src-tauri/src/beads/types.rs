@@ -472,10 +472,10 @@ pub struct Issue {
     /// from the CLI). Default = empty `Vec`. The M4 R9 E2E spec's
     /// `make-second-fixture.sh` seeds five label-less issues; without
     /// this default the list view for `/tmp/e2e-workspace-b` raised
-    /// "failed to parse issues from 'data' field: missing field
+    /// "failed to parse from 'data' field: missing field
     /// `labels`" and the r10 real-time sync smoke spec timed out on
     /// the post-switch reload. Surfaced as a `ParseError` from
-    /// `bd_list` (`extract_data` in `search_query.rs`).
+    /// `bd_list` (`envelope::extract` in `beads/envelope.rs`).
     #[serde(default)]
     pub labels: Vec<Label>,
     /// `#[serde(default)]` because bd v1.0.4's `bd list --json`
@@ -1194,7 +1194,7 @@ mod tests {
 
         // Step 1: the envelope must parse as a Value with a `data`
         // array — this is the same shape the runner hands to
-        // `extract_data`.
+        // `envelope::extract`.
         let envelope: serde_json::Value =
             serde_json::from_str(envelope_json).expect("envelope is valid JSON");
         let data = envelope
@@ -1275,7 +1275,7 @@ mod tests {
     /// R9 E2E spec's `make-second-fixture.sh` creates five label-less
     /// issues, so without `#[serde(default)]` on `Issue.labels` the
     /// `bd_list` command surfaced
-    /// `ParseError("failed to parse issues from 'data' field: missing field 'labels'")`
+    /// `ParseError("failed to parse from 'data' field: missing field 'labels'")`
     /// and the workspace switcher's reload timed out.
     ///
     /// Captured envelope: a single-issue fixture (M4 second
@@ -1310,7 +1310,7 @@ mod tests {
   "schema_version": 1
 }"#;
 
-        // Same envelope shape the runner hands to `extract_data`.
+        // Same envelope shape the runner hands to `envelope::extract`.
         let envelope: serde_json::Value =
             serde_json::from_str(envelope_json).expect("envelope is valid JSON");
         let data = envelope

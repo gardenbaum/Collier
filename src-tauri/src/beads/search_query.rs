@@ -1,44 +1,25 @@
 //! `bd search` and `bd query` commands.
 //!
-//! Thin wrappers over `runner::run_bd` that invoke `bd search <q> --json` and
-//! `bd query <q> --json`, then extract the `data` vector from the JSON envelope
-//! `{ schema_version: number, data: Issue[] }` via
-//! `beads::envelope::extract_issues`.
+//! Thin wrappers over `runner::run_bd_envelope` that invoke
+//! `bd search <q> --json` and `bd query <q> --json`. The envelope
+//! parsing (run_bd → match → extract) is folded into the helper,
+//! so each command is a single call.
 
-use crate::beads::{envelope, runner, BdError, BdResult, Issue};
+use crate::beads::{envelope, runner, BdResult, Issue};
+use std::path::PathBuf;
 
 /// Run `bd search <query> --json` in `cwd` and return matching issues.
 #[tauri::command]
 #[specta::specta]
 pub async fn bd_search(cwd: String, query: String) -> BdResult<Vec<Issue>> {
-    let path = std::path::PathBuf::from(&cwd);
-    let output = runner::run_bd(&["search", &query, "--json"], &path).await?;
-    let value = match output {
-        runner::BdOutput::Json { value } => value,
-        runner::BdOutput::Text { value } => {
-            return Err(BdError::ParseError {
-                message: format!("expected JSON envelope, got text: {value}"),
-            });
-        }
-    };
-    envelope::extract_issues(value)
+    runner::run_bd_envelope(&["search", &query, "--json"], &PathBuf::from(&cwd)).await
 }
 
 /// Run `bd query <query> --json` in `cwd` and return matching issues.
 #[tauri::command]
 #[specta::specta]
 pub async fn bd_query(cwd: String, query: String) -> BdResult<Vec<Issue>> {
-    let path = std::path::PathBuf::from(&cwd);
-    let output = runner::run_bd(&["query", &query, "--json"], &path).await?;
-    let value = match output {
-        runner::BdOutput::Json { value } => value,
-        runner::BdOutput::Text { value } => {
-            return Err(BdError::ParseError {
-                message: format!("expected JSON envelope, got text: {value}"),
-            });
-        }
-    };
-    envelope::extract_issues(value)
+    runner::run_bd_envelope(&["query", &query, "--json"], &PathBuf::from(&cwd)).await
 }
 
 #[cfg(test)]

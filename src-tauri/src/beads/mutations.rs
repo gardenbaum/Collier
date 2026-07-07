@@ -37,7 +37,7 @@
 use std::path::PathBuf;
 
 use crate::beads::{
-    runner, search_query, AssigneeWithCount, BdError, BdResult, Dependency, DependencyType, Issue,
+    runner, AssigneeWithCount, BdError, BdResult, Dependency, DependencyType, Issue,
     LabelWithCount, PropagationReport,
 };
 use crate::bindings::types::{CreateInput, ListFilters, UpdateInput};
@@ -457,6 +457,10 @@ fn parse_label_list_all(value: serde_json::Value) -> BdResult<Vec<LabelWithCount
 /// The rows are sorted by `assignee` on the Rust side so the
 /// frontend renders in a stable order without re-sorting
 /// (same convention as `bd_label_list_all`).
+///
+/// Folded onto [`runner::run_bd_envelope`] so the list-style
+/// envelope pipeline (run_bd → match → extract) lives in one
+/// place rather than being hand-rolled in every command.
 #[tauri::command]
 #[specta::specta]
 pub async fn bd_assignee_list_all(cwd: String) -> BdResult<Vec<AssigneeWithCount>> {
@@ -470,20 +474,7 @@ pub async fn bd_assignee_list_all(cwd: String) -> BdResult<Vec<AssigneeWithCount
     argv.extend(ListFilters::default().to_args());
     argv.push("--json".to_string());
     let arg_refs: Vec<&str> = argv.iter().map(String::as_str).collect();
-    let output = runner::run_bd(&arg_refs, &path).await?;
-    let value = match output {
-        runner::BdOutput::Json { value } => value,
-        runner::BdOutput::Text { value } => {
-            return Err(BdError::ParseError {
-                message: format!("expected JSON envelope, got text: {value}"),
-            });
-        }
-    };
-    // Same envelope contract as `bd_list`: `BD_JSON_ENVELOPE=1`
-    // wraps the issue array in `{ data, schema_version }`. We
-    // delegate the unwrap to the shared helper so the failure
-    // path is identical to the existing `bd_list` command.
-    let issues = search_query::extract_data(value)?;
+    let issues: Vec<Issue> = runner::run_bd_envelope(&arg_refs, &path).await?;
     Ok(aggregate_assignees(&issues))
 }
 
