@@ -22,6 +22,20 @@ fn unit_enum_arg<T: serde::Serialize>(value: &T) -> String {
         .to_string()
 }
 
+/// Push a `--flag value` pair iff `value` is `Some(non-empty string)`.
+/// Matches the "no-op on empty string" contract shared by `description`,
+/// `assignee`, and `external_ref` in both `CreateInput` and `UpdateInput`:
+/// `--flag ""` would be accepted by `bd` but is noise, so we skip it and
+/// force callers to think about presence.
+fn push_flag_opt(args: &mut Vec<String>, flag: &str, value: Option<&String>) {
+    if let Some(v) = value {
+        if !v.is_empty() {
+            args.push(flag.to_string());
+            args.push(v.clone());
+        }
+    }
+}
+
 /// Filter struct for `bd list --json`.
 ///
 /// Every field is optional; an empty struct produces no filter arguments, and
@@ -297,15 +311,7 @@ impl CreateInput {
         args.push("--title".to_string());
         args.push(self.title.clone());
 
-        if let Some(d) = &self.description {
-            // ponytail: empty string is a no-op — the CLI would happily
-            // accept `--description ""` but it would be noise. Skip it
-            // so the call site is forced to think about presence.
-            if !d.is_empty() {
-                args.push("--description".to_string());
-                args.push(d.clone());
-            }
-        }
+        push_flag_opt(&mut args, "--description", self.description.as_ref());
 
         if let Some(t) = &self.issue_type {
             args.push("--type".to_string());
@@ -319,12 +325,7 @@ impl CreateInput {
             args.push((*p as u8).to_string());
         }
 
-        if let Some(a) = &self.assignee {
-            if !a.is_empty() {
-                args.push("--assignee".to_string());
-                args.push(a.clone());
-            }
-        }
+        push_flag_opt(&mut args, "--assignee", self.assignee.as_ref());
 
         if let Some(labels) = &self.labels {
             // Repeatable: one `--label` flag per element.
@@ -334,12 +335,7 @@ impl CreateInput {
             }
         }
 
-        if let Some(e) = &self.external_ref {
-            if !e.is_empty() {
-                args.push("--external-ref".to_string());
-                args.push(e.clone());
-            }
-        }
+        push_flag_opt(&mut args, "--external-ref", self.external_ref.as_ref());
 
         args
     }
@@ -491,13 +487,7 @@ impl UpdateInput {
             args.push(t.clone());
         }
 
-        if let Some(d) = &self.description {
-            // ponytail: empty string is a no-op (same as `CreateInput`).
-            if !d.is_empty() {
-                args.push("--description".to_string());
-                args.push(d.clone());
-            }
-        }
+        push_flag_opt(&mut args, "--description", self.description.as_ref());
 
         if let Some(t) = &self.issue_type {
             args.push("--type".to_string());
@@ -516,19 +506,9 @@ impl UpdateInput {
             args.push(unit_enum_arg(s));
         }
 
-        if let Some(a) = &self.assignee {
-            if !a.is_empty() {
-                args.push("--assignee".to_string());
-                args.push(a.clone());
-            }
-        }
+        push_flag_opt(&mut args, "--assignee", self.assignee.as_ref());
 
-        if let Some(e) = &self.external_ref {
-            if !e.is_empty() {
-                args.push("--external-ref".to_string());
-                args.push(e.clone());
-            }
-        }
+        push_flag_opt(&mut args, "--external-ref", self.external_ref.as_ref());
 
         args
     }
