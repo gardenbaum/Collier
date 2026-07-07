@@ -60,6 +60,46 @@ where
     })
 }
 
+/// Run `bd <args>` and expect a JSON envelope; return the inner `Value`
+/// or surface a `ParseError` for the `bd` "happy-path-but-text-output"
+/// case. All list-style `bd` commands in this file (show/history/comments)
+/// follow the same `run_bd(...).await?` then `match BdOutput` shape, so
+/// this folds the boilerplate and lets each command stay focused on argv
+/// construction and type-specific deserialisation.
+async fn run_bd_json_value(args: &[&str], cwd: &str) -> BdResult<serde_json::Value> {
+    let path = std::path::PathBuf::from(cwd);
+    let output = runner::run_bd(args, &path).await?;
+    match output {
+        runner::BdOutput::Json { value } => Ok(value),
+        runner::BdOutput::Text { value } => Err(BdError::ParseError {
+            message: format!("expected JSON envelope, got text: {value}"),
+        }),
+    }
+}
+
+/// Recompute `dependency_count` / `dependent_count` from the issue's
+/// `dependencies` / `dependents` arrays, excluding `parent-child` edges
+/// to match the count semantics `bd list --json` emits.
+///
+/// `bd show` does not emit the summary count fields, so the detail
+/// drawer's `DependencyBadge` would render 0/0 for every issue. The
+/// frontend's R8 E2E spec
+/// (`renders a header dep badge in the detail drawer for a blocked
+/// issue`) requires this backfill; both the production `bd_show` and
+/// the regression test below apply it.
+fn backfill_dependency_counts(issue: &mut Issue) {
+    issue.dependency_count = issue
+        .dependencies
+        .iter()
+        .filter(|d| d.dependency_type != DependencyType::ParentChild)
+        .count() as u32;
+    issue.dependent_count = issue
+        .dependents
+        .iter()
+        .filter(|d| d.dependency_type != DependencyType::ParentChild)
+        .count() as u32;
+}
+
 /// Run `bd show <id> --json` in `cwd` and return the matching `Issue`.
 ///
 /// `bd show` returns `data` as a 1-element array; we take the first.
@@ -91,16 +131,7 @@ where
 #[tauri::command]
 #[specta::specta]
 pub async fn bd_show(cwd: String, id: String) -> BdResult<Issue> {
-    let path = PathBuf::from(&cwd);
-    let output = runner::run_bd(&["show", &id, "--json"], &path).await?;
-    let value = match output {
-        runner::BdOutput::Json { value } => value,
-        runner::BdOutput::Text { value } => {
-            return Err(BdError::ParseError {
-                message: format!("expected JSON envelope, got text: {value}"),
-            });
-        }
-    };
+    let value = run_bd_json_value(&["show", &id, "--json"], &cwd).await?;
     // ponytail: bd show returns a 1-element array, not a bare object.
     // Reusing the search_query helper would force us to take `.first()`
     // on a typed `Vec<Issue>` and lose the helpful empty-array error.
@@ -118,16 +149,7 @@ pub async fn bd_show(cwd: String, id: String) -> BdResult<Issue> {
     // `dependency_id` alias. Parent-child edges are structural
     // membership, not blockers, so they're excluded — same as
     // what `bd list --json`'s `dependency_count` already does.
-    issue.dependency_count = issue
-        .dependencies
-        .iter()
-        .filter(|d| d.dependency_type != DependencyType::ParentChild)
-        .count() as u32;
-    issue.dependent_count = issue
-        .dependents
-        .iter()
-        .filter(|d| d.dependency_type != DependencyType::ParentChild)
-        .count() as u32;
+    backfill_dependency_counts(&mut issue);
 
     Ok(issue)
 }
@@ -186,16 +208,7 @@ impl From<HistoryEntryRaw> for HistoryEntry {
 #[tauri::command]
 #[specta::specta]
 pub async fn bd_history(cwd: String, id: String) -> BdResult<Vec<HistoryEntry>> {
-    let path = PathBuf::from(&cwd);
-    let output = runner::run_bd(&["history", &id, "--json"], &path).await?;
-    let value = match output {
-        runner::BdOutput::Json { value } => value,
-        runner::BdOutput::Text { value } => {
-            return Err(BdError::ParseError {
-                message: format!("expected JSON envelope, got text: {value}"),
-            });
-        }
-    };
+    let value = run_bd_json_value(&["history", &id, "--json"], &cwd).await?;
     let raws: Vec<HistoryEntryRaw> = extract_data_vec(value, "history entry")?;
     Ok(raws.into_iter().map(HistoryEntry::from).collect())
 }
@@ -236,16 +249,7 @@ impl From<CommentRaw> for Comment {
 #[tauri::command]
 #[specta::specta]
 pub async fn bd_comments(cwd: String, id: String) -> BdResult<Vec<Comment>> {
-    let path = PathBuf::from(&cwd);
-    let output = runner::run_bd(&["comments", &id, "--json"], &path).await?;
-    let value = match output {
-        runner::BdOutput::Json { value } => value,
-        runner::BdOutput::Text { value } => {
-            return Err(BdError::ParseError {
-                message: format!("expected JSON envelope, got text: {value}"),
-            });
-        }
-    };
+    let value = run_bd_json_value(&["comments", &id, "--json"], &cwd).await?;
     let raws: Vec<CommentRaw> = extract_data_vec(value, "comment")?;
     Ok(raws.into_iter().map(Comment::from).collect())
 }
@@ -398,18 +402,9 @@ mod tests {
             "dependents[].dependency_type parses"
         );
 
-        // Apply the production backfill (copied verbatim from
-        // `bd_show` so this test catches any drift).
-        issue.dependency_count = issue
-            .dependencies
-            .iter()
-            .filter(|d| d.dependency_type != DependencyType::ParentChild)
-            .count() as u32;
-        issue.dependent_count = issue
-            .dependents
-            .iter()
-            .filter(|d| d.dependency_type != DependencyType::ParentChild)
-            .count() as u32;
+        // Apply the production backfill (same helper as
+        // production `bd_show` so this test catches any drift).
+        backfill_dependency_counts(&mut issue);
 
         assert_eq!(
             issue.dependency_count, 0,
@@ -491,17 +486,8 @@ mod tests {
 
         let mut issues: Vec<Issue> = extract_data_vec(envelope, "issue").expect("parses");
         let mut issue = issues.pop().expect("at least one issue");
-        // Mirror production backfill.
-        issue.dependency_count = issue
-            .dependencies
-            .iter()
-            .filter(|d| d.dependency_type != DependencyType::ParentChild)
-            .count() as u32;
-        issue.dependent_count = issue
-            .dependents
-            .iter()
-            .filter(|d| d.dependency_type != DependencyType::ParentChild)
-            .count() as u32;
+        // Mirror production backfill via the same helper.
+        backfill_dependency_counts(&mut issue);
 
         assert_eq!(
             issue.dependency_count, 1,
