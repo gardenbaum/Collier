@@ -1,24 +1,21 @@
 //! `bd list --json` with structured filters.
 //!
-//! Wraps `runner::run_bd` to invoke `bd list <flags> --json` based on the
-//! frontend's `ListFilters` struct, then extracts the issue array from the
-//! `{ schema_version, data }` envelope. Shares the envelope-extraction
-//! helper with `search_query` (T15 is the third caller — extraction
-//! justified per the T19 follow-up in the notepad).
+//! Thin wrapper over `runner::run_bd_envelope` that builds the argv
+//! (`bd list --all <filters> --json`) from the frontend's
+//! `ListFilters` struct. The envelope JSON parsing is folded into
+//! `run_bd_envelope`, so `bd_list` only owns argv construction.
 
-use crate::beads::{runner, search_query, BdError, BdResult, Issue};
+use crate::beads::{runner, BdResult, Issue};
 use crate::bindings::types::ListFilters;
 
 /// Run `bd list <filters> --json` in `cwd` and return the matching issues.
 ///
 /// `ListFilters::to_args` produces the flag argv; the runner's envelope
-/// parsing kicks in because we append `--json`. The envelope's `data`
-/// field is decoded into `Vec<Issue>` by `search_query::extract_data`
-/// (made `pub(super)` for this caller).
+/// parsing kicks in because we append `--json`. The envelope is decoded
+/// into `Vec<Issue>` by `runner::run_bd_envelope`.
 #[tauri::command]
 #[specta::specta]
 pub async fn bd_list(cwd: String, filters: ListFilters) -> BdResult<Vec<Issue>> {
-    let path = std::path::PathBuf::from(&cwd);
     // ponytail: pass `--all` so `bd list` returns every issue including
     // closed ones. Without it, `bd list` hides status=closed by default
     // (the Beads CLI's "active only" filter), which silently shrinks the
@@ -32,21 +29,13 @@ pub async fn bd_list(cwd: String, filters: ListFilters) -> BdResult<Vec<Issue>> 
     argv.extend(filters.to_args());
     argv.push("--json".to_string());
     let arg_refs: Vec<&str> = argv.iter().map(String::as_str).collect();
-    let output = runner::run_bd(&arg_refs, &path).await?;
-    let value = match output {
-        runner::BdOutput::Json { value } => value,
-        runner::BdOutput::Text { value } => {
-            return Err(BdError::ParseError {
-                message: format!("expected JSON envelope, got text: {value}"),
-            });
-        }
-    };
-    search_query::extract_data(value)
+    runner::run_bd_envelope(&arg_refs, &std::path::PathBuf::from(&cwd)).await
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::beads::envelope;
     use crate::beads::{
         IssuePriority, IssueType, ISSUE_STATUS_CLOSED, ISSUE_STATUS_IN_PROGRESS, ISSUE_STATUS_OPEN,
     };
@@ -101,8 +90,7 @@ mod tests {
     }
 
     /// Verifies the list envelope shape parses through the shared
-    /// `search_query::extract_data` helper — confirms T15's cross-module
-    /// use works end-to-end.
+    /// `envelope::extract_issues` helper.
     #[test]
     fn test_extract_data_parses_valid_list_envelope() {
         let envelope = serde_json::json!({
@@ -130,7 +118,7 @@ mod tests {
                 }
             ]
         });
-        let issues = search_query::extract_data(envelope).expect("should parse");
+        let issues = envelope::extract_issues(envelope).expect("should parse");
         assert_eq!(issues.len(), 1);
         assert_eq!(issues[0].id, "beads-list-1");
         assert_eq!(issues[0].status, ISSUE_STATUS_IN_PROGRESS.to_string());

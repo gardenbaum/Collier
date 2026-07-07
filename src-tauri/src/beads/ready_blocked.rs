@@ -1,42 +1,20 @@
 //! `bd ready` and `bd blocked` commands.
 //!
-//! These are thin wrappers over `runner::run_bd` that invoke `bd ready --json`
-//! and `bd blocked --json` respectively, then extract the `data` vector from
-//! the JSON envelope `{ schema_version: number, data: Issue[] }`.
+//! These are thin wrappers over `runner::run_bd_envelope` that invoke
+//! `bd ready --json` and `bd blocked --json` (the latter delegating to
+//! `bd list --json` + a post-filter; see `bd_blocked` for why).
+//! `run_bd_envelope` folds the shared `run_bd` + `BdOutput` match +
+//! `envelope::extract<T>` pipeline so each command body stays one
+//! or two lines.
 
-use serde_json::Value;
-
-use crate::beads::{runner, BdError, BdResult, Issue, ISSUE_STATUS_BLOCKED};
-
-/// Extract the `data` field from a JSON envelope, mapping any parse errors
-/// to `BdError::ParseError`.
-fn extract_data(output: Value) -> BdResult<Vec<Issue>> {
-    let data = output.get("data").ok_or_else(|| BdError::ParseError {
-        message: "missing 'data' field in JSON envelope".to_string(),
-    })?;
-    let issues: Vec<Issue> =
-        serde_json::from_value(data.clone()).map_err(|e| BdError::ParseError {
-            message: format!("failed to parse issues from 'data' field: {e}"),
-        })?;
-    Ok(issues)
-}
+use crate::beads::{runner, BdResult, Issue, ISSUE_STATUS_BLOCKED};
+use std::path::PathBuf;
 
 /// Run `bd ready --json` in `cwd` and return the list of ready issues.
-// ponytail: envelope extraction is a simple extract, no need for a separate helper lib
 #[tauri::command]
 #[specta::specta]
 pub async fn bd_ready(cwd: String) -> BdResult<Vec<Issue>> {
-    let path = std::path::PathBuf::from(&cwd);
-    let output = runner::run_bd(&["ready", "--json"], &path).await?;
-    let value = match output {
-        runner::BdOutput::Json { value } => value,
-        runner::BdOutput::Text { value } => {
-            return Err(BdError::ParseError {
-                message: format!("expected JSON envelope, got text: {value}"),
-            });
-        }
-    };
-    extract_data(value)
+    runner::run_bd_envelope(&["ready", "--json"], &PathBuf::from(&cwd)).await
 }
 
 /// Run `bd blocked --json` in `cwd` and return the list of blocked issues.
@@ -55,17 +33,8 @@ pub async fn bd_ready(cwd: String) -> BdResult<Vec<Issue>> {
 #[tauri::command]
 #[specta::specta]
 pub async fn bd_blocked(cwd: String) -> BdResult<Vec<Issue>> {
-    let path = std::path::PathBuf::from(&cwd);
-    let output = runner::run_bd(&["list", "--json"], &path).await?;
-    let value = match output {
-        runner::BdOutput::Json { value } => value,
-        runner::BdOutput::Text { value } => {
-            return Err(BdError::ParseError {
-                message: format!("expected JSON envelope, got text: {value}"),
-            });
-        }
-    };
-    let issues: Vec<Issue> = extract_data(value)?;
+    let issues =
+        runner::run_bd_envelope::<Vec<Issue>>(&["list", "--json"], &PathBuf::from(&cwd)).await?;
     Ok(issues
         .into_iter()
         .filter(|i| i.status == ISSUE_STATUS_BLOCKED || i.dependency_count > 0)
@@ -75,6 +44,7 @@ pub async fn bd_blocked(cwd: String) -> BdResult<Vec<Issue>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::beads::envelope;
 
     // ponytail: unit test with a mocked run_bd would require a test harness.
     // Integration tests against real `bd` would follow the skip_if_no_bd pattern
@@ -109,7 +79,7 @@ mod tests {
             ]
         });
 
-        let issues = extract_data(envelope).expect("should parse");
+        let issues = envelope::extract_issues(envelope).expect("should parse");
         assert_eq!(issues.len(), 1);
         assert_eq!(issues[0].id, "beads-1");
     }
@@ -120,7 +90,7 @@ mod tests {
             "schema_version": 1
         });
 
-        let result = extract_data(envelope);
+        let result = envelope::extract_issues(envelope);
         assert!(result.is_err());
     }
 
@@ -131,7 +101,7 @@ mod tests {
             "data": { "not": "an array" }
         });
 
-        let result = extract_data(envelope);
+        let result = envelope::extract_issues(envelope);
         assert!(result.is_err());
     }
 
@@ -228,7 +198,7 @@ mod tests {
             ]
         });
 
-        let issues = extract_data(envelope).expect("should parse");
+        let issues = envelope::extract_issues(envelope).expect("should parse");
         let kept: Vec<&Issue> = issues
             .iter()
             .filter(|i| i.status == ISSUE_STATUS_BLOCKED || i.dependency_count > 0)

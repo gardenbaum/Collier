@@ -143,7 +143,7 @@ pub async fn bd_statuses(cwd: String) -> BdResult<StatusCatalog> {
 ///    clearly returned 7 built-ins (CI run 28218119962, 2026-06-26).
 ///    This is the same envelope shape `bd_list`, `bd_label_list_all`,
 ///    and `bd_assignee_list_all` already unwrap via
-///    `search_query::extract_data` / `value.get("data")` — see
+///    `envelope::extract<T>` / `value.get("data")` — see
 ///    those commands for the analogous fixes.
 /// 2. **Unwrapped** (older / envelope-disabled builds): the bare
 ///    `{ built_in_statuses, custom_statuses, schema_version? }`

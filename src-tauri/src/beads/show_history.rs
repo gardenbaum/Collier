@@ -31,11 +31,13 @@
 //!
 //! ## Generic envelope extraction
 //!
-//! `search_query::extract_data` is hard-coded to `Vec<Issue>`. This
-//! module needs `Vec<HistoryEntry>` and `Vec<Comment>` too, so it
-//! uses a small local generic `extract_data_vec<T>`. When a fourth
-//! caller appears, the T19 follow-up in the notepad suggests
-//! consolidating all extractors into `beads::envelope`.
+//! This module uses its own local generic `extract_data_vec<T>` rather
+//! than the shared `envelope::extract<T>` because `bd show` needs a
+//! friendlier empty-array error (`bd show returned empty data array
+//! for id <id>`) after the generic deserialise. PR #51 lists
+//! show_history as the natural next step to consolidate (once the
+//! show path either drops the friendly message or takes an opt-in
+//! fallback flag). Until then, the two helpers coexist.
 
 use chrono::{DateTime, FixedOffset, Utc};
 use serde::Deserialize;

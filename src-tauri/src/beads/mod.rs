@@ -1,4 +1,5 @@
 pub mod detect;
+pub mod envelope;
 pub mod gates;
 pub mod graph;
 pub mod jsonl;

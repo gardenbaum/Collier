@@ -11,7 +11,7 @@
 //!
 //! **Why not go through `Issue` / `Dependency` structs?**
 //! The CLI's per-dependency JSON shape (`{issue_id, depends_on_id, type,
-//! metadata, ...}`) is parsed into `Vec<Issue>` via `search_query::extract_data`
+//! metadata, ...}`) is parsed into `Vec<Issue>` via `envelope::extract_issues`
 //! at the production boundary, but the Rust `Dependency` struct fields
 //! (`dependency_id`, `dependency_type`, `blocked_by`) don't line up with
 //! that shape. That's a pre-existing structural mismatch — out of scope
