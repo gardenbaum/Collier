@@ -17,6 +17,7 @@
  */
 import type { CSSProperties } from 'react'
 import { colors, space, type } from '@/lib/design-tokens'
+import { iconButtonStyle } from '@/lib/form-styles'
 
 export interface CycleWarningProps {
   /** The cycle description to display (e.g. "A → B → C → A"). */
@@ -36,7 +37,7 @@ export function CycleWarning({ message, onDismiss }: CycleWarningProps) {
         data-testid="cycle-warning-dismiss"
         onClick={onDismiss}
         aria-label="Dismiss cycle warning"
-        style={dismissButtonStyle}
+        style={iconButtonStyle}
       >
         ×
       </button>
@@ -67,23 +68,4 @@ const textStyle: CSSProperties = {
 const labelStyle: CSSProperties = {
   fontWeight: type.fontWeight.bold,
   color: colors.mono0,
-}
-
-const dismissButtonStyle: CSSProperties = {
-  display: 'inline-flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  width: 24,
-  height: 24,
-  padding: 0,
-  margin: 0,
-  fontFamily: type.fontFamily.sans,
-  fontSize: type.fontSize.base,
-  lineHeight: 1,
-  color: colors.mono0,
-  backgroundColor: colors.mono8,
-  borderWidth: 1,
-  borderStyle: 'solid',
-  borderColor: colors.mono3,
-  cursor: 'pointer',
 }

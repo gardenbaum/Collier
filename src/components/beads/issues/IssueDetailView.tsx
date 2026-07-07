@@ -25,6 +25,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { commands } from '@/lib/tauri-bindings'
 import type { Comment, HistoryEntry, Issue } from '@/lib/bindings'
 import { colors, space, type } from '@/lib/design-tokens'
+import { primaryButtonStyle, textareaStyle } from '@/lib/form-styles'
 import { formatError } from '@/lib/error-format'
 import { TypeIcon } from './badges/TypeIcon'
 import { LabelChip } from './badges/LabelChip'
@@ -807,48 +808,19 @@ const commentFormStyle: CSSProperties = {
   gap: space[2],
 }
 
-const textareaStyle: CSSProperties = {
-  fontFamily: type.fontFamily.sans,
-  fontSize: type.fontSize.sm,
-  color: colors.mono0,
-  backgroundColor: colors.mono9,
-  borderWidth: 1,
-  borderStyle: 'solid',
-  borderColor: colors.mono3,
-  paddingInline: space[2],
-  paddingBlock: space[2],
-  outline: 'none',
-  resize: 'vertical',
-}
-
+// Comment submit button: alignSelf flex-start so the button doesn't
+// stretch to the full form width — the textarea above already does.
 const submitButtonStyle: CSSProperties = {
-  fontFamily: type.fontFamily.sans,
-  fontSize: type.fontSize.sm,
-  fontWeight: type.fontWeight.medium,
-  color: colors.mono0,
-  backgroundColor: colors.mono8,
-  borderWidth: 1,
-  borderStyle: 'solid',
-  borderColor: colors.mono3,
-  paddingInline: space[4],
-  paddingBlock: space[2],
-  cursor: 'pointer',
+  ...primaryButtonStyle,
   alignSelf: 'flex-start',
 }
 
 const submitButtonDisabledStyle: CSSProperties = {
-  fontFamily: type.fontFamily.sans,
-  fontSize: type.fontSize.sm,
-  fontWeight: type.fontWeight.medium,
-  color: colors.mono5,
-  backgroundColor: colors.mono8,
-  borderWidth: 1,
-  borderStyle: 'solid',
-  borderColor: colors.mono7,
-  paddingInline: space[4],
-  paddingBlock: space[2],
-  cursor: 'not-allowed',
+  ...primaryButtonStyle,
   alignSelf: 'flex-start',
+  color: colors.mono5,
+  borderColor: colors.mono7,
+  cursor: 'not-allowed',
 }
 
 const mutationErrorStyle: CSSProperties = {

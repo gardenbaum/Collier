@@ -30,6 +30,7 @@ import {
 } from 'react'
 import { commands, type AppPreferences } from '@/lib/tauri-bindings'
 import { colors, space, type } from '@/lib/design-tokens'
+import { inputStyle } from '@/lib/form-styles'
 import { logger } from '@/lib/logger'
 import { useDialogA11y } from '@/hooks/useDialogA11y'
 
@@ -299,19 +300,6 @@ const fieldLabelStyle: CSSProperties = {
   fontWeight: type.fontWeight.medium,
   color: colors.mono0,
   margin: 0,
-}
-
-const inputStyle: CSSProperties = {
-  fontFamily: 'ui-monospace, SFMono-Regular, monospace',
-  fontSize: type.fontSize.sm,
-  color: colors.mono0,
-  backgroundColor: colors.mono9,
-  borderWidth: 1,
-  borderStyle: 'solid',
-  borderColor: colors.mono3,
-  paddingInline: space[2],
-  paddingBlock: space[2],
-  outline: 'none',
 }
 
 const helperStyle: CSSProperties = {

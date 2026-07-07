@@ -41,6 +41,13 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { commands } from '@/lib/tauri-bindings'
 import type { Dependency, DependencyType } from '@/lib/bindings'
 import { colors, space, type } from '@/lib/design-tokens'
+import {
+  actionButtonStyle,
+  buttonStyle,
+  iconButtonStyle,
+  inputStyle,
+  selectStyle,
+} from '@/lib/form-styles'
 import { formatError } from '@/lib/error-format'
 
 export interface DependencyListViewProps {
@@ -406,24 +413,7 @@ const targetButtonStyle: CSSProperties = {
   textAlign: 'start',
 }
 
-const removeButtonStyle: CSSProperties = {
-  display: 'inline-flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  width: 24,
-  height: 24,
-  padding: 0,
-  margin: 0,
-  fontFamily: type.fontFamily.sans,
-  fontSize: type.fontSize.base,
-  lineHeight: 1,
-  color: colors.mono0,
-  backgroundColor: colors.mono8,
-  borderWidth: 1,
-  borderStyle: 'solid',
-  borderColor: colors.mono3,
-  cursor: 'pointer',
-}
+const removeButtonStyle = iconButtonStyle
 
 const dividerStyle: CSSProperties = {
   border: 'none',
@@ -432,17 +422,7 @@ const dividerStyle: CSSProperties = {
 }
 
 const addToggleStyle: CSSProperties = {
-  fontFamily: type.fontFamily.sans,
-  fontSize: type.fontSize.sm,
-  fontWeight: type.fontWeight.medium,
-  color: colors.mono0,
-  backgroundColor: colors.mono8,
-  borderWidth: 1,
-  borderStyle: 'solid',
-  borderColor: colors.mono3,
-  paddingInline: space[3],
-  paddingBlock: space[2],
-  cursor: 'pointer',
+  ...buttonStyle,
   alignSelf: 'flex-start',
 }
 
@@ -469,55 +449,13 @@ const addLabelStyle: CSSProperties = {
   color: colors.mono3,
 }
 
-const inputStyle: CSSProperties = {
-  fontFamily: 'ui-monospace, SFMono-Regular, monospace',
-  fontSize: type.fontSize.sm,
-  color: colors.mono0,
-  backgroundColor: colors.mono9,
-  borderWidth: 1,
-  borderStyle: 'solid',
-  borderColor: colors.mono3,
-  paddingInline: space[2],
-  paddingBlock: space[2],
-  outline: 'none',
-}
-
-const selectStyle: CSSProperties = {
-  fontFamily: type.fontFamily.sans,
-  fontSize: type.fontSize.sm,
-  color: colors.mono0,
-  backgroundColor: colors.mono9,
-  borderWidth: 1,
-  borderStyle: 'solid',
-  borderColor: colors.mono3,
-  paddingInline: space[2],
-  paddingBlock: space[2],
-  outline: 'none',
-}
-
 const addActionsStyle: CSSProperties = {
   display: 'flex',
   alignItems: 'center',
   gap: space[2],
 }
 
-const actionButtonStyle: CSSProperties = {
-  fontFamily: type.fontFamily.sans,
-  fontSize: type.fontSize.sm,
-  fontWeight: type.fontWeight.medium,
-  color: colors.mono0,
-  backgroundColor: colors.mono8,
-  borderWidth: 1,
-  borderStyle: 'solid',
-  borderColor: colors.mono3,
-  paddingInline: space[3],
-  paddingBlock: space[1],
-  cursor: 'pointer',
-}
-
-const submitButtonStyle: CSSProperties = {
-  ...actionButtonStyle,
-}
+const submitButtonStyle = actionButtonStyle
 
 const submitButtonDisabledStyle: CSSProperties = {
   ...actionButtonStyle,
