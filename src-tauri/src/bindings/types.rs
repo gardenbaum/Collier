@@ -10,6 +10,18 @@ use specta::Type;
 
 use crate::beads::{IssuePriority, IssueStatus, IssueType};
 
+/// Serialize a unit-style enum (e.g. `IssueStatus`, `IssueType`) to its
+/// bare snake_case CLI form. `unwrap_or_default` is unreachable in practice
+/// (unit-enum serde never fails); the trim strips the wrapping JSON quotes.
+/// `IssuePriority` is NOT routed through here — it is `#[repr(u8)]
+/// Serialize_repr` and serializes as a bare integer via `(*p as u8).to_string()`.
+fn unit_enum_arg<T: serde::Serialize>(value: &T) -> String {
+    serde_json::to_string(value)
+        .unwrap_or_default()
+        .trim_matches('"')
+        .to_string()
+}
+
 /// Filter struct for `bd list --json`.
 ///
 /// Every field is optional; an empty struct produces no filter arguments, and
@@ -55,16 +67,7 @@ impl ListFilters {
         if let Some(statuses) = &self.status {
             for s in statuses {
                 args.push("--status".to_string());
-                // ponytail: `serde_json::to_string` yields the snake_case form
-                // per `#[serde(rename_all = "snake_case")]` (e.g. "in_progress").
-                // `unwrap_or_default` is unreachable in practice (serde on
-                // a unit enum never fails); the trim strips the wrapping quotes.
-                args.push(
-                    serde_json::to_string(s)
-                        .unwrap_or_default()
-                        .trim_matches('"')
-                        .to_string(),
-                );
+                args.push(unit_enum_arg(s));
             }
         }
 
@@ -80,12 +83,7 @@ impl ListFilters {
         if let Some(types) = &self.issue_type {
             for t in types {
                 args.push("--type".to_string());
-                args.push(
-                    serde_json::to_string(t)
-                        .unwrap_or_default()
-                        .trim_matches('"')
-                        .to_string(),
-                );
+                args.push(unit_enum_arg(t));
             }
         }
 
@@ -311,17 +309,7 @@ impl CreateInput {
 
         if let Some(t) = &self.issue_type {
             args.push("--type".to_string());
-            // `IssueType` is `#[serde(rename_all = "snake_case")]` so it
-            // serializes to the bare lowercase form the CLI expects.
-            // ponytail: `unwrap_or_default` is unreachable in practice
-            // (unit-enum serde never fails); `.trim_matches('"')` strips
-            // the wrapping JSON quotes. Same dance as `ListFilters`.
-            args.push(
-                serde_json::to_string(t)
-                    .unwrap_or_default()
-                    .trim_matches('"')
-                    .to_string(),
-            );
+            args.push(unit_enum_arg(t));
         }
 
         if let Some(p) = &self.priority {
@@ -513,15 +501,7 @@ impl UpdateInput {
 
         if let Some(t) = &self.issue_type {
             args.push("--type".to_string());
-            // ponytail: same `serde_json::to_string` + `trim_matches('"')`
-            // dance as `ListFilters` / `CreateInput`. `unwrap_or_default`
-            // is unreachable in practice (unit-enum serde never fails).
-            args.push(
-                serde_json::to_string(t)
-                    .unwrap_or_default()
-                    .trim_matches('"')
-                    .to_string(),
-            );
+            args.push(unit_enum_arg(t));
         }
 
         if let Some(p) = &self.priority {
@@ -533,12 +513,7 @@ impl UpdateInput {
 
         if let Some(s) = &self.status {
             args.push("--status".to_string());
-            args.push(
-                serde_json::to_string(s)
-                    .unwrap_or_default()
-                    .trim_matches('"')
-                    .to_string(),
-            );
+            args.push(unit_enum_arg(s));
         }
 
         if let Some(a) = &self.assignee {
