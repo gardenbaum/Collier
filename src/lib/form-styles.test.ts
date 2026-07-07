@@ -27,7 +27,9 @@ import { colors, space, type } from './design-tokens'
 describe('form-styles', () => {
   describe('inputStyle (monospace text input)', () => {
     it('uses the monospace font stack for IDs / paths / numerics', () => {
-      expect(inputStyle.fontFamily).toBe('ui-monospace, SFMono-Regular, monospace')
+      expect(inputStyle.fontFamily).toBe(
+        'ui-monospace, SFMono-Regular, monospace'
+      )
     })
 
     it('shares the form-field baseline (sans + sm + mono9 bg + mono3 border + space[2])', () => {
