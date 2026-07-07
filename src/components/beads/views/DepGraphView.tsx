@@ -42,6 +42,7 @@ import { commands } from '@/lib/tauri-bindings'
 import type { Graph, GraphNode } from '@/lib/bindings'
 import { colors, palette, radius, space, type } from '@/lib/design-tokens'
 import { formatError } from '@/lib/error-format'
+import { viewContainerStyle } from '@/lib/form-styles'
 import { EmptyState } from '@/components/atoms'
 import {
   computeLayout,
@@ -60,16 +61,6 @@ export interface DepGraphViewProps {
   cwd: string
   /** Called when the user clicks a node. */
   onOpenIssue: (id: string) => void
-}
-
-const containerStyle: CSSProperties = {
-  display: 'flex',
-  flexDirection: 'column',
-  flex: 1,
-  minHeight: 0,
-  color: colors.mono0,
-  fontFamily: type.fontFamily.sans,
-  backgroundColor: palette.bg,
 }
 
 const svgStyle: CSSProperties = {
@@ -530,7 +521,7 @@ export function DepGraphView({ cwd, onOpenIssue }: DepGraphViewProps) {
     return (
       <section
         data-testid="dep-graph-view"
-        style={containerStyle}
+        style={viewContainerStyle}
         aria-busy="true"
       >
         <div style={loadingStyle} data-testid="graph-loading">
@@ -541,7 +532,7 @@ export function DepGraphView({ cwd, onOpenIssue }: DepGraphViewProps) {
   }
   if (error) {
     return (
-      <section data-testid="dep-graph-view" style={containerStyle}>
+      <section data-testid="dep-graph-view" style={viewContainerStyle}>
         <div style={errorStyle} data-testid="graph-error" role="alert">
           {formatError(error)}
         </div>
@@ -552,7 +543,7 @@ export function DepGraphView({ cwd, onOpenIssue }: DepGraphViewProps) {
     return (
       <section
         data-testid="dep-graph-view"
-        style={containerStyle}
+        style={viewContainerStyle}
         aria-label={t('beads.views.graph.title')}
       >
         <div
@@ -577,7 +568,7 @@ export function DepGraphView({ cwd, onOpenIssue }: DepGraphViewProps) {
       data-blocked-count={blockedCount}
       data-node-count={layout.nodes.length}
       data-edge-count={layout.edges.length}
-      style={containerStyle}
+      style={viewContainerStyle}
       aria-label={t('beads.views.graph.title')}
     >
       <div style={headerStyle} data-testid="graph-header">

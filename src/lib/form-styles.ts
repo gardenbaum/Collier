@@ -32,7 +32,7 @@
  * file.
  */
 import type { CSSProperties } from 'react'
-import { colors, space, type } from './design-tokens'
+import { colors, palette, space, type } from './design-tokens'
 
 // --- Form-field base -------------------------------------------------------
 // Sans font, sm size, mono9 background, mono3 border, space[2] padding,
@@ -166,4 +166,26 @@ export const iconButtonStyle: CSSProperties = {
   borderStyle: 'solid',
   borderColor: colors.mono3,
   cursor: 'pointer',
+}
+
+// --- View container ---------------------------------------------------------
+// Flex column that fills the parent slot, sans/mono0 on palette.bg. The
+// shared base used by every full-window view (DepGraphView, GatesView, …);
+// callers that need a different surface tint can spread
+// `{ ...viewContainerStyle, backgroundColor: ... }`.
+
+/**
+ * Standard view container — flex column that fills the parent slot,
+ * sans / mono0 on `palette.bg`. The shared base for every full-window
+ * view (DepGraphView, GatesView, …); callers that need a different
+ * surface tint can spread `{ ...viewContainerStyle, backgroundColor: ... }`.
+ */
+export const viewContainerStyle: CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  flex: 1,
+  minHeight: 0,
+  color: colors.mono0,
+  fontFamily: type.fontFamily.sans,
+  backgroundColor: palette.bg,
 }

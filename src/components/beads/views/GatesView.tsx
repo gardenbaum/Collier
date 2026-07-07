@@ -42,6 +42,7 @@ import { commands } from '@/lib/tauri-bindings'
 import type { GateEntry, Issue } from '@/lib/bindings'
 import { colors, palette, radius, space, type } from '@/lib/design-tokens'
 import { formatError } from '@/lib/error-format'
+import { viewContainerStyle } from '@/lib/form-styles'
 import { EmptyState } from '@/components/atoms'
 import { StatusPill } from '@/components/beads/issues/badges/StatusPill'
 import { PriorityDot } from '@/components/beads/issues/badges/PriorityDot'
@@ -51,15 +52,6 @@ export interface GatesViewProps {
   cwd: string
   /** Called when a row is activated. */
   onOpenIssue: (id: string) => void
-}
-
-const containerStyle: CSSProperties = {
-  display: 'flex',
-  flexDirection: 'column',
-  flex: 1,
-  minHeight: 0,
-  color: colors.mono0,
-  fontFamily: type.fontFamily.sans,
 }
 
 const toolbarStyle: CSSProperties = {
@@ -221,7 +213,11 @@ export function GatesView({ cwd, onOpenIssue }: GatesViewProps) {
 
   if (isLoading) {
     return (
-      <section data-testid="gates-view" style={containerStyle} aria-busy="true">
+      <section
+        data-testid="gates-view"
+        style={viewContainerStyle}
+        aria-busy="true"
+      >
         <div data-testid="gates-loading" style={listStyle}>
           {[0, 1, 2].map(i => (
             <div key={i} data-testid="gates-skeleton" style={loadingRowStyle} />
@@ -233,7 +229,7 @@ export function GatesView({ cwd, onOpenIssue }: GatesViewProps) {
 
   if (error) {
     return (
-      <section data-testid="gates-view" style={containerStyle}>
+      <section data-testid="gates-view" style={viewContainerStyle}>
         <div data-testid="gates-error" style={errorStyle} role="alert">
           {formatError(error)}
         </div>
@@ -247,7 +243,7 @@ export function GatesView({ cwd, onOpenIssue }: GatesViewProps) {
   return (
     <section
       data-testid="gates-view"
-      style={containerStyle}
+      style={viewContainerStyle}
       aria-label={t('beads.views.gates.title')}
     >
       <div data-testid="gates-toolbar" style={toolbarStyle}>

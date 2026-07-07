@@ -8,8 +8,9 @@ import {
   primaryButtonStyle,
   buttonDisabledStyle,
   iconButtonStyle,
+  viewContainerStyle,
 } from './form-styles'
-import { colors, space, type } from './design-tokens'
+import { colors, palette, space, type } from './design-tokens'
 
 /**
  * Snapshot tests for the shared form / button style objects.
@@ -182,6 +183,21 @@ describe('form-styles', () => {
 
     it('shows the pointer cursor', () => {
       expect(iconButtonStyle.cursor).toBe('pointer')
+    })
+  })
+
+  describe('viewContainerStyle (full-window view container)', () => {
+    it('is a flex column that fills its parent slot', () => {
+      expect(viewContainerStyle.display).toBe('flex')
+      expect(viewContainerStyle.flexDirection).toBe('column')
+      expect(viewContainerStyle.flex).toBe(1)
+      expect(viewContainerStyle.minHeight).toBe(0)
+    })
+
+    it('uses the sans / mono0 on palette.bg surface', () => {
+      expect(viewContainerStyle.fontFamily).toBe(type.fontFamily.sans)
+      expect(viewContainerStyle.color).toBe(colors.mono0)
+      expect(viewContainerStyle.backgroundColor).toBe(palette.bg)
     })
   })
 })
