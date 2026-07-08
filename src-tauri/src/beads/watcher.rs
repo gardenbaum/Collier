@@ -749,39 +749,19 @@ fn _ensure_module_linked(_p: &Path) {}
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::beads::{
-        Issue, IssuePriority, IssueStatus, IssueType, ISSUE_STATUS_CLOSED, ISSUE_STATUS_OPEN,
-    };
-    use chrono::{DateTime, Utc};
+    use crate::beads::{Issue, IssueStatus, ISSUE_STATUS_CLOSED, ISSUE_STATUS_OPEN};
     use std::fs;
     use std::sync::mpsc;
     use std::time::Instant;
     use tempfile::TempDir;
 
     fn make_issue(id: &str, title: &str, status: IssueStatus) -> Issue {
-        Issue {
-            id: id.to_string(),
-            title: title.to_string(),
-            status,
-            priority: IssuePriority::P2,
-            issue_type: IssueType::Task,
-            created_at: DateTime::parse_from_rfc3339("2026-01-01T00:00:00Z")
-                .unwrap()
-                .with_timezone(&Utc),
-            updated_at: None,
-            closed_at: None,
-            description: None,
-            owner: None,
-            labels: vec![],
-            dependencies: vec![],
-            dependents: vec![],
-            dependency_count: 0,
-            dependent_count: 0,
-            comment_count: 0,
-            parent: None,
-            acceptance_criteria: None,
-            external_ref: None,
-        }
+        // Thin wrapper over `Issue::test_default` so the
+        // watcher-test call sites stay readable (`make_issue(...)`
+        // is shorter at 20+ call sites than `Issue::test_default(...)`)
+        // — see `beads::types::Issue::test_default` for the canonical
+        // 18-field defaults.
+        Issue::test_default(id, title, status)
     }
 
     /// Build a temp dir with a `.beads/issues.jsonl` file inside.

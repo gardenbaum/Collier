@@ -127,34 +127,16 @@ pub async fn read_issues_jsonl(cwd: String) -> Result<JsonlResult, BdError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::beads::{IssuePriority, IssueType, ISSUE_STATUS_OPEN};
-    use chrono::{DateTime, Utc};
+    use crate::beads::ISSUE_STATUS_OPEN;
     use tempfile::TempDir;
 
-    fn make_issue(id: &str, created_at: &str) -> Issue {
-        Issue {
-            id: id.to_string(),
-            title: format!("Issue {id}"),
-            status: ISSUE_STATUS_OPEN.to_string(),
-            priority: IssuePriority::P2,
-            issue_type: IssueType::Bug,
-            created_at: DateTime::parse_from_rfc3339(created_at)
-                .unwrap()
-                .with_timezone(&Utc),
-            updated_at: None,
-            closed_at: None,
-            description: None,
-            owner: None,
-            labels: vec![],
-            dependencies: vec![],
-            dependents: vec![],
-            dependency_count: 0,
-            dependent_count: 0,
-            comment_count: 0,
-            parent: None,
-            acceptance_criteria: None,
-            external_ref: None,
-        }
+    fn make_issue(id: &str) -> Issue {
+        // Builds the canonical "Issue <id>" title and uses
+        // `Utc::now()` for `created_at` (none of the jsonl tests
+        // assert on the date — they only check that valid JSONL
+        // lines round-trip). See `Issue::test_default` for the full
+        // 18-field defaults.
+        Issue::test_default(id, &format!("Issue {id}"), ISSUE_STATUS_OPEN.to_string())
     }
 
     fn write_jsonl(dir: &TempDir, name: &str, lines: &[String]) -> PathBuf {
@@ -169,11 +151,11 @@ mod tests {
         let temp = TempDir::new().unwrap();
         // 3 valid + 1 malformed + 1 valid = 4 issues, 1 skipped
         let lines: Vec<String> = vec![
-            serde_json::to_string(&make_issue("beads-1", "2026-01-01T00:00:00Z")).unwrap(),
-            serde_json::to_string(&make_issue("beads-2", "2026-01-02T00:00:00Z")).unwrap(),
+            serde_json::to_string(&make_issue("beads-1")).unwrap(),
+            serde_json::to_string(&make_issue("beads-2")).unwrap(),
             "INVALID JSON".to_string(),
-            serde_json::to_string(&make_issue("beads-3", "2026-01-03T00:00:00Z")).unwrap(),
-            serde_json::to_string(&make_issue("beads-4", "2026-01-04T00:00:00Z")).unwrap(),
+            serde_json::to_string(&make_issue("beads-3")).unwrap(),
+            serde_json::to_string(&make_issue("beads-4")).unwrap(),
         ];
         write_jsonl(&temp, "issues.jsonl", &lines);
 

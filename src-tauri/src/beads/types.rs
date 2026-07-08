@@ -539,6 +539,62 @@ pub struct Issue {
     pub external_ref: Option<String>,
 }
 
+#[cfg(test)]
+impl Issue {
+    /// Build a default `Issue` for unit tests with only `id`, `title`
+    /// and `status` overridden. All other fields are filled with the
+    /// canonical "Test issue" defaults: `priority: P2`,
+    /// `issue_type: Task`, `created_at: Utc::now()`, `updated_at` /
+    /// `closed_at` / `description` / `owner` / `parent` /
+    /// `acceptance_criteria` / `external_ref` = `None`,
+    /// `labels` / `dependencies` / `dependents` = empty, every
+    /// `*_count` = 0.
+    ///
+    /// Replaces the 18-field `Issue { ... }` literal that recurred in
+    /// the test helpers of `watcher.rs`, `jsonl.rs` and `gates.rs`
+    /// (and — before PR #55 — in `mutations.rs`, `ready_blocked.rs`,
+    /// `list.rs`, `search_query.rs`, `show_history.rs`). Tests that
+    /// need a field set that diverges from these defaults (custom
+    /// `owner`, `dependency_count` etc.) use struct-update syntax on
+    /// top of `test_default(...)`:
+    ///
+    /// ```ignore
+    /// Issue {
+    ///     dependency_count: 2,
+    ///     ..Issue::test_default("beads-1", "Title", ISSUE_STATUS_OPEN.to_string())
+    /// }
+    /// ```
+    ///
+    /// Gated `#[cfg(test)]` so the helper never ships in the
+    /// production binary — its only purpose is to dedupe test
+    /// scaffolding. The companion JSON-side helpers (`SampleIssue`
+    /// + `sample_issue_envelope(...)`) live in `beads::test_fixture`;
+    /// this one is the Rust-struct-side counterpart.
+    pub fn test_default(id: &str, title: &str, status: IssueStatus) -> Self {
+        Self {
+            id: id.to_string(),
+            title: title.to_string(),
+            status,
+            priority: IssuePriority::P2,
+            issue_type: IssueType::Task,
+            created_at: chrono::Utc::now(),
+            updated_at: None,
+            closed_at: None,
+            description: None,
+            owner: None,
+            labels: Vec::new(),
+            dependencies: Vec::new(),
+            dependents: Vec::new(),
+            dependency_count: 0,
+            dependent_count: 0,
+            comment_count: 0,
+            parent: None,
+            acceptance_criteria: None,
+            external_ref: None,
+        }
+    }
+}
+
 // ============================================================================
 // BdError & BdResult
 // ============================================================================

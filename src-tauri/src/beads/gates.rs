@@ -103,34 +103,19 @@ fn gate_entry_from_issue(issue: Issue) -> GateEntry {
 mod tests {
     use super::*;
     use crate::beads::{
-        Issue, IssuePriority, IssueStatus, IssueType, ISSUE_STATUS_BLOCKED, ISSUE_STATUS_CLOSED,
-        ISSUE_STATUS_DEFERRED, ISSUE_STATUS_IN_PROGRESS, ISSUE_STATUS_OPEN,
+        Issue, IssueStatus, ISSUE_STATUS_BLOCKED, ISSUE_STATUS_CLOSED, ISSUE_STATUS_DEFERRED,
+        ISSUE_STATUS_IN_PROGRESS, ISSUE_STATUS_OPEN,
     };
-    use chrono::Utc;
     use serde_json::json;
 
     fn base_issue(status: IssueStatus) -> Issue {
-        Issue {
-            id: "bd-gate-1".to_string(),
-            title: "Wait for CI".to_string(),
-            status,
-            priority: IssuePriority::P2,
-            issue_type: IssueType::Gate,
-            created_at: Utc::now(),
-            updated_at: None,
-            closed_at: None,
-            description: None,
-            owner: None,
-            labels: Vec::new(),
-            dependencies: Vec::new(),
-            dependents: Vec::new(),
-            dependency_count: 0,
-            dependent_count: 0,
-            comment_count: 0,
-            parent: None,
-            acceptance_criteria: None,
-            external_ref: None,
-        }
+        // id and title are fixed across the gates tests (only the
+        // status varies), so we delegate to `Issue::test_default`
+        // for the canonical 18-field baseline. Note that this drops
+        // `issue_type` from `Gate` to `Task` — the only call site
+        // (`is_closed_only_for_closed_status`) doesn't observe the
+        // `issue_type`, only the `status` / `is_closed` derivation.
+        Issue::test_default("bd-gate-1", "Wait for CI", status)
     }
 
     /// Bare-array CLI response (the 1.0.5 contract) parses into
