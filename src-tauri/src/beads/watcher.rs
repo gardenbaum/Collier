@@ -562,7 +562,7 @@ async fn read_issues_via_bd(repo_path: &Path) -> Vec<Issue> {
     let argv: [&str; 3] = ["list", "--all", "--json"];
     match crate::beads::runner::run_bd(&argv, repo_path).await {
         Ok(crate::beads::runner::BdOutput::Json { value }) => {
-            crate::beads::search_query::extract_data(value).unwrap_or_else(|e| {
+            crate::beads::envelope::extract_issues(value).unwrap_or_else(|e| {
                 log::warn!(
                     "read_issues_via_bd: parse failed for {}: {e:?}",
                     repo_path.display()

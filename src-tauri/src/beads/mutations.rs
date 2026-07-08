@@ -37,7 +37,7 @@
 use std::path::PathBuf;
 
 use crate::beads::{
-    runner, search_query, AssigneeWithCount, BdError, BdResult, Dependency, DependencyType, Issue,
+    envelope, runner, AssigneeWithCount, BdError, BdResult, Dependency, DependencyType, Issue,
     LabelWithCount, PropagationReport,
 };
 use crate::bindings::types::{CreateInput, ListFilters, UpdateInput};
@@ -483,7 +483,7 @@ pub async fn bd_assignee_list_all(cwd: String) -> BdResult<Vec<AssigneeWithCount
     // wraps the issue array in `{ data, schema_version }`. We
     // delegate the unwrap to the shared helper so the failure
     // path is identical to the existing `bd_list` command.
-    let issues = search_query::extract_data(value)?;
+    let issues = envelope::extract_issues(value)?;
     Ok(aggregate_assignees(&issues))
 }
 
