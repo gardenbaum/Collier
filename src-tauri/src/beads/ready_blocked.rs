@@ -45,6 +45,7 @@ pub async fn bd_blocked(cwd: String) -> BdResult<Vec<Issue>> {
 mod tests {
     use super::*;
     use crate::beads::envelope;
+    use crate::beads::test_fixture::{sample_issue_envelope, sample_issues_envelope, SampleIssue};
 
     // ponytail: unit test with a mocked run_bd would require a test harness.
     // Integration tests against real `bd` would follow the skip_if_no_bd pattern
@@ -53,32 +54,7 @@ mod tests {
 
     #[test]
     fn test_extract_data_parses_valid_envelope() {
-        let envelope = serde_json::json!({
-            "schema_version": 1,
-            "data": [
-                {
-                    "id": "beads-1",
-                    "title": "Test issue",
-                    "status": "open",
-                    "priority": 2,
-                    "issue_type": "bug",
-                    "created_at": "2026-04-20T12:00:00Z",
-                    "updated_at": null,
-                    "closed_at": null,
-                    "description": null,
-                    "owner": null,
-                    "labels": [],
-                    "dependencies": [],
-                    "dependency_count": 0,
-                    "dependent_count": 0,
-                    "comment_count": 0,
-                    "parent": null,
-                    "acceptance_criteria": null,
-                    "external_ref": null
-                }
-            ]
-        });
-
+        let envelope = sample_issue_envelope("beads-1", "Test issue");
         let issues = envelope::extract_issues(envelope).expect("should parse");
         assert_eq!(issues.len(), 1);
         assert_eq!(issues[0].id, "beads-1");
@@ -112,91 +88,32 @@ mod tests {
         // even when they have no open blockers (TASK_REFAC in the
         // fixture), AND (b) issues with at least one open blocker
         // even when their status is open (TASK_OPT's child CACHE).
-        let envelope = serde_json::json!({
-            "schema_version": 1,
-            "data": [
-                {
-                    "id": "beads-status-blocked-no-deps",
-                    "title": "manually blocked",
-                    "status": "blocked",
-                    "priority": 2,
-                    "issue_type": "task",
-                    "created_at": "2026-04-20T12:00:00Z",
-                    "updated_at": null,
-                    "closed_at": null,
-                    "description": null,
-                    "owner": null,
-                    "labels": [],
-                    "dependencies": [],
-                    "dependency_count": 0,
-                    "dependent_count": 1,
-                    "comment_count": 0,
-                    "parent": null,
-                    "acceptance_criteria": null,
-                    "external_ref": null
-                },
-                {
-                    "id": "beads-open-with-blocker",
-                    "title": "blocked by upstream",
-                    "status": "open",
-                    "priority": 2,
-                    "issue_type": "task",
-                    "created_at": "2026-04-20T12:00:00Z",
-                    "updated_at": null,
-                    "closed_at": null,
-                    "description": null,
-                    "owner": null,
-                    "labels": [],
-                    "dependencies": [],
-                    "dependency_count": 1,
-                    "dependent_count": 0,
-                    "comment_count": 0,
-                    "parent": null,
-                    "acceptance_criteria": null,
-                    "external_ref": null
-                },
-                {
-                    "id": "beads-ready",
-                    "title": "ready to work",
-                    "status": "open",
-                    "priority": 2,
-                    "issue_type": "task",
-                    "created_at": "2026-04-20T12:00:00Z",
-                    "updated_at": null,
-                    "closed_at": null,
-                    "description": null,
-                    "owner": null,
-                    "labels": [],
-                    "dependencies": [],
-                    "dependency_count": 0,
-                    "dependent_count": 0,
-                    "comment_count": 0,
-                    "parent": null,
-                    "acceptance_criteria": null,
-                    "external_ref": null
-                },
-                {
-                    "id": "beads-closed",
-                    "title": "shipped",
-                    "status": "closed",
-                    "priority": 2,
-                    "issue_type": "task",
-                    "created_at": "2026-04-20T12:00:00Z",
-                    "updated_at": null,
-                    "closed_at": null,
-                    "description": null,
-                    "owner": null,
-                    "labels": [],
-                    "dependencies": [],
-                    "dependency_count": 0,
-                    "dependent_count": 0,
-                    "comment_count": 0,
-                    "parent": null,
-                    "acceptance_criteria": null,
-                    "external_ref": null
-                }
-            ]
-        });
+        let envelope = sample_issues_envelope(&[
+            SampleIssue {
+                id: "beads-status-blocked-no-deps".into(),
+                title: "manually blocked".into(),
+                status: "blocked".into(),
+                dependent_count: 1,
+                ..SampleIssue::new("x", "x")
+            },
+            SampleIssue {
+                id: "beads-open-with-blocker".into(),
+                title: "blocked by upstream".into(),
+                dependency_count: 1,
+                ..SampleIssue::new("x", "x")
+            },
+            SampleIssue {
+                id: "beads-ready".into(),
+                title: "ready to work".into(),
+                ..SampleIssue::new("x", "x")
+            },
+            SampleIssue {
+                id: "beads-closed".into(),
+                title: "shipped".into(),
+                status: "closed".into(),
+                ..SampleIssue::new("x", "x")
+            },
+        ]);
 
         let issues = envelope::extract_issues(envelope).expect("should parse");
         let kept: Vec<&Issue> = issues

@@ -36,6 +36,7 @@ pub async fn bd_list(cwd: String, filters: ListFilters) -> BdResult<Vec<Issue>> 
 mod tests {
     use super::*;
     use crate::beads::envelope;
+    use crate::beads::test_fixture::{sample_issues_envelope, SampleIssue};
     use crate::beads::{
         IssuePriority, IssueType, ISSUE_STATUS_CLOSED, ISSUE_STATUS_IN_PROGRESS, ISSUE_STATUS_OPEN,
     };
@@ -93,31 +94,11 @@ mod tests {
     /// `envelope::extract_issues` helper.
     #[test]
     fn test_extract_data_parses_valid_list_envelope() {
-        let envelope = serde_json::json!({
-            "schema_version": 1,
-            "data": [
-                {
-                    "id": "beads-list-1",
-                    "title": "List envelope issue",
-                    "status": "in_progress",
-                    "priority": 1,
-                    "issue_type": "task",
-                    "created_at": "2026-04-20T12:00:00Z",
-                    "updated_at": null,
-                    "closed_at": null,
-                    "description": null,
-                    "owner": null,
-                    "labels": [],
-                    "dependencies": [],
-                    "dependency_count": 0,
-                    "dependent_count": 0,
-                    "comment_count": 0,
-                    "parent": null,
-                    "acceptance_criteria": null,
-                    "external_ref": null
-                }
-            ]
-        });
+        let envelope = sample_issues_envelope(&[SampleIssue {
+            status: "in_progress".into(),
+            priority: 1,
+            ..SampleIssue::new("beads-list-1", "List envelope issue")
+        }]);
         let issues = envelope::extract_issues(envelope).expect("should parse");
         assert_eq!(issues.len(), 1);
         assert_eq!(issues[0].id, "beads-list-1");
