@@ -553,17 +553,7 @@ pub async fn bd_label_propagate(
         }
     };
     let rows = parse_label_propagate_rows(value)?;
-
-    let mut report = PropagationReport::default();
-    for row in rows {
-        let status = row.get("status").and_then(|v| v.as_str()).unwrap_or("");
-        match status {
-            "added" => report.added = report.added.saturating_add(1),
-            "skipped" => report.skipped = report.skipped.saturating_add(1),
-            other => report.errors.push(other.to_string()),
-        }
-    }
-    Ok(report)
+    Ok(PropagationReport::from_rows(rows))
 }
 
 /// Parse a `bd label propagate <parent> <label> --json` response
@@ -1572,16 +1562,7 @@ mod tests {
             {"issue_id": "beads-102", "label": "priority-high", "status": "added"},
         ]);
         let rows: Vec<serde_json::Value> = value.as_array().cloned().unwrap();
-
-        let mut report = PropagationReport::default();
-        for row in rows {
-            let status = row.get("status").and_then(|v| v.as_str()).unwrap_or("");
-            match status {
-                "added" => report.added = report.added.saturating_add(1),
-                "skipped" => report.skipped = report.skipped.saturating_add(1),
-                other => report.errors.push(other.to_string()),
-            }
-        }
+        let report = PropagationReport::from_rows(rows);
         assert_eq!(report.added, 2);
         assert_eq!(report.skipped, 1);
         assert!(report.errors.is_empty());
@@ -1613,16 +1594,7 @@ mod tests {
             {"issue_id": "beads-101", "label": "bug", "status": "weird-new-status"},
         ]);
         let rows: Vec<serde_json::Value> = value.as_array().cloned().unwrap();
-
-        let mut report = PropagationReport::default();
-        for row in rows {
-            let status = row.get("status").and_then(|v| v.as_str()).unwrap_or("");
-            match status {
-                "added" => report.added = report.added.saturating_add(1),
-                "skipped" => report.skipped = report.skipped.saturating_add(1),
-                other => report.errors.push(other.to_string()),
-            }
-        }
+        let report = PropagationReport::from_rows(rows);
         assert_eq!(report.added, 1);
         assert_eq!(report.skipped, 0);
         assert_eq!(report.errors, vec!["weird-new-status".to_string()]);
