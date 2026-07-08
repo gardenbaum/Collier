@@ -45,41 +45,13 @@ pub async fn bd_blocked(cwd: String) -> BdResult<Vec<Issue>> {
 mod tests {
     use super::*;
     use crate::beads::envelope;
-    use crate::beads::test_fixture::{sample_issue_envelope, sample_issues_envelope, SampleIssue};
+    use crate::beads::test_fixture::{sample_issues_envelope, SampleIssue};
 
     // ponytail: unit test with a mocked run_bd would require a test harness.
     // Integration tests against real `bd` would follow the skip_if_no_bd pattern
     // used in runner.rs. For now, the contract is verified by the frontend
-    // integration tests (ReadyView.test.tsx / BlockedView.test.tsx).
-
-    #[test]
-    fn test_extract_data_parses_valid_envelope() {
-        let envelope = sample_issue_envelope("beads-1", "Test issue");
-        let issues = envelope::extract_issues(envelope).expect("should parse");
-        assert_eq!(issues.len(), 1);
-        assert_eq!(issues[0].id, "beads-1");
-    }
-
-    #[test]
-    fn test_extract_data_returns_error_on_missing_data_field() {
-        let envelope = serde_json::json!({
-            "schema_version": 1
-        });
-
-        let result = envelope::extract_issues(envelope);
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn test_extract_data_returns_error_on_invalid_data_shape() {
-        let envelope = serde_json::json!({
-            "schema_version": 1,
-            "data": { "not": "an array" }
-        });
-
-        let result = envelope::extract_issues(envelope);
-        assert!(result.is_err());
-    }
+    // integration tests (ReadyView.test.tsx / BlockedView.test.tsx). The
+    // envelope::extract_issues helper itself is tested in beads/envelope.rs.
 
     #[test]
     fn test_bd_blocked_filter_keeps_status_blocked_and_open_blockers() {

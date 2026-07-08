@@ -46,3 +46,44 @@ pub(super) fn extract<T: DeserializeOwned>(output: Value) -> BdResult<T> {
 pub(super) fn extract_issues(output: Value) -> BdResult<Vec<Issue>> {
     extract(output)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::beads::test_fixture::sample_issue_envelope;
+
+    // ponytail: byte-identical tests previously lived as vestigial copies
+    // in `ready_blocked.rs` (lines 54-83) and `search_query.rs` (lines
+    // 35-64). Moved here so the helper's own definition site owns its
+    // tests; caller modules exercise it indirectly through the public
+    // `runner::run_bd_envelope` pipeline (covered by frontend e2e).
+
+    #[test]
+    fn test_extract_issues_parses_valid_envelope() {
+        let envelope = sample_issue_envelope("beads-1", "Test issue");
+        let issues = extract_issues(envelope).expect("should parse");
+        assert_eq!(issues.len(), 1);
+        assert_eq!(issues[0].id, "beads-1");
+    }
+
+    #[test]
+    fn test_extract_issues_returns_error_on_missing_data_field() {
+        let envelope = serde_json::json!({
+            "schema_version": 1
+        });
+
+        let result = extract_issues(envelope);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_extract_issues_returns_error_on_invalid_data_shape() {
+        let envelope = serde_json::json!({
+            "schema_version": 1,
+            "data": { "not": "an array" }
+        });
+
+        let result = extract_issues(envelope);
+        assert!(result.is_err());
+    }
+}
