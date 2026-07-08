@@ -703,10 +703,7 @@ mod tests {
         let err = result.expect_err("missing data should be ParseError");
         match err {
             BdError::ParseError { message } => {
-                assert!(
-                    message.contains("missing 'data' field"),
-                    "got: {message}",
-                );
+                assert!(message.contains("missing 'data' field"), "got: {message}",);
             }
             other => panic!("expected ParseError, got {other:?}"),
         }
@@ -783,9 +780,7 @@ mod tests {
     /// returns an envelope without the data payload.
     #[test]
     fn test_bd_create_missing_data_field_returns_parse_error() {
-        assert_missing_data_is_parse_error(|envelope| {
-            parse_issue_or_array(envelope, "bd create")
-        });
+        assert_missing_data_is_parse_error(|envelope| parse_issue_or_array(envelope, "bd create"));
     }
 
     // ========================================================================
@@ -1089,9 +1084,7 @@ mod tests {
     /// surface as a typed signal rather than `Ok(vec![])`.
     #[test]
     fn test_dep_list_returns_error_on_missing_data() {
-        assert_missing_data_is_parse_error(|envelope| {
-            parse_issue_or_array(envelope, "bd show")
-        });
+        assert_missing_data_is_parse_error(|envelope| parse_issue_or_array(envelope, "bd show"));
     }
 
     // ========================================================================
