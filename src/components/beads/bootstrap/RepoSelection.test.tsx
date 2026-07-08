@@ -24,6 +24,24 @@ vi.mock('@/lib/tauri-bindings', () => ({
   },
 }))
 
+// Mock the logger so we can assert that bootstrap failures route
+// through the shared logger (which mirrors warn/error to the
+// on-disk diagnostic log in prod when "Enable diagnostic logging"
+// is on in Advanced preferences). The mocks live in `vi.hoisted`
+// so they exist before `vi.mock` factory bodies run.
+const { mockLogger } = vi.hoisted(() => ({
+  mockLogger: {
+    error: vi.fn(),
+    warn: vi.fn(),
+    info: vi.fn(),
+    debug: vi.fn(),
+    trace: vi.fn(),
+  },
+}))
+vi.mock('@/lib/logger', () => ({
+  logger: mockLogger,
+}))
+
 // Capture onSelect so tests can assert it fired with the right path
 const onSelectMock = vi.fn()
 
@@ -31,6 +49,9 @@ const mockedDetectBd = vi.mocked(commands.detectBd)
 const mockedAddRecentRepo = vi.mocked(commands.addRecentRepo)
 const mockedLoadPreferences = vi.mocked(commands.loadPreferences)
 const mockedGetCurrentDir = vi.mocked(commands.getCurrentDir)
+
+const mockedLoggerError = vi.mocked(mockLogger.error)
+const mockedLoggerWarn = vi.mocked(mockLogger.warn)
 
 import { RepoSelection } from './RepoSelection'
 
@@ -177,5 +198,45 @@ describe('RepoSelection', () => {
 
     expect(mockedAddRecentRepo).not.toHaveBeenCalled()
     expect(onSelectMock).not.toHaveBeenCalled()
+  })
+
+  it('routes bootstrap probe failures through logger.error', async () => {
+    // Force getCurrentDir to reject so probe() throws and lands
+    // in its .catch() handler.
+    mockedGetCurrentDir.mockRejectedValue(new Error('boom'))
+
+    render(<RepoSelection onSelect={onSelectMock} />)
+
+    await waitFor(() => {
+      expect(mockedLoggerError).toHaveBeenCalledWith(
+        'RepoSelection probe failed',
+        expect.objectContaining({ error: expect.any(Error) })
+      )
+    })
+  })
+
+  it('routes addRecentRepo failures through logger.warn', async () => {
+    mockedAddRecentRepo.mockResolvedValue({
+      status: 'error',
+      error: 'disk full',
+    })
+
+    render(<RepoSelection onSelect={onSelectMock} />)
+
+    // The "Use CWD" link only appears when the probe succeeds; the
+    // default mock makes that the case, so click it to exercise
+    // the handleSelect path.
+    const cwdLink = await screen.findByTestId('use-cwd-button')
+    const user = userEvent.setup()
+    await user.click(cwdLink)
+
+    await waitFor(() => {
+      expect(mockedLoggerWarn).toHaveBeenCalledWith(
+        'addRecentRepo failed',
+        expect.objectContaining({
+          error: 'disk full',
+        })
+      )
+    })
   })
 })

@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { open as openDialog } from '@tauri-apps/plugin-dialog'
 import { commands } from '@/lib/tauri-bindings'
 import { colors, space, type as typeTokens } from '@/lib/design-tokens'
+import { logger } from '@/lib/logger'
 
 export interface RepoSelectionProps {
   /** Called with the absolute path of the repo the user picked. */
@@ -54,7 +55,7 @@ export function RepoSelection({ onSelect }: RepoSelectionProps) {
     }
 
     probe().catch(error => {
-      console.error('RepoSelection probe failed', error)
+      logger.error('RepoSelection probe failed', { error })
     })
     return () => {
       cancelled = true
@@ -67,7 +68,7 @@ export function RepoSelection({ onSelect }: RepoSelectionProps) {
     try {
       const result = await commands.addRecentRepo(path)
       if (result.status === 'error') {
-        console.warn('addRecentRepo failed', result.error)
+        logger.warn('addRecentRepo failed', { error: result.error })
       }
       onSelect(path)
     } finally {
