@@ -36,6 +36,33 @@ fn push_flag_opt(args: &mut Vec<String>, flag: &str, value: Option<&String>) {
     }
 }
 
+/// Push the `description` / `type` / `priority` triple that both
+/// `CreateInput::to_args` and `UpdateInput::to_args` emit in the same
+/// order. `description` skips on empty string (delegates to
+/// `push_flag_opt`); `type` and `priority` skip on `None`. `UpdateInput`
+/// has an extra `status` field that follows this triple — it stays
+/// inline in the caller because `CreateInput` has no `status` field.
+fn push_description_type_priority(
+    args: &mut Vec<String>,
+    description: Option<&String>,
+    issue_type: Option<&IssueType>,
+    priority: Option<&IssuePriority>,
+) {
+    push_flag_opt(args, "--description", description);
+
+    if let Some(t) = issue_type {
+        args.push("--type".to_string());
+        args.push(unit_enum_arg(t));
+    }
+
+    if let Some(p) = priority {
+        args.push("--priority".to_string());
+        // ponytail: `IssuePriority` is `#[repr(u8)] Serialize_repr`,
+        // so it serializes as a bare integer 0..4 — the form `bd` expects.
+        args.push((*p as u8).to_string());
+    }
+}
+
 /// Filter struct for `bd list --json`.
 ///
 /// Every field is optional; an empty struct produces no filter arguments, and
@@ -311,19 +338,12 @@ impl CreateInput {
         args.push("--title".to_string());
         args.push(self.title.clone());
 
-        push_flag_opt(&mut args, "--description", self.description.as_ref());
-
-        if let Some(t) = &self.issue_type {
-            args.push("--type".to_string());
-            args.push(unit_enum_arg(t));
-        }
-
-        if let Some(p) = &self.priority {
-            args.push("--priority".to_string());
-            // ponytail: `IssuePriority` is `#[repr(u8)] Serialize_repr`,
-            // so it serializes as a bare integer 0..4 — the form `bd` expects.
-            args.push((*p as u8).to_string());
-        }
+        push_description_type_priority(
+            &mut args,
+            self.description.as_ref(),
+            self.issue_type.as_ref(),
+            self.priority.as_ref(),
+        );
 
         push_flag_opt(&mut args, "--assignee", self.assignee.as_ref());
 
@@ -487,19 +507,12 @@ impl UpdateInput {
             args.push(t.clone());
         }
 
-        push_flag_opt(&mut args, "--description", self.description.as_ref());
-
-        if let Some(t) = &self.issue_type {
-            args.push("--type".to_string());
-            args.push(unit_enum_arg(t));
-        }
-
-        if let Some(p) = &self.priority {
-            args.push("--priority".to_string());
-            // ponytail: `IssuePriority` is `#[repr(u8)] Serialize_repr`,
-            // so the form is a bare integer 0..4 — what `bd` expects.
-            args.push((*p as u8).to_string());
-        }
+        push_description_type_priority(
+            &mut args,
+            self.description.as_ref(),
+            self.issue_type.as_ref(),
+            self.priority.as_ref(),
+        );
 
         if let Some(s) = &self.status {
             args.push("--status".to_string());
