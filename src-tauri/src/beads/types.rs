@@ -539,6 +539,67 @@ pub struct Issue {
     pub external_ref: Option<String>,
 }
 
+#[cfg(test)]
+impl Issue {
+    /// Build a default `Issue` for unit tests with only `id`, `title`
+    /// and `status` overridden. All other fields are filled with the
+    /// canonical "Test issue" defaults: `priority: P2`,
+    /// `issue_type: Task`, `created_at` fixed at `2026-01-01T00:00:00Z`
+    /// (so two calls inside one test produce identical `created_at`
+    /// values and equality-based diff algorithms don't spuriously
+    /// classify them as different), `updated_at` / `closed_at` /
+    /// `description` / `owner` / `parent` / `acceptance_criteria` /
+    /// `external_ref` = `None`, `labels` / `dependencies` /
+    /// `dependents` = empty, every `*_count` = 0.
+    ///
+    /// Replaces the 18-field `Issue { ... }` literal that recurred in
+    /// the test helpers of `watcher.rs`, `jsonl.rs` and `gates.rs`
+    /// (and — before PR #55 — in `mutations.rs`, `ready_blocked.rs`,
+    /// `list.rs`, `search_query.rs`, `show_history.rs`). Tests that
+    /// need a field set that diverges from these defaults (custom
+    /// `owner`, `dependency_count`, fresh `created_at` timestamp,
+    /// etc.) use struct-update syntax on top of `test_default(...)`:
+    ///
+    /// ```ignore
+    /// Issue {
+    ///     created_at: chrono::Utc::now(),
+    ///     dependency_count: 2,
+    ///     ..Issue::test_default("beads-1", "Title", ISSUE_STATUS_OPEN.to_string())
+    /// }
+    /// ```
+    ///
+    /// Gated `#[cfg(test)]` so the helper never ships in the
+    /// production binary — its only purpose is to dedupe test
+    /// scaffolding. The companion JSON-side helpers (`SampleIssue`
+    /// + `sample_issue_envelope(...)`) live in `beads::test_fixture`;
+    /// this one is the Rust-struct-side counterpart.
+    pub fn test_default(id: &str, title: &str, status: IssueStatus) -> Self {
+        Self {
+            id: id.to_string(),
+            title: title.to_string(),
+            status,
+            priority: IssuePriority::P2,
+            issue_type: IssueType::Task,
+            created_at: DateTime::parse_from_rfc3339("2026-01-01T00:00:00Z")
+                .expect("test_default fixture timestamp is always valid")
+                .with_timezone(&Utc),
+            updated_at: None,
+            closed_at: None,
+            description: None,
+            owner: None,
+            labels: Vec::new(),
+            dependencies: Vec::new(),
+            dependents: Vec::new(),
+            dependency_count: 0,
+            dependent_count: 0,
+            comment_count: 0,
+            parent: None,
+            acceptance_criteria: None,
+            external_ref: None,
+        }
+    }
+}
+
 // ============================================================================
 // BdError & BdResult
 // ============================================================================
@@ -1004,7 +1065,7 @@ mod tests {
             ..SampleIssue::new("beads-1", "x")
         }
         .to_json_string();
-        let issue: Issue = serde_json::from_str(json).expect("string labels should parse");
+        let issue: Issue = serde_json::from_str(&json).expect("string labels should parse");
         assert_eq!(issue.labels.len(), 2);
         assert_eq!(issue.labels[0].name, "security");
         assert_eq!(issue.labels[1].name, "auth");
