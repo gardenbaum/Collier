@@ -14,4 +14,7 @@ pub mod statuses;
 pub mod types;
 pub mod watcher;
 
+#[cfg(test)]
+mod test_fixture;
+
 pub use types::*;

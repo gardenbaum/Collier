@@ -278,6 +278,7 @@ pub async fn bd_add_comment(cwd: String, id: String, body: String) -> BdResult<(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::beads::test_fixture::{sample_issues_envelope, SampleIssue};
 
     // ponytail: integration tests against real `bd` would follow the
     // `skip_if_no_bd` pattern from `runner.rs`. For T16a we stick to
@@ -289,29 +290,11 @@ mod tests {
     fn test_bd_show_parses_single_issue_envelope() {
         // `bd show` returns `data` as a 1-element array; we assert the
         // extraction pulls the lone issue and the field mapping works.
-        let envelope = serde_json::json!({
-            "schema_version": 1,
-            "data": [{
-                "id": "beads-1",
-                "title": "Test",
-                "status": "open",
-                "priority": 1,
-                "issue_type": "bug",
-                "created_at": "2026-04-20T12:00:00Z",
-                "updated_at": null,
-                "closed_at": null,
-                "description": null,
-                "owner": null,
-                "labels": [],
-                "dependencies": [],
-                "dependency_count": 0,
-                "dependent_count": 0,
-                "comment_count": 0,
-                "parent": null,
-                "acceptance_criteria": null,
-                "external_ref": null
-            }]
-        });
+        let envelope = sample_issues_envelope(&[SampleIssue {
+            priority: 1,
+            issue_type: "bug".into(),
+            ..SampleIssue::new("beads-1", "Test")
+        }]);
         let issues: Vec<Issue> = extract_data_vec(envelope, "issue").expect("should parse");
         assert_eq!(issues.len(), 1);
         assert_eq!(issues[0].id, "beads-1");

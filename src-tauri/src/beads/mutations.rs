@@ -681,6 +681,10 @@ fn parse_dep_vec(value: Value, cmd_name: &str) -> BdResult<Vec<Dependency>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::beads::test_fixture::{
+        bare_issue_envelope, bare_issue_envelope_with, sample_issue_envelope,
+        sample_issues_envelope, SampleIssue,
+    };
     use crate::beads::{
         IssuePriority, IssueType, ISSUE_STATUS_CLOSED, ISSUE_STATUS_IN_PROGRESS, ISSUE_STATUS_OPEN,
     };
@@ -714,29 +718,7 @@ mod tests {
     /// real-shape envelope.
     #[test]
     fn test_bd_create_extracts_single_issue_from_envelope() {
-        let envelope = serde_json::json!({
-            "schema_version": 1,
-            "data": [{
-                "id": "beads-99",
-                "title": "Created",
-                "status": "open",
-                "priority": 2,
-                "issue_type": "task",
-                "created_at": "2026-06-17T10:00:00Z",
-                "updated_at": null,
-                "closed_at": null,
-                "description": null,
-                "owner": null,
-                "labels": [],
-                "dependencies": [],
-                "dependency_count": 0,
-                "dependent_count": 0,
-                "comment_count": 0,
-                "parent": null,
-                "acceptance_criteria": null,
-                "external_ref": null
-            }]
-        });
+        let envelope = sample_issue_envelope("beads-99", "Created");
         let issue = parse_issue_or_array(envelope, "bd create").expect("parses");
         assert_eq!(issue.id, "beads-99");
         assert_eq!(issue.title, "Created");
@@ -750,29 +732,7 @@ mod tests {
     /// future CLI shape drift).
     #[test]
     fn test_bd_create_extracts_issue_from_bare_object_envelope() {
-        let envelope = serde_json::json!({
-            "schema_version": 1,
-            "data": {
-                "id": "beads-77",
-                "title": "Created",
-                "status": "open",
-                "priority": 2,
-                "issue_type": "task",
-                "created_at": "2026-06-17T10:00:00Z",
-                "updated_at": null,
-                "closed_at": null,
-                "description": null,
-                "owner": null,
-                "labels": [],
-                "dependencies": [],
-                "dependency_count": 0,
-                "dependent_count": 0,
-                "comment_count": 0,
-                "parent": null,
-                "acceptance_criteria": null,
-                "external_ref": null
-            }
-        });
+        let envelope = bare_issue_envelope("beads-77", "Created");
         let issue = parse_issue_or_array(envelope, "bd create").expect("parses");
         assert_eq!(issue.id, "beads-77");
     }
@@ -860,28 +820,15 @@ mod tests {
     /// real-shape envelope via the shared helper.
     #[test]
     fn test_bd_update_extracts_single_issue_from_envelope() {
-        let envelope = serde_json::json!({
-            "schema_version": 1,
-            "data": [{
-                "id": "beads-99",
-                "title": "Renamed",
-                "status": "in_progress",
-                "priority": 1,
-                "issue_type": "bug",
-                "created_at": "2026-06-17T10:00:00Z",
-                "updated_at": "2026-06-17T10:05:00Z",
-                "closed_at": null,
-                "description": null,
-                "owner": null,
-                "labels": [],
-                "dependencies": [],
-                "dependency_count": 0,
-                "dependent_count": 0,
-                "comment_count": 0,
-                "parent": null,
-                "acceptance_criteria": null,
-                "external_ref": null
-            }]
+        let envelope = sample_issue_envelope_with(SampleIssue {
+            id: "beads-99".into(),
+            title: "Renamed".into(),
+            status: "in_progress".into(),
+            priority: 1,
+            issue_type: "bug".into(),
+            created_at: "2026-06-17T10:00:00Z".into(),
+            updated_at: Some("2026-06-17T10:05:00Z".into()),
+            ..SampleIssue::new("x", "x")
         });
         let issue = parse_issue_or_array(envelope, "bd update").expect("parses");
         assert_eq!(issue.id, "beads-99");
@@ -939,28 +886,15 @@ mod tests {
     /// extracts it via the shared helper.
     #[test]
     fn test_bd_close_extracts_single_issue_from_envelope() {
-        let envelope = serde_json::json!({
-            "schema_version": 1,
-            "data": [{
-                "id": "beads-42",
-                "title": "Done",
-                "status": "closed",
-                "priority": 1,
-                "issue_type": "task",
-                "created_at": "2026-06-17T10:00:00Z",
-                "updated_at": "2026-06-17T10:05:00Z",
-                "closed_at": "2026-06-17T10:05:00Z",
-                "description": null,
-                "owner": null,
-                "labels": [],
-                "dependencies": [],
-                "dependency_count": 0,
-                "dependent_count": 0,
-                "comment_count": 0,
-                "parent": null,
-                "acceptance_criteria": null,
-                "external_ref": null
-            }]
+        let envelope = sample_issue_envelope_with(SampleIssue {
+            id: "beads-42".into(),
+            title: "Done".into(),
+            status: "closed".into(),
+            priority: 1,
+            created_at: "2026-06-17T10:00:00Z".into(),
+            updated_at: Some("2026-06-17T10:05:00Z".into()),
+            closed_at: Some("2026-06-17T10:05:00Z".into()),
+            ..SampleIssue::new("x", "x")
         });
         let issue = parse_issue_or_array(envelope, "bd close").expect("parses");
         assert_eq!(issue.id, "beads-42");
@@ -972,28 +906,14 @@ mod tests {
     /// create/update.
     #[test]
     fn test_bd_close_extracts_issue_from_bare_object_envelope() {
-        let envelope = serde_json::json!({
-            "schema_version": 1,
-            "data": {
-                "id": "beads-43",
-                "title": "Done",
-                "status": "closed",
-                "priority": 2,
-                "issue_type": "task",
-                "created_at": "2026-06-17T10:00:00Z",
-                "updated_at": "2026-06-17T10:05:00Z",
-                "closed_at": "2026-06-17T10:05:00Z",
-                "description": null,
-                "owner": null,
-                "labels": [],
-                "dependencies": [],
-                "dependency_count": 0,
-                "dependent_count": 0,
-                "comment_count": 0,
-                "parent": null,
-                "acceptance_criteria": null,
-                "external_ref": null
-            }
+        let envelope = bare_issue_envelope_with(SampleIssue {
+            id: "beads-43".into(),
+            title: "Done".into(),
+            status: "closed".into(),
+            created_at: "2026-06-17T10:00:00Z".into(),
+            updated_at: Some("2026-06-17T10:05:00Z".into()),
+            closed_at: Some("2026-06-17T10:05:00Z".into()),
+            ..SampleIssue::new("x", "x")
         });
         let issue = parse_issue_or_array(envelope, "bd close").expect("parses");
         assert_eq!(issue.id, "beads-43");
@@ -1029,28 +949,13 @@ mod tests {
     /// `status: "open"` and `closed_at: null`.
     #[test]
     fn test_bd_reopen_extracts_single_issue_from_envelope() {
-        let envelope = serde_json::json!({
-            "schema_version": 1,
-            "data": [{
-                "id": "beads-42",
-                "title": "Reopened",
-                "status": "open",
-                "priority": 1,
-                "issue_type": "task",
-                "created_at": "2026-06-17T10:00:00Z",
-                "updated_at": "2026-06-17T10:10:00Z",
-                "closed_at": null,
-                "description": null,
-                "owner": null,
-                "labels": [],
-                "dependencies": [],
-                "dependency_count": 0,
-                "dependent_count": 0,
-                "comment_count": 0,
-                "parent": null,
-                "acceptance_criteria": null,
-                "external_ref": null
-            }]
+        let envelope = sample_issue_envelope_with(SampleIssue {
+            id: "beads-42".into(),
+            title: "Reopened".into(),
+            priority: 1,
+            created_at: "2026-06-17T10:00:00Z".into(),
+            updated_at: Some("2026-06-17T10:10:00Z".into()),
+            ..SampleIssue::new("x", "x")
         });
         let issue = parse_issue_or_array(envelope, "bd reopen").expect("parses");
         assert_eq!(issue.id, "beads-42");
@@ -1064,28 +969,13 @@ mod tests {
     /// Bare-object variant for reopen.
     #[test]
     fn test_bd_reopen_extracts_issue_from_bare_object_envelope() {
-        let envelope = serde_json::json!({
-            "schema_version": 1,
-            "data": {
-                "id": "beads-43",
-                "title": "Reopened",
-                "status": "open",
-                "priority": 2,
-                "issue_type": "task",
-                "created_at": "2026-06-17T10:00:00Z",
-                "updated_at": "2026-06-17T10:10:00Z",
-                "closed_at": null,
-                "description": null,
-                "owner": null,
-                "labels": [],
-                "dependencies": [],
-                "dependency_count": 0,
-                "dependent_count": 0,
-                "comment_count": 0,
-                "parent": null,
-                "acceptance_criteria": null,
-                "external_ref": null
-            }
+        let envelope = bare_issue_envelope_with(SampleIssue {
+            id: "beads-43".into(),
+            title: "Reopened".into(),
+            priority: 2,
+            created_at: "2026-06-17T10:00:00Z".into(),
+            updated_at: Some("2026-06-17T10:10:00Z".into()),
+            ..SampleIssue::new("x", "x")
         });
         let issue = parse_issue_or_array(envelope, "bd reopen").expect("parses");
         assert_eq!(issue.id, "beads-43");
@@ -1148,36 +1038,15 @@ mod tests {
     /// pull the lone issue out and return its dep vec as-is.
     #[test]
     fn test_dep_list_returns_dependencies_from_issue() {
-        let envelope = serde_json::json!({
-            "schema_version": 1,
-            "data": [{
-                "id": "beads-99",
-                "title": "Has deps",
-                "status": "open",
-                "priority": 2,
-                "issue_type": "task",
-                "created_at": "2026-06-17T10:00:00Z",
-                "updated_at": null,
-                "closed_at": null,
-                "description": null,
-                "owner": null,
-                "labels": [],
-                "dependencies": [{
-                    "dependency_id": "beads-77",
-                    "dependency_type": "blocks",
-                    "blocked_by": true
-                }, {
-                    "dependency_id": "beads-78",
-                    "dependency_type": "related",
-                    "blocked_by": null
-                }],
-                "dependency_count": 2,
-                "dependent_count": 0,
-                "comment_count": 0,
-                "parent": null,
-                "acceptance_criteria": null,
-                "external_ref": null
-            }]
+        let envelope = sample_issue_envelope_with(SampleIssue {
+            id: "beads-99".into(),
+            title: "Has deps".into(),
+            dependencies: serde_json::json!([
+                {"dependency_id": "beads-77", "dependency_type": "blocks", "blocked_by": true},
+                {"dependency_id": "beads-78", "dependency_type": "related", "blocked_by": null},
+            ]),
+            dependency_count: 2,
+            ..SampleIssue::new("x", "x")
         });
         let issue = parse_issue_or_array(envelope, "bd show").expect("parses");
         let deps = issue.dependencies;
@@ -1195,29 +1064,7 @@ mod tests {
     /// button, so this is the default state for new issues.
     #[test]
     fn test_dep_list_returns_empty_for_issue_without_deps() {
-        let envelope = serde_json::json!({
-            "schema_version": 1,
-            "data": [{
-                "id": "beads-99",
-                "title": "Fresh",
-                "status": "open",
-                "priority": 2,
-                "issue_type": "task",
-                "created_at": "2026-06-17T10:00:00Z",
-                "updated_at": null,
-                "closed_at": null,
-                "description": null,
-                "owner": null,
-                "labels": [],
-                "dependencies": [],
-                "dependency_count": 0,
-                "dependent_count": 0,
-                "comment_count": 0,
-                "parent": null,
-                "acceptance_criteria": null,
-                "external_ref": null
-            }]
-        });
+        let envelope = sample_issue_envelope("beads-99", "Fresh");
         let issue = parse_issue_or_array(envelope, "bd show").expect("parses");
         assert!(issue.dependencies.is_empty());
     }

@@ -643,6 +643,7 @@ pub struct Graph {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::beads::test_fixture::SampleIssue;
 
     #[test]
     fn issue_status_exhaustive_match() {
@@ -997,26 +998,12 @@ mod tests {
     /// that previously rejected it.
     #[test]
     fn test_issue_with_string_labels_parses() {
-        let json = r#"{
-            "id": "beads-1",
-            "title": "x",
-            "status": "open",
-            "priority": 1,
-            "issue_type": "task",
-            "created_at": "2026-04-20T12:00:00Z",
-            "updated_at": null,
-            "closed_at": null,
-            "description": null,
-            "owner": null,
-            "labels": ["security", "auth"],
-            "dependencies": [],
-            "dependency_count": 0,
-            "dependent_count": 0,
-            "comment_count": 0,
-            "parent": null,
-            "acceptance_criteria": null,
-            "external_ref": null
-        }"#;
+        let json = SampleIssue {
+            priority: 1,
+            labels: serde_json::json!(["security", "auth"]),
+            ..SampleIssue::new("beads-1", "x")
+        }
+        .to_json_string();
         let issue: Issue = serde_json::from_str(json).expect("string labels should parse");
         assert_eq!(issue.labels.len(), 2);
         assert_eq!(issue.labels[0].name, "security");

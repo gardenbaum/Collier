@@ -26,6 +26,7 @@ pub async fn bd_query(cwd: String, query: String) -> BdResult<Vec<Issue>> {
 mod tests {
     use super::*;
     use crate::beads::envelope;
+    use crate::beads::test_fixture::sample_issue_envelope;
 
     // ponytail: same envelope-extraction contract as `ready_blocked.rs` —
     // the public command path is verified end-to-end by the SearchView
@@ -34,31 +35,7 @@ mod tests {
 
     #[test]
     fn test_extract_data_parses_valid_envelope() {
-        let envelope = serde_json::json!({
-            "schema_version": 1,
-            "data": [
-                {
-                    "id": "beads-1",
-                    "title": "Test issue",
-                    "status": "open",
-                    "priority": 2,
-                    "issue_type": "bug",
-                    "created_at": "2026-04-20T12:00:00Z",
-                    "updated_at": null,
-                    "closed_at": null,
-                    "description": null,
-                    "owner": null,
-                    "labels": [],
-                    "dependencies": [],
-                    "dependency_count": 0,
-                    "dependent_count": 0,
-                    "comment_count": 0,
-                    "parent": null,
-                    "acceptance_criteria": null,
-                    "external_ref": null
-                }
-            ]
-        });
+        let envelope = sample_issue_envelope("beads-1", "Test issue");
 
         let issues = envelope::extract_issues(envelope).expect("should parse");
         assert_eq!(issues.len(), 1);
