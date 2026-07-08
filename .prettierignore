@@ -26,3 +26,7 @@ src/lib/bindings.ts
 # otherwise fail on historical .bak snapshots from pre-dedup runs)
 jscpd-report/
 jscpd-report.bak/
+# beads CLI runtime state (per-machine, gitignored at .beads/.gitignore:17;
+# prettier --check otherwise fails on the missing trailing newline the bd
+# tool emits when it rewrites the file)
+.beads/push-state.json
