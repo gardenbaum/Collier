@@ -1060,7 +1060,7 @@ mod tests {
             ..SampleIssue::new("beads-1", "x")
         }
         .to_json_string();
-        let issue: Issue = serde_json::from_str(json).expect("string labels should parse");
+        let issue: Issue = serde_json::from_str(&json).expect("string labels should parse");
         assert_eq!(issue.labels.len(), 2);
         assert_eq!(issue.labels[0].name, "security");
         assert_eq!(issue.labels[1].name, "auth");
