@@ -673,11 +673,42 @@ mod tests {
     use super::*;
     use crate::beads::test_fixture::{
         bare_issue_envelope, bare_issue_envelope_with, sample_issue_envelope,
-        sample_issue_envelope_with, sample_issues_envelope, SampleIssue,
+        sample_issue_envelope_with, SampleIssue,
     };
     use crate::beads::{
         IssuePriority, IssueType, ISSUE_STATUS_CLOSED, ISSUE_STATUS_IN_PROGRESS, ISSUE_STATUS_OPEN,
     };
+
+    /// Assert that `parser` rejects a `{schema_version: 1}` envelope
+    /// (no `data` field) with a `BdError::ParseError` whose message
+    /// contains the canonical "missing 'data' field" hint.
+    ///
+    /// Three parser tests (`test_bd_create_missing_data_field_returns_parse_error`,
+    /// `test_dep_list_returns_error_on_missing_data`,
+    /// `test_dep_tree_returns_error_on_missing_data`) used to inline
+    /// the same `result.expect_err(...)` +
+    /// `match { ParseError => assert!, _ => panic! }` shape — extracted
+    /// here so a future change to the missing-data hint (or to the
+    /// `BdError` variant) only has to land in one place. The parser
+    /// closure is `FnOnce` because each test only ever calls it once
+    /// and the closure can capture anything the parser needs (most
+    /// commonly the `context` string naming the bd subcommand under
+    /// test).
+    fn assert_missing_data_is_parse_error<F, T>(parser: F)
+    where
+        F: FnOnce(serde_json::Value) -> Result<T, BdError>,
+        T: std::fmt::Debug,
+    {
+        let envelope = serde_json::json!({"schema_version": 1});
+        let result = parser(envelope);
+        let err = result.expect_err("missing data should be ParseError");
+        match err {
+            BdError::ParseError { message } => {
+                assert!(message.contains("missing 'data' field"), "got: {message}",);
+            }
+            other => panic!("expected ParseError, got {other:?}"),
+        }
+    }
 
     /// Confirms the create command's argv starts with the `create`
     /// subcommand, includes the title flag, and ends with `--json`.
@@ -750,17 +781,7 @@ mod tests {
     /// returns an envelope without the data payload.
     #[test]
     fn test_bd_create_missing_data_field_returns_parse_error() {
-        let envelope = serde_json::json!({
-            "schema_version": 1
-        });
-        let result = parse_issue_or_array(envelope, "bd create");
-        let err = result.expect_err("missing data should be ParseError");
-        match err {
-            BdError::ParseError { message } => {
-                assert!(message.contains("missing 'data' field"), "got: {message}");
-            }
-            other => panic!("expected ParseError, got {other:?}"),
-        }
+        assert_missing_data_is_parse_error(|envelope| parse_issue_or_array(envelope, "bd create"));
     }
 
     // ========================================================================
@@ -1064,15 +1085,7 @@ mod tests {
     /// surface as a typed signal rather than `Ok(vec![])`.
     #[test]
     fn test_dep_list_returns_error_on_missing_data() {
-        let envelope = serde_json::json!({"schema_version": 1});
-        let result = parse_issue_or_array(envelope, "bd show");
-        let err = result.expect_err("missing data should be ParseError");
-        match err {
-            BdError::ParseError { message } => {
-                assert!(message.contains("missing 'data' field"), "got: {message}");
-            }
-            other => panic!("expected ParseError, got {other:?}"),
-        }
+        assert_missing_data_is_parse_error(|envelope| parse_issue_or_array(envelope, "bd show"));
     }
 
     // ========================================================================
@@ -1263,15 +1276,7 @@ mod tests {
     /// as a typed signal rather than `Ok(vec![])`.
     #[test]
     fn test_dep_tree_returns_error_on_missing_data() {
-        let envelope = serde_json::json!({"schema_version": 1});
-        let result = parse_dep_vec(envelope, "bd dep tree");
-        let err = result.expect_err("missing data should be ParseError");
-        match err {
-            BdError::ParseError { message } => {
-                assert!(message.contains("missing 'data' field"), "got: {message}");
-            }
-            other => panic!("expected ParseError, got {other:?}"),
-        }
+        assert_missing_data_is_parse_error(|envelope| parse_dep_vec(envelope, "bd dep tree"));
     }
 
     // ========================================================================
