@@ -392,6 +392,35 @@ pub struct PropagationReport {
     pub errors: Vec<String>,
 }
 
+impl PropagationReport {
+    /// ponytail: dedupe of the 3-row `for row in rows { match status {…} }`
+    /// accumulator that previously lived inline in `bd_label_propagate`
+    /// (production) plus the two propagation happy-path tests. The CLI
+    /// shape is a flat array of `{ issue_id, label, status }` rows
+    /// where `status` is one of `"added"`, `"skipped"`, or anything else
+    /// (unknown future statuses land in `errors` rather than being
+    /// silently dropped so the frontend can surface a partial
+    /// propagation). Takes any `IntoIterator<Item = serde_json::Value>`
+    /// so callers can pass a `Vec<Value>`, an `impl Iterator`, or the
+    /// `parse_label_propagate_rows` output directly without a
+    /// `.collect()` round-trip.
+    pub fn from_rows<I>(rows: I) -> Self
+    where
+        I: IntoIterator<Item = serde_json::Value>,
+    {
+        let mut report = Self::default();
+        for row in rows {
+            let status = row.get("status").and_then(|v| v.as_str()).unwrap_or("");
+            match status {
+                "added" => report.added = report.added.saturating_add(1),
+                "skipped" => report.skipped = report.skipped.saturating_add(1),
+                other => report.errors.push(other.to_string()),
+            }
+        }
+        report
+    }
+}
+
 // ============================================================================
 // History Entry
 // ============================================================================
