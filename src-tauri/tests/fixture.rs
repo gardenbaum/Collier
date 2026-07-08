@@ -25,9 +25,6 @@
 //! mapping to `<target>/.fixture-ids.json`; the tests load that file to
 //! look up the IDs they need to assert against.
 
-use std::path::PathBuf;
-use std::process::Command as StdCommand;
-
 use serde_json::Value;
 use tempfile::TempDir;
 
@@ -39,71 +36,13 @@ use tempfile::TempDir;
 // private to public just for tests.
 use tauri_app_lib::beads_export_for_tests::runner;
 
-/// Skip a test if `bd` is not on PATH. Lets the suite stay green on
-/// machines (e.g. CI without `bd`) that don't have the CLI installed.
-fn skip_if_no_bd() -> bool {
-    if which::which("bd").is_err() {
-        eprintln!("SKIP: bd not in PATH");
-        true
-    } else {
-        false
-    }
-}
-
-/// Absolute path to `scripts/make-fixture.sh` in the repo. `CARGO_MANIFEST_DIR`
-/// is the `src-tauri/` dir at compile time; the script lives one level up.
-fn script_path() -> PathBuf {
-    let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    manifest
-        .parent()
-        .expect("CARGO_MANIFEST_DIR has a parent (repo root)")
-        .join("scripts/make-fixture.sh")
-}
-
-/// Run the fixture script in `tmp`, returning the path the fixture was
-/// created at. Panics with the script's combined output if it exits non-zero.
-fn run_fixture(tmp: &TempDir) -> PathBuf {
-    let script = script_path();
-    assert!(
-        script.exists(),
-        "fixture script missing at {script:?}; rebuild from repo root"
-    );
-
-    let target = tmp.path().to_path_buf();
-    let output = StdCommand::new("bash")
-        .arg(&script)
-        .arg(&target)
-        .output()
-        .expect("spawn bash for make-fixture.sh");
-    assert!(
-        output.status.success(),
-        "make-fixture.sh failed (status {:?}):\nstdout:\n{}\nstderr:\n{}",
-        output.status.code(),
-        String::from_utf8_lossy(&output.stdout),
-        String::from_utf8_lossy(&output.stderr),
-    );
-
-    // Sanity: the script must have written the ID map for downstream
-    // consumers; if it didn't, the fixture didn't run.
-    assert!(
-        target.join(".fixture-ids.json").exists(),
-        "fixture did not write .fixture-ids.json"
-    );
-    target
-}
-
-/// Load `.fixture-ids.json` from the fixture dir. The mapping keys are
-/// stable roles (`EPIC_AUTH`, `TASK_OPT`, …) and the values are the
-/// non-deterministic Beads IDs the script captured for them.
-fn load_ids(fixture_dir: &std::path::Path) -> serde_json::Map<String, Value> {
-    let bytes =
-        std::fs::read(fixture_dir.join(".fixture-ids.json")).expect("read .fixture-ids.json");
-    let value: Value = serde_json::from_slice(&bytes).expect("parse .fixture-ids.json");
-    value
-        .as_object()
-        .cloned()
-        .expect(".fixture-ids.json is a JSON object")
-}
+// Shared setup helpers (`skip_if_no_bd`, `script_path`,
+// `run_fixture`, `load_ids`) live in `tests/common` and are
+// shared with `graph.rs` so the two integration-test crates
+// don't drift out of sync. `bd_json_array` and
+// `fixture_envelope` stay here because `graph.rs` does not
+// need them.
+mod common;
 
 /// Run `bd <args> --json` against `fixture_dir` via the production
 /// runner (so the test exercises the same env, envelope, and timeout
@@ -147,11 +86,11 @@ async fn fixture_envelope(fixture_dir: &std::path::Path) -> Value {
 
 #[tokio::test]
 async fn fixture_seeds_25_issues_with_all_statuses() {
-    if skip_if_no_bd() {
+    if common::skip_if_no_bd() {
         return;
     }
     let tmp = TempDir::new().expect("tempdir");
-    let fixture_dir = run_fixture(&tmp);
+    let fixture_dir = common::run_fixture(&tmp);
 
     let data = bd_json_array(&fixture_dir, &["list", "--all"]).await;
     assert_eq!(data.len(), 25, "fixture must seed exactly 25 issues");
@@ -182,12 +121,12 @@ async fn fixture_seeds_25_issues_with_all_statuses() {
 
 #[tokio::test]
 async fn fixture_has_two_epics_with_parent_child_children() {
-    if skip_if_no_bd() {
+    if common::skip_if_no_bd() {
         return;
     }
     let tmp = TempDir::new().expect("tempdir");
-    let fixture_dir = run_fixture(&tmp);
-    let ids = load_ids(&fixture_dir);
+    let fixture_dir = common::run_fixture(&tmp);
+    let ids = common::load_ids(&fixture_dir);
 
     let data = bd_json_array(&fixture_dir, &["list", "--all"]).await;
 
@@ -248,12 +187,12 @@ async fn fixture_has_two_epics_with_parent_child_children() {
 
 #[tokio::test]
 async fn fixture_has_blocked_chain_dependency() {
-    if skip_if_no_bd() {
+    if common::skip_if_no_bd() {
         return;
     }
     let tmp = TempDir::new().expect("tempdir");
-    let fixture_dir = run_fixture(&tmp);
-    let ids = load_ids(&fixture_dir);
+    let fixture_dir = common::run_fixture(&tmp);
+    let ids = common::load_ids(&fixture_dir);
 
     // The fixture creates a 2-hop blocks chain MIGRATE -> OPT -> CACHE.
     // OPT itself is also status=blocked, so it shows up in `bd blocked`
@@ -312,11 +251,11 @@ async fn fixture_has_blocked_chain_dependency() {
 
 #[tokio::test]
 async fn fixture_has_at_least_three_dependency_edges_total() {
-    if skip_if_no_bd() {
+    if common::skip_if_no_bd() {
         return;
     }
     let tmp = TempDir::new().expect("tempdir");
-    let fixture_dir = run_fixture(&tmp);
+    let fixture_dir = common::run_fixture(&tmp);
     let envelope = fixture_envelope(&fixture_dir).await;
     let data = envelope
         .get("data")
@@ -348,11 +287,11 @@ async fn fixture_has_at_least_three_dependency_edges_total() {
 
 #[tokio::test]
 async fn fixture_has_several_labels() {
-    if skip_if_no_bd() {
+    if common::skip_if_no_bd() {
         return;
     }
     let tmp = TempDir::new().expect("tempdir");
-    let fixture_dir = run_fixture(&tmp);
+    let fixture_dir = common::run_fixture(&tmp);
     let data = bd_json_array(&fixture_dir, &["list", "--all"]).await;
 
     let mut labels = std::collections::BTreeSet::<String>::new();
@@ -379,11 +318,11 @@ async fn fixture_has_several_labels() {
 
 #[tokio::test]
 async fn fixture_exposes_ready_and_blocked_items() {
-    if skip_if_no_bd() {
+    if common::skip_if_no_bd() {
         return;
     }
     let tmp = TempDir::new().expect("tempdir");
-    let fixture_dir = run_fixture(&tmp);
+    let fixture_dir = common::run_fixture(&tmp);
 
     let ready = bd_json_array(&fixture_dir, &["ready"]).await;
     let blocked = bd_json_array(&fixture_dir, &["blocked"]).await;
@@ -434,7 +373,7 @@ async fn fixture_exposes_ready_and_blocked_items() {
         .filter_map(|i| i.get("id").and_then(Value::as_str).map(String::from))
         .collect();
     let data = bd_json_array(&fixture_dir, &["list", "--all"]).await;
-    let ids = load_ids(&fixture_dir);
+    let ids = common::load_ids(&fixture_dir);
     let opt_id = ids.get("TASK_OPT").and_then(Value::as_str).unwrap();
     let cache_id = ids.get("TASK_CACHE").and_then(Value::as_str).unwrap();
     assert!(
@@ -458,12 +397,12 @@ async fn fixture_exposes_ready_and_blocked_items() {
 
 #[tokio::test]
 async fn fixture_ids_json_lists_every_created_role() {
-    if skip_if_no_bd() {
+    if common::skip_if_no_bd() {
         return;
     }
     let tmp = TempDir::new().expect("tempdir");
-    let fixture_dir = run_fixture(&tmp);
-    let ids = load_ids(&fixture_dir);
+    let fixture_dir = common::run_fixture(&tmp);
+    let ids = common::load_ids(&fixture_dir);
 
     // The script documents exactly 27 roles (2 epics + 5 epic children
     // + 20 standalones = 27; the script's `echo` summary line says

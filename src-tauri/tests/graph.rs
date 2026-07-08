@@ -25,64 +25,17 @@
 //! minimal-shape contract end-to-end.
 
 use std::path::Path;
-use tempfile::TempDir;
 
 use serde_json::Value;
 use tauri_app_lib::beads_export_for_tests::runner;
+use tempfile::TempDir;
 
-fn skip_if_no_bd() -> bool {
-    if which::which("bd").is_err() {
-        eprintln!("SKIP: bd not in PATH");
-        true
-    } else {
-        false
-    }
-}
-
-fn script_path() -> std::path::PathBuf {
-    let manifest = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    manifest
-        .parent()
-        .expect("CARGO_MANIFEST_DIR has a parent (repo root)")
-        .join("scripts/make-fixture.sh")
-}
-
-fn run_fixture(tmp: &TempDir) -> std::path::PathBuf {
-    let script = script_path();
-    assert!(
-        script.exists(),
-        "fixture script missing at {script:?}; rebuild from repo root"
-    );
-
-    let target = tmp.path().to_path_buf();
-    let output = std::process::Command::new("bash")
-        .arg(&script)
-        .arg(&target)
-        .output()
-        .expect("spawn bash for make-fixture.sh");
-    assert!(
-        output.status.success(),
-        "make-fixture.sh failed (status {:?}):\nstdout:\n{}\nstderr:\n{}",
-        output.status.code(),
-        String::from_utf8_lossy(&output.stdout),
-        String::from_utf8_lossy(&output.stderr),
-    );
-    assert!(
-        target.join(".fixture-ids.json").exists(),
-        "fixture did not write .fixture-ids.json"
-    );
-    target
-}
-
-fn load_ids(fixture_dir: &Path) -> serde_json::Map<String, Value> {
-    let bytes =
-        std::fs::read(fixture_dir.join(".fixture-ids.json")).expect("read .fixture-ids.json");
-    let value: Value = serde_json::from_slice(&bytes).expect("parse .fixture-ids.json");
-    value
-        .as_object()
-        .cloned()
-        .expect(".fixture-ids.json is a JSON object")
-}
+// Shared setup helpers (`skip_if_no_bd`, `script_path`,
+// `run_fixture`, `load_ids`) live in `tests/common` and are
+// shared with `fixture.rs` so the two integration-test crates
+// don't drift out of sync. `graph_from_bd` stays here
+// because `fixture.rs` does not need it.
+mod common;
 
 /// Drive the `bd_graph` mapping directly against the production
 /// `run_bd` path: spawn `bd list --all --json`, walk the
@@ -155,11 +108,11 @@ async fn graph_from_bd(fixture_dir: &Path) -> (Vec<Value>, Vec<Value>) {
 
 #[tokio::test]
 async fn graph_has_one_node_per_issue() {
-    if skip_if_no_bd() {
+    if common::skip_if_no_bd() {
         return;
     }
     let tmp = TempDir::new().expect("tempdir");
-    let fixture_dir = run_fixture(&tmp);
+    let fixture_dir = common::run_fixture(&tmp);
 
     let (nodes, _edges) = graph_from_bd(&fixture_dir).await;
     // The fixture seeds 25 issues (2 epics + 5 epic children +
@@ -173,11 +126,11 @@ async fn graph_has_one_node_per_issue() {
 
 #[tokio::test]
 async fn graph_has_expected_edge_count() {
-    if skip_if_no_bd() {
+    if common::skip_if_no_bd() {
         return;
     }
     let tmp = TempDir::new().expect("tempdir");
-    let fixture_dir = run_fixture(&tmp);
+    let fixture_dir = common::run_fixture(&tmp);
 
     let (_nodes, edges) = graph_from_bd(&fixture_dir).await;
     // The fixture seeds:
@@ -199,12 +152,12 @@ async fn graph_has_expected_edge_count() {
 
 #[tokio::test]
 async fn graph_edges_use_documented_dep_types() {
-    if skip_if_no_bd() {
+    if common::skip_if_no_bd() {
         return;
     }
     let tmp = TempDir::new().expect("tempdir");
-    let fixture_dir = run_fixture(&tmp);
-    let ids = load_ids(&fixture_dir);
+    let fixture_dir = common::run_fixture(&tmp);
+    let ids = common::load_ids(&fixture_dir);
 
     let (_nodes, edges) = graph_from_bd(&fixture_dir).await;
 
@@ -258,12 +211,12 @@ async fn graph_edges_use_documented_dep_types() {
 
 #[tokio::test]
 async fn graph_nodes_carry_blocked_status_for_blocked_issues() {
-    if skip_if_no_bd() {
+    if common::skip_if_no_bd() {
         return;
     }
     let tmp = TempDir::new().expect("tempdir");
-    let fixture_dir = run_fixture(&tmp);
-    let ids = load_ids(&fixture_dir);
+    let fixture_dir = common::run_fixture(&tmp);
+    let ids = common::load_ids(&fixture_dir);
 
     let (nodes, _edges) = graph_from_bd(&fixture_dir).await;
 
