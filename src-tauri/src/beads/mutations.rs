@@ -710,6 +710,63 @@ mod tests {
         }
     }
 
+    /// Build the full `bd <subcommand> [id] --json …` argv for an input
+    /// type that exposes a `to_args() -> Vec<String>` method (today:
+    /// `CreateInput` and `UpdateInput`) and assert it matches
+    /// `expected`. Mirrors the contract that the production `runner`
+    /// enforces — every bd call gets the subcommand, an optional
+    /// positional `<id>` for `bd update`, the user-edited flags, and a
+    /// trailing `--json` so the envelope parser sees JSON output.
+    ///
+    /// Four argv-shape tests in this file
+    /// (`test_bd_create_argv_shape`,
+    /// `test_bd_update_argv_shape_with_no_changes`,
+    /// `test_bd_update_argv_shape_with_title_only`,
+    /// `test_bd_update_argv_shape_with_priority_and_status`) used to
+    /// inline the same 5-line `to_args → push --json → collect refs →
+    /// vec![prefix] → extend` dance — extracted here so a future
+    /// change to the argv shape contract (e.g. a new leading flag, a
+    /// dropped `--json`, an id positional moving to a `--id` flag)
+    /// only has to land in one place. The closure accepts any future
+    /// input type with a `to_args()` method without needing a trait.
+    fn assert_bd_argv_eq<F>(prefix: &[&str], to_args: F, expected: &[&str])
+    where
+        F: FnOnce() -> Vec<String>,
+    {
+        let mut owned_args: Vec<String> = to_args();
+        owned_args.push("--json".to_string());
+        let arg_refs: Vec<&str> = owned_args.iter().map(String::as_str).collect();
+        let mut argv: Vec<&str> = prefix.to_vec();
+        argv.extend(arg_refs.iter().copied());
+        assert_eq!(argv, expected);
+    }
+
+    /// Assert that `deps` matches `expected` field-by-field
+    /// (`dependency_id`, `dependency_type`, `blocked_by`). The pair
+    /// of dep-parsing tests
+    /// (`test_dep_list_returns_dependencies_from_issue`,
+    /// `test_dep_tree_returns_flat_list`) used to inline the same
+    /// `len == 2 → assert_eq! 3 fields on idx 0 → assert_eq! 3 fields
+    /// on idx 1` shape — extracted here so a future change to the
+    /// `Dependency` struct (e.g. adding `note: Option<String>`) only
+    /// has to land in one place, and so the two tests read as "this
+    /// envelope produces exactly these two edges" rather than
+    /// spelling out seven field accesses.
+    fn assert_deps_match(deps: &[Dependency], expected: &[(&str, DependencyType, Option<bool>)]) {
+        assert_eq!(
+            deps.len(),
+            expected.len(),
+            "dependency count mismatch: got {}, expected {}",
+            deps.len(),
+            expected.len()
+        );
+        for (i, (dep, exp)) in deps.iter().zip(expected.iter()).enumerate() {
+            assert_eq!(dep.dependency_id, exp.0, "deps[{i}].dependency_id");
+            assert_eq!(dep.dependency_type, exp.1, "deps[{i}].dependency_type");
+            assert_eq!(dep.blocked_by, exp.2, "deps[{i}].blocked_by");
+        }
+    }
+
     /// Confirms the create command's argv starts with the `create`
     /// subcommand, includes the title flag, and ends with `--json`.
     /// Guards against future refactors that drop the leading subcommand
@@ -722,14 +779,10 @@ mod tests {
             priority: Some(IssuePriority::P1),
             ..Default::default()
         };
-        let mut owned_args: Vec<String> = input.to_args();
-        owned_args.push("--json".to_string());
-        let arg_refs: Vec<&str> = owned_args.iter().map(String::as_str).collect();
-        let mut argv: Vec<&str> = vec!["create"];
-        argv.extend(arg_refs.iter().copied());
-        assert_eq!(
-            argv,
-            vec!["create", "--title", "Ship T21", "--priority", "1", "--json"]
+        assert_bd_argv_eq(
+            &["create"],
+            || input.to_args(),
+            &["create", "--title", "Ship T21", "--priority", "1", "--json"],
         );
     }
 
@@ -797,12 +850,11 @@ mod tests {
     #[test]
     fn test_bd_update_argv_shape_with_no_changes() {
         let input = UpdateInput::default();
-        let mut owned_args: Vec<String> = input.to_args();
-        owned_args.push("--json".to_string());
-        let arg_refs: Vec<&str> = owned_args.iter().map(String::as_str).collect();
-        let mut argv: Vec<&str> = vec!["update", "beads-99"];
-        argv.extend(arg_refs.iter().copied());
-        assert_eq!(argv, vec!["update", "beads-99", "--json"]);
+        assert_bd_argv_eq(
+            &["update", "beads-99"],
+            || input.to_args(),
+            &["update", "beads-99", "--json"],
+        );
     }
 
     /// Multi-field edit: confirms the dirty-detection contract —
@@ -814,14 +866,10 @@ mod tests {
             title: Some("Renamed".to_string()),
             ..Default::default()
         };
-        let mut owned_args: Vec<String> = input.to_args();
-        owned_args.push("--json".to_string());
-        let arg_refs: Vec<&str> = owned_args.iter().map(String::as_str).collect();
-        let mut argv: Vec<&str> = vec!["update", "beads-99"];
-        argv.extend(arg_refs.iter().copied());
-        assert_eq!(
-            argv,
-            vec!["update", "beads-99", "--title", "Renamed", "--json"]
+        assert_bd_argv_eq(
+            &["update", "beads-99"],
+            || input.to_args(),
+            &["update", "beads-99", "--title", "Renamed", "--json"],
         );
     }
 
@@ -859,22 +907,18 @@ mod tests {
             status: Some(ISSUE_STATUS_IN_PROGRESS.to_string()),
             ..Default::default()
         };
-        let mut owned_args: Vec<String> = input.to_args();
-        owned_args.push("--json".to_string());
-        let arg_refs: Vec<&str> = owned_args.iter().map(String::as_str).collect();
-        let mut argv: Vec<&str> = vec!["update", "beads-99"];
-        argv.extend(arg_refs.iter().copied());
-        assert_eq!(
-            argv,
-            vec![
+        assert_bd_argv_eq(
+            &["update", "beads-99"],
+            || input.to_args(),
+            &[
                 "update",
                 "beads-99",
                 "--priority",
                 "1",
                 "--status",
                 "in_progress",
-                "--json"
-            ]
+                "--json",
+            ],
         );
     }
 
@@ -1060,14 +1104,13 @@ mod tests {
             ..SampleIssue::new("x", "x")
         });
         let issue = parse_issue_or_array(envelope, "bd show").expect("parses");
-        let deps = issue.dependencies;
-        assert_eq!(deps.len(), 2);
-        assert_eq!(deps[0].dependency_id, "beads-77");
-        assert_eq!(deps[0].dependency_type, DependencyType::Blocks);
-        assert_eq!(deps[0].blocked_by, Some(true));
-        assert_eq!(deps[1].dependency_id, "beads-78");
-        assert_eq!(deps[1].dependency_type, DependencyType::Related);
-        assert_eq!(deps[1].blocked_by, None);
+        assert_deps_match(
+            &issue.dependencies,
+            &[
+                ("beads-77", DependencyType::Blocks, Some(true)),
+                ("beads-78", DependencyType::Related, None),
+            ],
+        );
     }
 
     /// An issue with no dependencies still parses — returns an empty
@@ -1233,13 +1276,13 @@ mod tests {
             ]
         });
         let deps = parse_dep_vec(envelope, "bd dep tree").expect("parses");
-        assert_eq!(deps.len(), 2);
-        assert_eq!(deps[0].dependency_id, "beads-77");
-        assert_eq!(deps[0].dependency_type, DependencyType::Blocks);
-        assert_eq!(deps[0].blocked_by, Some(true));
-        assert_eq!(deps[1].dependency_id, "beads-78");
-        assert_eq!(deps[1].dependency_type, DependencyType::Related);
-        assert_eq!(deps[1].blocked_by, None);
+        assert_deps_match(
+            &deps,
+            &[
+                ("beads-77", DependencyType::Blocks, Some(true)),
+                ("beads-78", DependencyType::Related, None),
+            ],
+        );
     }
 
     /// An issue with no outgoing deps returns `data: []` — a valid
