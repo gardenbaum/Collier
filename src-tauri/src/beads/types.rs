@@ -568,6 +568,53 @@ pub struct Issue {
     pub external_ref: Option<String>,
 }
 
+impl Issue {
+    /// Build an empty `Issue` with every field set to its canonical
+    /// default: blank `id` / `title`, status `"open"`, `P2` priority,
+    /// `Task` type, epoch-0 `created_at`, every optional field
+    /// (`updated_at`, `closed_at`, `description`, `owner`, `parent`,
+    /// `acceptance_criteria`, `external_ref`) = `None`, every list
+    /// field (`labels`, `dependencies`, `dependents`) empty, every
+    /// `*_count` = `0`.
+    ///
+    /// Designed for struct-update syntax — callers override only the
+    /// fields they care about and the rest come from `empty()`. The
+    /// two call sites that drove its extraction are the test helper
+    /// `Issue::test_default` (in the `#[cfg(test)] impl` block below)
+    /// and `beads::watcher::empty_seed_issue`; both used to inline
+    /// the same 14-field "tail of defaults" block. Other fixtures
+    /// (`watcher::tests::make_issue`, `gates::tests::base_issue`) keep
+    /// delegating to `test_default` and inherit the dedup
+    /// transitively.
+    ///
+    /// Kept `pub` (not `#[cfg(test)]`) because `empty_seed_issue`
+    /// is production code — the sentinel it returns lives in the
+    /// `WatcherSnapshot` baseline map.
+    pub fn empty() -> Self {
+        Self {
+            id: String::new(),
+            title: String::new(),
+            status: ISSUE_STATUS_OPEN.to_string(),
+            priority: IssuePriority::P2,
+            issue_type: IssueType::Task,
+            created_at: DateTime::<Utc>::from_timestamp(0, 0).unwrap_or_else(Utc::now),
+            updated_at: None,
+            closed_at: None,
+            description: None,
+            owner: None,
+            labels: Vec::new(),
+            dependencies: Vec::new(),
+            dependents: Vec::new(),
+            dependency_count: 0,
+            dependent_count: 0,
+            comment_count: 0,
+            parent: None,
+            acceptance_criteria: None,
+            external_ref: None,
+        }
+    }
+}
+
 #[cfg(test)]
 impl Issue {
     /// Build a default `Issue` for unit tests with only `id`, `title`
@@ -603,28 +650,17 @@ impl Issue {
     /// + `sample_issue_envelope(...)`) live in `beads::test_fixture`;
     /// this one is the Rust-struct-side counterpart.
     pub fn test_default(id: &str, title: &str, status: IssueStatus) -> Self {
+        // `priority` / `issue_type` come from `Self::empty()`; we
+        // override `id` / `title` / `status` / `created_at` and let
+        // the rest of the 18-field defaults flow through.
         Self {
             id: id.to_string(),
             title: title.to_string(),
             status,
-            priority: IssuePriority::P2,
-            issue_type: IssueType::Task,
             created_at: DateTime::parse_from_rfc3339("2026-01-01T00:00:00Z")
                 .expect("test_default fixture timestamp is always valid")
                 .with_timezone(&Utc),
-            updated_at: None,
-            closed_at: None,
-            description: None,
-            owner: None,
-            labels: Vec::new(),
-            dependencies: Vec::new(),
-            dependents: Vec::new(),
-            dependency_count: 0,
-            dependent_count: 0,
-            comment_count: 0,
-            parent: None,
-            acceptance_criteria: None,
-            external_ref: None,
+            ..Self::empty()
         }
     }
 }

@@ -202,28 +202,19 @@ impl Default for WatcherSnapshot {
 /// `Issue` body is meaningless — we never compare it against
 /// anything.
 fn empty_seed_issue() -> Issue {
-    use crate::beads::{IssuePriority, IssueType, ISSUE_STATUS_OPEN};
+    // `id` / `title` / `status` / `priority` / `created_at` are
+    // overridden explicitly so the sentinel is self-documenting at
+    // the call site; the remaining 13 fields (the canonical empty
+    // defaults) come from `Issue::empty()`.
+    use crate::beads::{IssuePriority, ISSUE_STATUS_OPEN};
     Issue {
         id: "__seeded__".to_string(),
         title: String::new(),
         status: ISSUE_STATUS_OPEN.to_string(),
         priority: IssuePriority::P4,
-        issue_type: IssueType::Task,
         created_at: chrono::DateTime::<chrono::Utc>::from_timestamp(0, 0)
             .unwrap_or_else(chrono::Utc::now),
-        updated_at: None,
-        closed_at: None,
-        description: None,
-        owner: None,
-        labels: Vec::new(),
-        dependencies: Vec::new(),
-        dependents: Vec::new(),
-        dependency_count: 0,
-        dependent_count: 0,
-        comment_count: 0,
-        parent: None,
-        acceptance_criteria: None,
-        external_ref: None,
+        ..Issue::empty()
     }
 }
 
