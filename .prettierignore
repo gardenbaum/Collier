@@ -21,3 +21,8 @@ src/lib/bindings.ts
 
 # Logs
 *.log
+
+# jscpd output (machine-generated JSON; prettier --check would
+# otherwise fail on historical .bak snapshots from pre-dedup runs)
+jscpd-report/
+jscpd-report.bak/

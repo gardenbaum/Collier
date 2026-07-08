@@ -13,6 +13,7 @@ dist-ssr
 *.local
 *.local.*
 jscpd-report
+jscpd-report.bak
 
 # Coverage output from `bun run test:coverage`
 coverage
