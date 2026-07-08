@@ -673,7 +673,7 @@ mod tests {
     use super::*;
     use crate::beads::test_fixture::{
         bare_issue_envelope, bare_issue_envelope_with, sample_issue_envelope,
-        sample_issue_envelope_with, sample_issues_envelope, SampleIssue,
+        sample_issue_envelope_with, SampleIssue,
     };
     use crate::beads::{
         IssuePriority, IssueType, ISSUE_STATUS_CLOSED, ISSUE_STATUS_IN_PROGRESS, ISSUE_STATUS_OPEN,
@@ -697,6 +697,7 @@ mod tests {
     fn assert_missing_data_is_parse_error<F, T>(parser: F)
     where
         F: FnOnce(serde_json::Value) -> Result<T, BdError>,
+        T: std::fmt::Debug,
     {
         let envelope = serde_json::json!({"schema_version": 1});
         let result = parser(envelope);
