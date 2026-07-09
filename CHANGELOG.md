@@ -151,4 +151,5 @@ First public release of Collier, a cross-platform desktop GUI for
 [0.1.0]: https://github.com/gardenbaum/Collier/releases/tag/v0.1.0
 
 ### Changed
+
 - `build.yml` manual workflow no longer creates draft releases or fake `__manual-*` tags; it now builds with `bun run tauri build <bundles>` and uploads the bundles purely as workflow artifacts.
