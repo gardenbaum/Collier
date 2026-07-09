@@ -105,16 +105,15 @@ jobs:
         shell: bash
         run: |
           set -e
-          # The committed tauri.conf.json ships a placeholder pubkey for
-          # the updater plugin. Tauri v2 checks for TAURI_SIGNING_PRIVATE_KEY
-          # whenever a pubkey is present (regardless of placeholder content),
-          # so manual ad-hoc builds cannot use --config overrides — the
-          # original is merged in and wins. We instead temporarily strip
-          # the pubkey + flip active=false on the real config, build, then
-          # restore the file from git.
+          # Remove the entire `plugins.updater` block. Tauri v2's
+          # tauri-plugin-updater requires a pubkey whenever the key is
+          # present in plugins, regardless of `active` — and demands
+          # TAURI_SIGNING_PRIVATE_KEY when a pubkey is set. Manual builds
+          # are smoke tests; we strip the key entirely. --config overrides
+          # don't work because Tauri does a deep merge with the original.
+          # release.yml keeps the full config and provides real signing secrets.
           cp src-tauri/tauri.conf.json /tmp/tauri.conf.json.bak
-          jq 'del(.plugins.updater.pubkey) | .plugins.updater.active = false' \
-            src-tauri/tauri.conf.json > /tmp/tauri.conf.json.new
+          jq 'del(.plugins.updater)' src-tauri/tauri.conf.json > /tmp/tauri.conf.json.new
           mv /tmp/tauri.conf.json.new src-tauri/tauri.conf.json
           trap 'cp /tmp/tauri.conf.json.bak src-tauri/tauri.conf.json' EXIT
           bun run tauri build ${{ matrix.args }}
