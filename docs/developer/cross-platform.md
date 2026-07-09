@@ -289,15 +289,42 @@ bun run build
 
 ### CI/CD Builds
 
-The GitHub Actions release workflow builds for all platforms:
+Three GitHub Actions workflows cover the cross-platform build story:
 
-| Platform | Runner           | Output      |
-| -------- | ---------------- | ----------- |
-| macOS    | `macos-latest`   | `.dmg`      |
-| Windows  | `windows-latest` | `.msi`      |
-| Linux    | `ubuntu-22.04`   | `.AppImage` |
+#### `ci.yml` — runs on every PR and push to `main`
 
-See `.github/workflows/release.yml` for the full configuration.
+| Job             | Trigger             | Runner(s)                        | Purpose                                                                               |
+| --------------- | ------------------- | -------------------------------- | ------------------------------------------------------------------------------------- |
+| `check`         | PR + push           | `ubuntu-latest`                  | `bun run check:all` (typecheck, lint, format, rustfmt, clippy, tests)                 |
+| `e2e`           | PR + push           | (reusable `e2e.yml`)             | Xvfb + tauri-driver + WebdriverIO smoke suite                                         |
+| `build-check`   | PR + push           | `macos-latest`, `windows-latest` | `bun run tauri:check` (compile + link, no bundle)                                     |
+| `build-bundles` | push to `main` only | macOS / Windows / Linux matrix   | Full `tauri-action` builds; uploads `.dmg` / `.msi` / `.AppImage` as 90-day artifacts |
+
+PRs pay the cheap cost (`build-check` only, ~5 min per platform).
+Main pushes pay the full matrix (`build-bundles`, ~15-20 min per platform
+when the cache is cold) and get the bundles as downloadable workflow
+artifacts.
+
+#### `build.yml` — manual `workflow_dispatch`
+
+Dispatch from the Actions tab with a `platforms` input (e.g.
+`macos,windows`) to build internal bundles between tags. Useful when
+you want to grab a `.dmg` to test locally without cutting a release.
+
+#### `release.yml` — tag-driven
+
+The original release workflow (`v*` tag or `workflow_dispatch` with a
+`version` input). Builds signed bundles and publishes a draft GitHub
+Release using the `TAURI_PRIVATE_KEY` secret. See
+`docs/developer/releases.md` for the full release-pipeline document.
+
+#### Per-platform output
+
+| Platform | Runner           | Output                 |
+| -------- | ---------------- | ---------------------- |
+| macOS    | `macos-latest`   | `.dmg` + `.app` bundle |
+| Windows  | `windows-latest` | `.msi` installer       |
+| Linux    | `ubuntu-22.04`   | `.AppImage`            |
 
 ### Linux Dependencies
 
