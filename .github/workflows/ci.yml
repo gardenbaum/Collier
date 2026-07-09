@@ -108,7 +108,7 @@ jobs:
         run: bun run build
 
       - name: Tauri build --check (no bundle, no release)
-        run: bun run tauri build --check
+        run: bun run tauri:check
 
   # Full cross-platform bundle build. Only on push to main
   # (not on PRs -- too expensive for the PR feedback loop and
