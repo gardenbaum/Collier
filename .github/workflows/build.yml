@@ -100,17 +100,11 @@ jobs:
         if: steps.skip_check.outputs.should_run == 'true'
         run: bun install --frozen-lockfile
 
-      - name: Build bundles
+      - name: Build bundles (artifact-only, no release/tag)
         if: steps.skip_check.outputs.should_run == 'true'
-        uses: tauri-apps/tauri-action@v0
+        run: bun run tauri build ${{ matrix.args }}
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tagName: __manual-${{ github.run_id }}-${{ matrix.os }}
-          releaseName: 'Collier manual build ${{ github.run_id }} (${{ matrix.os }})'
-          releaseDraft: true
-          prerelease: true
-          args: ${{ matrix.args }}
+          NO_STRIP: 'true'
 
       - name: Upload bundles as workflow artifacts
         if: always() && steps.skip_check.outputs.should_run == 'true'
