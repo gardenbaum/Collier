@@ -103,23 +103,15 @@ jobs:
       - name: Build bundles (artifact-only, no release/tag)
         if: steps.skip_check.outputs.should_run == 'true'
         shell: bash
-        run: |
-          set -e
-          # Remove the entire `plugins.updater` block. Tauri v2's
-          # tauri-plugin-updater requires a pubkey whenever the key is
-          # present in plugins, regardless of `active` — and demands
-          # TAURI_SIGNING_PRIVATE_KEY when a pubkey is set. Manual builds
-          # are smoke tests; we strip the key entirely. --config overrides
-          # don't work because Tauri does a deep merge with the original.
-          # release.yml keeps the full config and provides real signing secrets.
-          cp src-tauri/tauri.conf.json /tmp/tauri.conf.json.bak
-          jq 'del(.plugins.updater)' src-tauri/tauri.conf.json > /tmp/tauri.conf.json.new
-          mv /tmp/tauri.conf.json.new src-tauri/tauri.conf.json
-          trap 'cp /tmp/tauri.conf.json.bak src-tauri/tauri.conf.json' EXIT
-          bun run tauri build ${{ matrix.args }}
-          cp /tmp/tauri.conf.json.bak src-tauri/tauri.conf.json
+        # tauri-plugin-updater requires a private key in TAURI_SIGNING_PRIVATE_KEY
+        # when plugins.updater.pubkey is set in tauri.conf.json. Both are configured
+        # as GitHub repository secrets; the matching pubkey is committed to
+        # src-tauri/tauri.conf.json. release.yml uses the same secrets.
+        run: bun run tauri build ${{ matrix.args }}
         env:
           NO_STRIP: 'true'
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
 
       - name: Upload bundles as workflow artifacts
         if: always() && steps.skip_check.outputs.should_run == 'true'
