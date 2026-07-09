@@ -102,15 +102,17 @@ jobs:
 
       - name: Build bundles (artifact-only, no release/tag)
         if: steps.skip_check.outputs.should_run == 'true'
+        shell: bash
         run: |
           set -e
-          # The committed tauri.conf.json has a placeholder pubkey for the
+          # The committed tauri.conf.json ships a placeholder pubkey for the
           # updater plugin, which makes `tauri build` require a signing key.
-          # Manual ad-hoc builds are smoke tests; disable the updater so the
-          # build does not require TAURI_SIGNING_PRIVATE_KEY. The real
-          # release pipeline (release.yml) keeps the original config and
-          # uses the proper signing secrets.
-          jq '.plugins.updater.active = false' src-tauri/tauri.conf.json > /tmp/tauri.build.json
+          # Manual ad-hoc builds are smoke tests; strip the pubkey entirely
+          # so the build does not require TAURI_SIGNING_PRIVATE_KEY. The
+          # real release pipeline (release.yml) keeps the original config
+          # and uses the proper signing secrets.
+          jq 'del(.plugins.updater.pubkey) | .plugins.updater.active = false' \
+            src-tauri/tauri.conf.json > /tmp/tauri.build.json
           bun run tauri build --config /tmp/tauri.build.json ${{ matrix.args }}
         env:
           NO_STRIP: 'true'
