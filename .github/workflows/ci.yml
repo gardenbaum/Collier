@@ -104,11 +104,13 @@ jobs:
       - name: Install frontend dependencies
         run: bun install --frozen-lockfile
 
-      - name: Build frontend (needed before tauri build --check)
-        run: bun run build
-
-      - name: Tauri build --check (no bundle, no release)
-        run: bun run tauri:check
+      - name: Tauri build --no-bundle (compile + link, skip bundling)
+        # Tauri v2 has no --check flag; --no-bundle runs the full
+        # Rust compile + frontend bundle + Tauri-link step, but skips
+        # the installer/bundle step (.dmg / .msi / .AppImage). This
+        # is the canonical Tauri-CI fast-feedback idiom and is what
+        # we want for cross-platform smoke testing on every PR.
+        run: bun run tauri build --no-bundle --ci
 
   # Full cross-platform bundle build. Only on push to main
   # (not on PRs -- too expensive for the PR feedback loop and
