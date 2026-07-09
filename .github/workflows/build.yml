@@ -15,9 +15,9 @@ on:
   workflow_dispatch:
     inputs:
       platforms:
-        description: "Platforms to build (comma-separated: macos,windows,linux)"
+        description: 'Platforms to build (comma-separated: macos,windows,linux)'
         required: true
-        default: "macos,windows,linux"
+        default: 'macos,windows,linux'
         type: string
 
 env:
@@ -33,13 +33,13 @@ jobs:
       matrix:
         include:
           - os: macos-latest
-            args: "--bundles app,dmg"
+            args: '--bundles app,dmg'
             artifact: collier-macos
           - os: windows-latest
-            args: "--bundles msi"
+            args: '--bundles msi'
             artifact: collier-windows
           - os: ubuntu-22.04
-            args: "--bundles appimage"
+            args: '--bundles appimage'
             artifact: collier-linux
     steps:
       - name: Skip if platform not requested
@@ -76,7 +76,7 @@ jobs:
         if: steps.skip_check.outputs.should_run == 'true'
         uses: swatinem/rust-cache@v2
         with:
-          workspaces: "./src-tauri -> target"
+          workspaces: './src-tauri -> target'
 
       - name: Install Linux dependencies
         if: steps.skip_check.outputs.should_run == 'true' && matrix.os == 'ubuntu-22.04'
@@ -107,7 +107,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tagName: __manual-${{ github.run_id }}-${{ matrix.os }}
-          releaseName: "Collier manual build ${{ github.run_id }} (${{ matrix.os }})"
+          releaseName: 'Collier manual build ${{ github.run_id }} (${{ matrix.os }})'
           releaseDraft: true
           prerelease: true
           args: ${{ matrix.args }}
