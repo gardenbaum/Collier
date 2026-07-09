@@ -160,6 +160,29 @@ This produces a platform-specific bundle in `src-tauri/target/release/bundle/`:
 Signing and notarization are not configured for local builds — see the
 Release section below for the GitHub Actions path.
 
+### Continuous Integration
+
+Every PR and every push to `main` runs `.github/workflows/ci.yml`:
+
+- **`check`** — `bun run check:all` on `ubuntu-latest` (typecheck, lint,
+  format, rustfmt, clippy, vitest, cargo test).
+- **`e2e`** — the shared Xvfb + tauri-driver + WebdriverIO harness
+  (`.github/workflows/e2e.yml`).
+- **`build-check`** — `bun run tauri:check` (full Rust compile +
+  frontend bundle, but no platform installer) on `macos-latest` and
+  `windows-latest`. Catches MSVC / universal-binary / webkit2gtk
+  surprises before merge.
+- **`build-bundles`** — full `tauri-action` matrix on push to `main`
+  only (`.dmg`, `.msi`, `.AppImage`). Bundles are uploaded as
+  90-day workflow artifacts (`collier-macos`, `collier-windows`,
+  `collier-linux`) so maintainers can grab an internal build without
+  cutting a tag. Skipped on PRs because PR builds have no signing
+  keys and would waste ~30 minutes of CI per platform.
+
+For ad-hoc cross-platform smoke tests between tags, dispatch
+**`.github/workflows/build.yml`** from the Actions tab with a
+`platforms` input (e.g. `macos,windows`).
+
 ### Release Process
 
 Releases are tag-driven: pushing a `v*` tag (or running the workflow

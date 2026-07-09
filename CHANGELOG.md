@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **CI: cross-platform build matrix.** Every PR now runs a cheap
+  `tauri build --check` on `macos-latest` and `windows-latest`
+  in addition to the existing Linux checks, so platform-specific
+  compile errors (MSVC quirks, universal-binary surprises,
+  webkit2gtk linking) surface before merge instead of waiting
+  for the next tag. Pushes to `main` additionally run the full
+  `tauri-action` matrix (`.dmg` / `.msi` / `.AppImage`) and
+  upload the bundles as 90-day workflow artifacts for ad-hoc
+  testing between tags. A new manual `Build Collier (manual)`
+  workflow can be dispatched from the Actions UI with a
+  `platforms` input (e.g. `macos,windows`) when you need an
+  internal build without cutting a release tag.
 - **M5 — accessibility & vim-style keyboard navigation.** The
   issue list is now a real ARIA grid (`role="grid"` with
   `aria-rowcount` / `aria-colcount` / `aria-label` and per-row
