@@ -1,0 +1,126 @@
+name: 'Build Collier (manual)'
+
+# Manual cross-platform build for ad-hoc smoke-testing between tags.
+# Use this when:
+#   - You want to grab an internal .dmg / .msi / .AppImage without
+#     cutting a real release tag.
+#   - You want to verify a fix on Windows or macOS before merging
+#     the PR (build-check in ci.yml is the cheaper option for that).
+#   - A contributor on a different OS wants to validate their work.
+#
+# To publish a real release, push a `v*` tag instead -- `release.yml`
+# handles signing, updater JSON, and the public release page.
+
+on:
+  workflow_dispatch:
+    inputs:
+      platforms:
+        description: "Platforms to build (comma-separated: macos,windows,linux)"
+        required: true
+        default: "macos,windows,linux"
+        type: string
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  build:
+    name: build (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            args: "--bundles app,dmg"
+            artifact: collier-macos
+          - os: windows-latest
+            args: "--bundles msi"
+            artifact: collier-windows
+          - os: ubuntu-22.04
+            args: "--bundles appimage"
+            artifact: collier-linux
+    steps:
+      - name: Skip if platform not requested
+        id: skip_check
+        run: |
+          PLATFORMS="${{ inputs.platforms }}"
+          case "${{ matrix.os }}" in
+            macos-latest)  WANT="macos" ;;
+            windows-latest) WANT="windows" ;;
+            ubuntu-22.04)  WANT="linux" ;;
+          esac
+          if echo ",$PLATFORMS," | grep -q ",$WANT,"; then
+            echo "should_run=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::Building $WANT (${{ matrix.os }})"
+          else
+            echo "should_run=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Skipping $WANT (${{ matrix.os }}) -- not in platforms='$PLATFORMS'"
+          fi
+        shell: bash
+
+      - name: Checkout
+        if: steps.skip_check.outputs.should_run == 'true'
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        if: steps.skip_check.outputs.should_run == 'true'
+        uses: oven-sh/setup-bun@v2
+
+      - name: Install Rust stable
+        if: steps.skip_check.outputs.should_run == 'true'
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache
+        if: steps.skip_check.outputs.should_run == 'true'
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: "./src-tauri -> target"
+
+      - name: Install Linux dependencies
+        if: steps.skip_check.outputs.should_run == 'true' && matrix.os == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            file \
+            wget \
+            libssl-dev \
+            pkg-config \
+            libgtk-3-dev \
+            libwebkit2gtk-4.1-dev \
+            libjavascriptcoregtk-4.1-dev \
+            libsoup-3.0-dev \
+            librsvg2-dev \
+            libxdo-dev \
+            patchelf
+
+      - name: Install frontend dependencies
+        if: steps.skip_check.outputs.should_run == 'true'
+        run: bun install --frozen-lockfile
+
+      - name: Build bundles
+        if: steps.skip_check.outputs.should_run == 'true'
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: __manual-${{ github.run_id }}-${{ matrix.os }}
+          releaseName: "Collier manual build ${{ github.run_id }} (${{ matrix.os }})"
+          releaseDraft: true
+          prerelease: true
+          args: ${{ matrix.args }}
+
+      - name: Upload bundles as workflow artifacts
+        if: always() && steps.skip_check.outputs.should_run == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: |
+            src-tauri/target/release/bundle/**/*.dmg
+            src-tauri/target/release/bundle/**/*.app
+            src-tauri/target/release/bundle/**/*.msi
+            src-tauri/target/release/bundle/**/*.AppImage
+          if-no-files-found: warn
+          retention-days: 30
