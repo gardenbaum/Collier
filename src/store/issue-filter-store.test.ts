@@ -5,38 +5,7 @@ import {
   useIssueFilterStore,
 } from './issue-filter-store'
 import { attachToWorkspaceStore } from './attach-to-workspace-store'
-
-// Minimal workspace-store stand-in. The real store has more fields,
-// but `attachToWorkspaceStore` only reads `repoPath` via `getState()`
-// and subscribes to changes, so a thin wrapper exposing both is
-// enough. `setRepoPath` mutates the stub's own `repoPath` field
-// and fires every subscriber with the new value, mimicking the
-// real store's subscribe / setState contract.
-function makeWorkspaceStub(initialPath: string | null = null): {
-  repoPath: string | null
-  getState: () => { repoPath: string | null }
-  subscribe: (
-    listener: (state: { repoPath: string | null }) => void
-  ) => () => void
-  setRepoPath: (path: string | null) => void
-} {
-  const listeners = new Set<(state: { repoPath: string | null }) => void>()
-  const state: { repoPath: string | null } = { repoPath: initialPath }
-  return {
-    repoPath: state.repoPath,
-    getState: () => state,
-    subscribe: listener => {
-      listeners.add(listener)
-      return () => {
-        listeners.delete(listener)
-      }
-    },
-    setRepoPath: path => {
-      state.repoPath = path
-      listeners.forEach(l => l({ repoPath: path }))
-    },
-  }
-}
+import { makeWorkspaceStub } from '@/test/workspace-stub'
 
 describe('useIssueFilterStore', () => {
   beforeEach(() => {
