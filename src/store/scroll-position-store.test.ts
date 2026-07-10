@@ -4,32 +4,7 @@ import {
   useScrollPositionStore,
 } from './scroll-position-store'
 import { attachToWorkspaceStore } from './attach-to-workspace-store'
-
-function makeWorkspaceStub(initialPath: string | null = null): {
-  repoPath: string | null
-  getState: () => { repoPath: string | null }
-  subscribe: (
-    listener: (state: { repoPath: string | null }) => void
-  ) => () => void
-  setRepoPath: (path: string | null) => void
-} {
-  const listeners = new Set<(state: { repoPath: string | null }) => void>()
-  const state: { repoPath: string | null } = { repoPath: initialPath }
-  return {
-    repoPath: state.repoPath,
-    getState: () => state,
-    subscribe: listener => {
-      listeners.add(listener)
-      return () => {
-        listeners.delete(listener)
-      }
-    },
-    setRepoPath: path => {
-      state.repoPath = path
-      listeners.forEach(l => l({ repoPath: path }))
-    },
-  }
-}
+import { makeWorkspaceStub } from '@/test/workspace-stub'
 
 describe('useScrollPositionStore', () => {
   beforeEach(() => {
