@@ -27,14 +27,7 @@
  * so the production build keeps its no-export API contract.
  */
 import { act, render, screen, waitFor } from '@/test/test-utils'
-import {
-  describe,
-  it,
-  expect,
-  beforeEach,
-  afterEach,
-  vi,
-} from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { commands } from '@/lib/tauri-bindings'
 
 // ----------------------------------------------------------------------------
@@ -251,7 +244,11 @@ function installStartupTimerSpy() {
     .spyOn(globalThis, 'setTimeout')
     // The mocked implementation ignores unused trailing args (React passes
     // the bound args it captured at effect creation time).
-    .mockImplementation(((handler: TimerHandler, timeout?: number, ...args: unknown[]) => {
+    .mockImplementation(((
+      handler: TimerHandler,
+      timeout?: number,
+      ...args: unknown[]
+    ) => {
       if (typeof handler === 'function' && timeout === 5000) {
         capturedStartupTimer = () => {
           ;(handler as (...a: unknown[]) => void)(...args)
@@ -375,9 +372,7 @@ describe('App 5s startup auto-update timer', () => {
       // We tolerate extra clearTimeout calls from unrelated timers
       // by asserting "at least one new call" via the delta.
       await waitFor(() =>
-        expect(clearTimeoutSpy.mock.calls.length).toBeGreaterThan(
-          beforeUnmount
-        )
+        expect(clearTimeoutSpy.mock.calls.length).toBeGreaterThan(beforeUnmount)
       )
       // At least one of the new calls must pass the sentinel handle
       // our setTimeout spy returned for the 5s timer — that's how
@@ -420,9 +415,7 @@ describe('App 5s startup auto-update timer', () => {
  */
 async function dispatchMenuUpdateEvent() {
   await act(async () => {
-    window.dispatchEvent(
-      new CustomEvent('collier:menu-check-for-updates')
-    )
+    window.dispatchEvent(new CustomEvent('collier:menu-check-for-updates'))
     await flushMicrotasks()
   })
 }
@@ -603,12 +596,8 @@ describe('App collier:menu-check-for-updates event listener', () => {
     cb?.({ event: 'Progress', data: { chunkLength: 512 } })
     cb?.({ event: 'Finished', data: {} })
 
-    expect(mockLogger.info).toHaveBeenCalledWith(
-      'Downloading 1024 bytes'
-    )
-    expect(mockLogger.info).toHaveBeenCalledWith(
-      'Downloaded: 512 bytes'
-    )
+    expect(mockLogger.info).toHaveBeenCalledWith('Downloading 1024 bytes')
+    expect(mockLogger.info).toHaveBeenCalledWith('Downloaded: 512 bytes')
     expect(mockLogger.info).toHaveBeenCalledWith(
       'Download complete, installing...'
     )
