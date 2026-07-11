@@ -13,7 +13,10 @@ import { renderHook, act } from '@testing-library/react'
 const { mockPlatform, mockIsFullscreen, mockOnResized } = vi.hoisted(() => ({
   mockPlatform: vi.fn<() => string>(),
   mockIsFullscreen: vi.fn<() => Promise<boolean>>(),
-  mockOnResized: vi.fn<() => Promise<() => void>>(),
+  // The real Tauri API passes the resize handler to `onResized(handler)`,
+  // so the mock has to accept a callback. We capture it in tests that
+  // exercise the listener path.
+  mockOnResized: vi.fn<(cb?: () => void) => Promise<() => void>>(),
 }))
 
 vi.mock('@tauri-apps/plugin-os', () => ({
@@ -23,7 +26,8 @@ vi.mock('@tauri-apps/plugin-os', () => ({
 vi.mock('@tauri-apps/api/window', () => ({
   getCurrentWindow: () => ({
     isFullscreen: () => mockIsFullscreen(),
-    onResized: () => mockOnResized(),
+    // Forward the resize handler so tests can capture and invoke it.
+    onResized: (cb: () => void) => mockOnResized(cb),
   }),
 }))
 
@@ -148,5 +152,108 @@ describe('useSquareCornersEffect', () => {
     })
 
     expect(unlisten).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not setSquareCorners when isFullscreen resolves after unmount', async () => {
+    // Covers the post-await `if (cancelled) return` branch inside
+    // updateCorners (L30:21): the effect was cleaned up before the
+    // awaited isFullscreen() promise resolved, so the short-circuit
+    // must win and setSquareCorners must not be called.
+    mockPlatform.mockReturnValue('windows')
+
+    // Definite-assignment: the resolver is wired up synchronously inside
+    // the Promise constructor below, and TypeScript can't follow the
+    // closure to see that. Using `!` skips the null check at the call
+    // site; we still guard via `mockIsFullscreen` being awaited in act()
+    // before reaching the resolution.
+    let resolveFullscreen!: (value: boolean) => void
+    mockIsFullscreen.mockReturnValueOnce(
+      new Promise<boolean>(resolve => {
+        resolveFullscreen = resolve
+      })
+    )
+
+    const { unmount } = renderHook(() => useSquareCornersEffect())
+
+    // Unmount synchronously sets `cancelled = true`; only then do we
+    // resolve the deferred isFullscreen promise.
+    unmount()
+    resolveFullscreen(true)
+
+    await act(async () => {
+      await Promise.resolve()
+    })
+    await act(async () => {
+      await Promise.resolve()
+    })
+
+    expect(isSquareCornersActive()).toBe(false)
+  })
+
+  it('fires updateCorners from the resize listener while mounted and no-ops after unmount', async () => {
+    // Covers the onResized callback paths:
+    //   - while mounted: enters the callback, `cancelled` is false, so
+    //     `void updateCorners()` runs (L41:6), producing another
+    //     isFullscreen() call.
+    //   - after unmount: enters the callback (L40:6), `cancelled` is
+    //     true, so the `return` short-circuit fires (L40:21) and
+    //     no further isFullscreen() call is made.
+    mockPlatform.mockReturnValue('windows')
+    mockIsFullscreen.mockResolvedValue(false)
+
+    let resizeListener: (() => void) | null = null
+    const unlisten = vi.fn()
+    mockOnResized.mockImplementationOnce(cb => {
+      resizeListener = cb ?? null
+      return Promise.resolve(unlisten)
+    })
+
+    const { unmount } = renderHook(() => useSquareCornersEffect())
+    await act(async () => {
+      await Promise.resolve()
+    })
+    await act(async () => {
+      await Promise.resolve()
+    })
+
+    // Sanity: initial mount triggered one isFullscreen check and one
+    // onResized subscription.
+    expect(mockIsFullscreen).toHaveBeenCalledTimes(1)
+    expect(mockOnResized).toHaveBeenCalledTimes(1)
+    expect(resizeListener).not.toBeNull()
+
+    // Fire listener while mounted → `void updateCorners()` runs →
+    // another isFullscreen() call.
+    await act(async () => {
+      if (!resizeListener) throw new Error('listener was not registered')
+      resizeListener()
+    })
+    await act(async () => {
+      await Promise.resolve()
+    })
+    await act(async () => {
+      await Promise.resolve()
+    })
+    expect(mockIsFullscreen).toHaveBeenCalledTimes(2)
+
+    // Unmount sets `cancelled = true`.
+    unmount()
+    await act(async () => {
+      await Promise.resolve()
+    })
+    expect(unlisten).toHaveBeenCalledTimes(1)
+
+    // Fire listener after unmount → short-circuits, no further calls.
+    await act(async () => {
+      if (!resizeListener) throw new Error('listener was not registered')
+      resizeListener()
+    })
+    await act(async () => {
+      await Promise.resolve()
+    })
+    await act(async () => {
+      await Promise.resolve()
+    })
+    expect(mockIsFullscreen).toHaveBeenCalledTimes(2)
   })
 })
