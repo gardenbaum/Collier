@@ -23,10 +23,14 @@ import type { usePreferences } from '@/services/preferences'
 import { ThemeProvider } from './ThemeProvider'
 
 const { mockEmit } = vi.hoisted(() => ({ mockEmit: vi.fn() }))
-const { mockUsePreferences } = vi.hoisted(() => ({ mockUsePreferences: vi.fn() }))
+const { mockUsePreferences } = vi.hoisted(() => ({
+  mockUsePreferences: vi.fn(),
+}))
 
 vi.mock('@tauri-apps/api/event', () => ({ emit: mockEmit }))
-vi.mock('@/services/preferences', () => ({ usePreferences: mockUsePreferences }))
+vi.mock('@/services/preferences', () => ({
+  usePreferences: mockUsePreferences,
+}))
 
 interface MatchMediaStub {
   matches: boolean
@@ -47,14 +51,14 @@ function stubMatchMedia(initialMatches: boolean): MatchMediaStub {
     addEventListener: vi.fn(
       (event: string, cb: (e: { matches: boolean }) => void) => {
         if (event === 'change') listeners.push(cb)
-      },
+      }
     ),
     removeEventListener: vi.fn(
       (event: string, cb: (e: { matches: boolean }) => void) => {
         if (event !== 'change') return
         const idx = listeners.indexOf(cb)
         if (idx >= 0) listeners.splice(idx, 1)
-      },
+      }
     ),
     dispatchEvent: vi.fn(),
     fireChange: (matches: boolean) => {
@@ -108,7 +112,7 @@ function renderThemeProvider(
      * helper, omit this so the mock is preserved.
      */
     preferencesTheme?: Theme | undefined
-  } = {},
+  } = {}
 ): ThemeProviderHandle {
   if ('preferencesTheme' in props) {
     makePreferencesMock(props.preferencesTheme)
@@ -175,7 +179,7 @@ describe('ThemeProvider', () => {
       expect(handle.getDocumentClasses()).toEqual(['dark'])
       expect(stub.addEventListener).toHaveBeenCalledWith(
         'change',
-        expect.any(Function),
+        expect.any(Function)
       )
     })
 
@@ -223,7 +227,7 @@ describe('ThemeProvider', () => {
       expect(stub.addEventListener).toHaveBeenCalledTimes(1)
       expect(stub.addEventListener).toHaveBeenCalledWith(
         'change',
-        expect.any(Function),
+        expect.any(Function)
       )
       expect(stub.removeEventListener).not.toHaveBeenCalled()
     })
@@ -248,7 +252,10 @@ describe('ThemeProvider', () => {
       const registeredCb = stub.listeners[0]
       expect(registeredCb).toBeDefined()
       handle.unmount()
-      expect(stub.removeEventListener).toHaveBeenCalledWith('change', registeredCb)
+      expect(stub.removeEventListener).toHaveBeenCalledWith(
+        'change',
+        registeredCb
+      )
       expect(stub.listeners).toHaveLength(0)
     })
 
@@ -322,7 +329,10 @@ describe('ThemeProvider', () => {
         handle.getSetTheme()?.('dark')
       })
       expect(handle.getDocumentClasses()).toEqual(['dark'])
-      expect(stub.removeEventListener).toHaveBeenCalledWith('change', registeredCb)
+      expect(stub.removeEventListener).toHaveBeenCalledWith(
+        'change',
+        registeredCb
+      )
     })
 
     it('emits the "theme-changed" event with the new theme so other windows can react', () => {
