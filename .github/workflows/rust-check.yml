@@ -43,9 +43,10 @@ jobs:
 
       - name: cargo test (lib only, no e2e)
         working-directory: src-tauri
-        run: cargo test --lib --no-fail-fast
-        env:
-          # Tests die ein echtes bd brauchen, skippen sich selber via
-          # `skip_if_no_bd`. Hier setzen wir PATH so dass `which bd`
-          # im resolve_bd_path() Helper was findet.
-          PATH: /usr/local/bin:/usr/bin:/bin:/home/runner/.local/bin:${{ github.workspace }}/src-tauri/target/debug
+        # Tests die ein echtes bd brauchen, skippen sich selber via
+        # `skip_if_no_bd`. Wir PREPENDEN target/debug statt PATH zu
+        # ueberschreiben, sonst findet cargo sein eigenes Toolchain-Binary
+        # in /home/runner/.cargo/bin nicht mehr.
+        run: |
+          export PATH="${{ github.workspace }}/src-tauri/target/debug:$PATH"
+          cargo test --lib --no-fail-fast
