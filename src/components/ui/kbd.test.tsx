@@ -63,7 +63,12 @@ describe('Kbd', () => {
 
   it('forwards arbitrary HTML attributes (id, aria-*, data-*) via props spread', () => {
     render(
-      <Kbd data-testid="key" id="ctrl-key" aria-label="Control key" data-pos="left">
+      <Kbd
+        data-testid="key"
+        id="ctrl-key"
+        aria-label="Control key"
+        data-pos="left"
+      >
         Ctrl
       </Kbd>
     )
@@ -131,7 +136,12 @@ describe('KbdGroup', () => {
 
   it('forwards arbitrary HTML attributes (id, aria-*, data-*) via props spread', () => {
     render(
-      <KbdGroup data-testid="group" id="shortcut-row" aria-label="Keyboard shortcut" data-pos="bottom">
+      <KbdGroup
+        data-testid="group"
+        id="shortcut-row"
+        aria-label="Keyboard shortcut"
+        data-pos="bottom"
+      >
         <Kbd>K</Kbd>
       </KbdGroup>
     )

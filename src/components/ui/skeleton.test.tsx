@@ -68,7 +68,7 @@ describe('Skeleton', () => {
     let captured: HTMLDivElement | null = null
     render(
       <Skeleton
-        ref={(node) => {
+        ref={node => {
           captured = node
         }}
         data-testid="skel"
