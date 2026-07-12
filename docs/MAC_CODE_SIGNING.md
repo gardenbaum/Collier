@@ -30,7 +30,7 @@ Then export it before running the setup script:
 
 ```bash
 # Use any 32-character random string.
-# Generate with: openssl rand -base64 24 | tr -d "/+=" | head -c 32
+# Or generate one with any cryptographically secure random source
 # Set env var to a 32-char random string. Do NOT use this literal value.
 export COLLIER_CERT_PASSWORD=[your-32-char-random-string]
 ```
