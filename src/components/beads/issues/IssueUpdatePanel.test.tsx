@@ -290,4 +290,309 @@ describe('IssueUpdatePanel', () => {
     expect(html).not.toContain('c2410c')
     expect(html).not.toContain('accent')
   })
+
+  // ponytail: the six remaining fields each need their onChange
+  // handler exercised so the per-field branches in `handleSubmit`
+  // (lines 131-137) and the dirty-detection OR-chain (lines 104-111)
+  // are covered. One explicit test per field — the DOM event types
+  // differ (native input, select onChange, radio click), so a single
+  // parameterized `setField` helper would be more cryptic than
+  // six short tests.
+
+  it('editing the description enables Save and submits only the description', async () => {
+    mockBdUpdate.mockResolvedValue({
+      status: 'ok',
+      data: { ...baseIssue, description: 'New description' },
+    })
+    const { IssueUpdatePanel } = await importSut()
+    render(
+      <IssueUpdatePanel
+        cwd="/repo"
+        issue={baseIssue}
+        onClose={vi.fn()}
+        onUpdated={vi.fn()}
+      />
+    )
+
+    const desc = screen.getByTestId('update-description') as HTMLTextAreaElement
+    setNativeValue(desc, 'New description')
+
+    const save = screen.getByTestId('update-save') as HTMLButtonElement
+    expect(save).not.toBeDisabled()
+
+    fireEvent.click(save)
+    await waitFor(() => {
+      expect(mockBdUpdate).toHaveBeenCalledTimes(1)
+    })
+    expect(mockBdUpdate.mock.calls[0]?.[2]).toEqual({
+      description: 'New description',
+    })
+  })
+
+  it('changing the type enables Save and submits only the type', async () => {
+    mockBdUpdate.mockResolvedValue({
+      status: 'ok',
+      data: { ...baseIssue, issue_type: 'bug' },
+    })
+    const { IssueUpdatePanel } = await importSut()
+    render(
+      <IssueUpdatePanel
+        cwd="/repo"
+        issue={baseIssue}
+        onClose={vi.fn()}
+        onUpdated={vi.fn()}
+      />
+    )
+
+    const typeSelect = screen.getByTestId('update-type') as HTMLSelectElement
+    fireEvent.change(typeSelect, { target: { value: 'bug' } })
+
+    const save = screen.getByTestId('update-save') as HTMLButtonElement
+    expect(save).not.toBeDisabled()
+
+    fireEvent.click(save)
+    await waitFor(() => {
+      expect(mockBdUpdate).toHaveBeenCalledTimes(1)
+    })
+    expect(mockBdUpdate.mock.calls[0]?.[2]).toEqual({ issueType: 'bug' })
+  })
+
+  it('clicking a priority radio enables Save and submits only the priority', async () => {
+    mockBdUpdate.mockResolvedValue({
+      status: 'ok',
+      data: { ...baseIssue, priority: 'P1' },
+    })
+    const { IssueUpdatePanel } = await importSut()
+    render(
+      <IssueUpdatePanel
+        cwd="/repo"
+        issue={baseIssue}
+        onClose={vi.fn()}
+        onUpdated={vi.fn()}
+      />
+    )
+
+    // baseIssue.priority is 'P2' — click P1 to flip it.
+    fireEvent.click(screen.getByTestId('update-priority-P1'))
+
+    const save = screen.getByTestId('update-save') as HTMLButtonElement
+    expect(save).not.toBeDisabled()
+
+    fireEvent.click(save)
+    await waitFor(() => {
+      expect(mockBdUpdate).toHaveBeenCalledTimes(1)
+    })
+    expect(mockBdUpdate.mock.calls[0]?.[2]).toEqual({ priority: 'P1' })
+  })
+
+  it('changing the status enables Save and submits only the status', async () => {
+    mockBdUpdate.mockResolvedValue({
+      status: 'ok',
+      data: { ...baseIssue, status: 'in_progress' },
+    })
+    const { IssueUpdatePanel } = await importSut()
+    render(
+      <IssueUpdatePanel
+        cwd="/repo"
+        issue={baseIssue}
+        onClose={vi.fn()}
+        onUpdated={vi.fn()}
+      />
+    )
+
+    const statusSelect = screen.getByTestId(
+      'update-status'
+    ) as HTMLSelectElement
+    fireEvent.change(statusSelect, { target: { value: 'in_progress' } })
+
+    const save = screen.getByTestId('update-save') as HTMLButtonElement
+    expect(save).not.toBeDisabled()
+
+    fireEvent.click(save)
+    await waitFor(() => {
+      expect(mockBdUpdate).toHaveBeenCalledTimes(1)
+    })
+    expect(mockBdUpdate.mock.calls[0]?.[2]).toEqual({ status: 'in_progress' })
+  })
+
+  it('editing the assignee enables Save and submits only the assignee', async () => {
+    mockBdUpdate.mockResolvedValue({
+      status: 'ok',
+      data: { ...baseIssue, owner: 'bob' },
+    })
+    const { IssueUpdatePanel } = await importSut()
+    render(
+      <IssueUpdatePanel
+        cwd="/repo"
+        issue={baseIssue}
+        onClose={vi.fn()}
+        onUpdated={vi.fn()}
+      />
+    )
+
+    const assignee = screen.getByTestId('update-assignee') as HTMLInputElement
+    setNativeValue(assignee, 'bob')
+
+    const save = screen.getByTestId('update-save') as HTMLButtonElement
+    expect(save).not.toBeDisabled()
+
+    fireEvent.click(save)
+    await waitFor(() => {
+      expect(mockBdUpdate).toHaveBeenCalledTimes(1)
+    })
+    expect(mockBdUpdate.mock.calls[0]?.[2]).toEqual({ assignee: 'bob' })
+  })
+
+  it('editing the external ref enables Save and submits only the external ref', async () => {
+    mockBdUpdate.mockResolvedValue({
+      status: 'ok',
+      data: { ...baseIssue, external_ref: 'GITHUB-99' },
+    })
+    const { IssueUpdatePanel } = await importSut()
+    render(
+      <IssueUpdatePanel
+        cwd="/repo"
+        issue={baseIssue}
+        onClose={vi.fn()}
+        onUpdated={vi.fn()}
+      />
+    )
+
+    const extRef = screen.getByTestId('update-external-ref') as HTMLInputElement
+    setNativeValue(extRef, 'GITHUB-99')
+
+    const save = screen.getByTestId('update-save') as HTMLButtonElement
+    expect(save).not.toBeDisabled()
+
+    fireEvent.click(save)
+    await waitFor(() => {
+      expect(mockBdUpdate).toHaveBeenCalledTimes(1)
+    })
+    expect(mockBdUpdate.mock.calls[0]?.[2]).toEqual({
+      externalRef: 'GITHUB-99',
+    })
+  })
+
+  it('falls back to empty strings when description/owner/external_ref are null', async () => {
+    // ponytail: baseIssue fills all three optional columns, which
+    // leaves the `?? ''` fallbacks at lines 89/93/94/101/102/103
+    // uncovered on the null path. Render with a fixture that has
+    // all three null, then mutate one to confirm the dirty branch
+    // still trips on the derived `''` original.
+    mockBdUpdate.mockResolvedValue({
+      status: 'ok',
+      data: { ...baseIssue, description: 'Now non-null' },
+    })
+    const nullIssue = {
+      ...baseIssue,
+      description: null,
+      owner: null,
+      external_ref: null,
+    } as unknown as typeof baseIssue
+    const { IssueUpdatePanel } = await importSut()
+    render(
+      <IssueUpdatePanel
+        cwd="/repo"
+        issue={nullIssue}
+        onClose={vi.fn()}
+        onUpdated={vi.fn()}
+      />
+    )
+
+    const desc = screen.getByTestId('update-description') as HTMLTextAreaElement
+    const assignee = screen.getByTestId('update-assignee') as HTMLInputElement
+    const extRef = screen.getByTestId('update-external-ref') as HTMLInputElement
+    // ponytail: null fields coerce to '' on render so the user
+    // sees a stable text input rather than the literal "null".
+    expect(desc.value).toBe('')
+    expect(assignee.value).toBe('')
+    expect(extRef.value).toBe('')
+
+    // Mutating just the description flips dirty on the `?? ''`
+    // branch and submits with only the changed field.
+    setNativeValue(desc, 'Now non-null')
+
+    const save = screen.getByTestId('update-save') as HTMLButtonElement
+    expect(save).not.toBeDisabled()
+
+    fireEvent.click(save)
+    await waitFor(() => {
+      expect(mockBdUpdate).toHaveBeenCalledTimes(1)
+    })
+    expect(mockBdUpdate.mock.calls[0]?.[2]).toEqual({
+      description: 'Now non-null',
+    })
+  })
+
+  it('form submission with no dirty state hits the early-return guard', async () => {
+    // ponytail: line 126 — `if (!isDirty || updateMutation.isPending) return`.
+    // A disabled Save button blocks `click`, but the form's `onSubmit`
+    // still fires if we dispatch `submit` directly. This verifies the
+    // guard short-circuits before reaching `commands.bdUpdate`.
+    const { IssueUpdatePanel } = await importSut()
+    render(
+      <IssueUpdatePanel
+        cwd="/repo"
+        issue={baseIssue}
+        onClose={vi.fn()}
+        onUpdated={vi.fn()}
+      />
+    )
+
+    const save = screen.getByTestId('update-save') as HTMLButtonElement
+    expect(save).toBeDisabled()
+
+    // ponytail: `save` lives inside the form, and the form has no
+    // testid of its own — go through the button's `closest` and
+    // narrow to HTMLFormElement so the assertion reads naturally
+    // and the call site doesn't need a non-null assertion.
+    const form = save.closest('form') as HTMLFormElement
+    expect(form).not.toBeNull()
+    fireEvent.submit(form)
+
+    // ponytail: the early-return means bdUpdate never resolves
+    // (and the mock isn't even configured to). Give React a tick.
+    await new Promise(resolve => {
+      setTimeout(resolve, 0)
+    })
+    expect(mockBdUpdate).not.toHaveBeenCalled()
+  })
+
+  it('shows the Saving… label while the mutation is in flight', async () => {
+    // ponytail: line 299 — the `isPending ? 'Saving…' : 'Save'` ternary.
+    // A never-resolving promise keeps the mutation pending; the button
+    // label should swap to "Saving…" and the button should disable on
+    // the second-clause of `disabled={!isDirty || ...}`.
+    let resolveUpdate!: (value: unknown) => void
+    mockBdUpdate.mockImplementation(
+      () =>
+        new Promise(resolve => {
+          resolveUpdate = resolve
+        })
+    )
+    const { IssueUpdatePanel } = await importSut()
+    render(
+      <IssueUpdatePanel
+        cwd="/repo"
+        issue={baseIssue}
+        onClose={vi.fn()}
+        onUpdated={vi.fn()}
+      />
+    )
+
+    const titleInput = screen.getByTestId('update-title') as HTMLInputElement
+    setNativeValue(titleInput, 'New title')
+
+    const save = screen.getByTestId('update-save') as HTMLButtonElement
+    fireEvent.click(save)
+
+    await waitFor(() => {
+      expect(save.textContent).toBe('Saving…')
+    })
+    expect(save).toBeDisabled()
+
+    // ponytail: resolve the promise so React flushes the success
+    // state and the test doesn't leak an unresolved handle.
+    resolveUpdate({ status: 'ok', data: { ...baseIssue, title: 'New title' } })
+  })
 })
