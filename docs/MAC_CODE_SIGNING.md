@@ -20,17 +20,25 @@ still need an Apple Developer Program membership ($99/year). For personal use
 
 ### 1. Generate the certificate
 
-On your Mac, run the setup script:
+On your Mac, first generate a passphrase for the .p12 file:
+
+```bash
+export COLLIER_CERT_PASSWORD=*** openssl rand -base64 24 | tr -d '/+=' | head -c 32)"
+echo $COLLIER_CERT_PASSWORD > ~/.collier-cert-password
+chmod 600 ~/.collier-cert-password
+```
+
+Then run the setup script (it will read the passphrase from the env var):
 
 ```bash
 chmod +x scripts/macos-self-sign-setup.sh
-./scripts/macos-self-sign-setup.sh
+./macos-self-sign-setup.sh
 ```
 
 The script will:
 
 1. Generate a 4096-bit RSA private key + self-signed certificate (`Collier Dev ID`)
-2. Pack them into a `.p12` file (PKCS#12 format) protected by a passphrase
+2. Pack them into a `.p12` file (PKCS#12 format) protected by the passphrase
 3. Base64-encode the `.p12` (required because GitHub Secrets don't accept binary)
 4. Optionally import the cert into your macOS Keychain
 

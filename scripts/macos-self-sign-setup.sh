@@ -35,10 +35,11 @@ echo
 # Note: openssl rand -base64 24 liefert 32 base64-chars, davon strippen wir
 # die URL-unsafe + und / raus.
 if [ -z "${COLLIER_CERT_PASSWORD:-}" ]; then
-  COLLIER_CERT_PASSWORD="o5N2qR8sKp7wY4vL9jX6tH3mZ1cF0bD8"  # 32-char default, override via env
-  echo "Default-Passphrase gesetzt. Ueberschreibe via COLLIER_CERT_PASSWORD env var fuer mehr Sicherheit."
+  echo "ERROR: COLLIER_CERT_PASSWORD env var is required." >&2
+  echo "Generate one with: openssl rand -base64 24 | tr -d '/+=' | head -c 32" >&2
+  exit 1
 else
-  echo "Verwende COLLIER_CERT_PASSWORD env var"
+  echo "Using COLLIER_CERT_PASSWORD from env var."
 fi
 echo
 
