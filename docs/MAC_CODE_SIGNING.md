@@ -20,13 +20,17 @@ still need an Apple Developer Program membership ($99/year). For personal use
 
 ### 1. Generate the certificate
 
-On your Mac, first generate a passphrase for the .p12 file:
+On your Mac, generate a passphrase for the .p12 file. Use any random 32-character
+string (the `openssl` command from the setup script's own README works, or any
+password manager). Then export it before running the setup script:
 
 ```bash
-export COLLIER_CERT_PASSWORD=*** openssl rand -base64 24 | tr -d '/+=' | head -c 32)"
-echo $COLLIER_CERT_PASSWORD > ~/.collier-cert-password
-chmod 600 ~/.collier-cert-password
+# Use any 32-character random string (NOT a memorable password).
+# Generate with: openssl rand -base64 24 | tr -d "/+=" | head -c 32
+export COLLIER_CERT_PASSWORD="your-random-string-here"
 ```
+
+You can also save it to a file and source it: `export $(cat ~/.collier-cert-password)`
 
 Then run the setup script (it will read the passphrase from the env var):
 
