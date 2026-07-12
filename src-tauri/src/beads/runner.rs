@@ -165,11 +165,14 @@ pub(crate) async fn spawn_and_collect(
 ) -> BdResult<BdOutput> {
     let mut child = cmd.spawn().map_err(|e| {
         // `NotFound` is the OS-level errno when the binary is missing
-        // from PATH entirely. Surface this as a dedicated variant so
-        // the frontend can show the "install beads" recovery modal
-        // instead of a generic "failed to spawn bd" message.
+        // from PATH entirely. Surface this as `BdNotInPath` (a dedicated
+        // tuple variant in `BdError`) so the frontend can show the
+        // "install beads" recovery modal instead of a generic
+        // "failed to spawn bd" message. `BdError::NotFound` is a struct
+        // variant with an `id` field for issue-not-found errors --
+        // semantically wrong here, hence the dedicated variant.
         if e.kind() == std::io::ErrorKind::NotFound {
-            BdError::NotFound
+            BdError::BdNotInPath
         } else {
             BdError::IoError {
                 message: format!("failed to spawn bd: {e}"),
