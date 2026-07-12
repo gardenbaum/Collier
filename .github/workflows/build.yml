@@ -113,6 +113,72 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
 
+      # Sign the macOS .app with a self-signed code-signing cert so Gatekeeper
+      # accepts it on the user's machine (after they mark the cert as trusted
+      # in Keychain Access). The cert is a user-supplied self-signed identity
+      # stored as base64-encoded PKCS#12 in the MAC_SIGN_P12_BASE64 secret;
+      # this is NOT a notarized Developer ID -- it still won't pass Gatekeeper
+      # for users who don't trust the cert, but for the cert owner it removes
+      # the "unidentified developer" warning on first launch.
+      - name: Sign macOS bundle (self-signed cert)
+        if: steps.skip_check.outputs.should_run == 'true' && matrix.os == 'macos-latest'
+        env:
+          MAC_SIGN_P12_BASE64: ${{ secrets.MAC_SIGN_P12_BASE64 }}
+          MAC_SIGN_PASSWORD: ${{ secrets.MAC_SIGN_PASSWORD }}
+          MAC_SIGN_IDENTITY: ${{ secrets.MAC_SIGN_IDENTITY }}
+        run: |
+          set -euo pipefail
+          if [ -z "$MAC_SIGN_P12_BASE64" ] || [ -z "$MAC_SIGN_PASSWORD" ] || [ -z "$MAC_SIGN_IDENTITY" ]; then
+            echo "::warning::MAC_SIGN_* secrets not set -- skipping code signing. App will need xattr -d com.apple.quarantine workaround on download."
+            exit 0
+          fi
+
+          # Decode the .p12 into a tempfile and create a temporary keychain
+          # to hold it (rather than polluting the login keychain on the
+          # ephemeral GitHub runner).
+           P12_FILE="$(mktemp -t collier-build).p12"
+           KEYCHAIN="$(mktemp -t collier-build).keychain-db"
+           echo "$MAC_SIGN_P12_BASE64" | base64 --decode > "$P12_FILE"
+           KEYCHAIN_PASSWORD="$(openssl rand -hex 16)"
+           security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+
+          # Import the cert into the temp keychain. -P is the .p12 password;
+          # -A allows any app to use the imported key without prompting
+          # (codesign needs to sign with this identity).
+          security import "$P12_FILE" \
+            -k "$KEYCHAIN" \
+            -P "$MAC_SIGN_PASSWORD" \
+            -T /usr/bin/codesign \
+            -T /usr/bin/security \
+            -A
+
+          # Add the temp keychain to the search list so codesign finds it.
+          security list-keychains -d user -s "$KEYCHAIN" $(security list-keychains -d user | tr -d '"')
+
+          # Find the freshly-built .app, sign it (deep, with hardened runtime),
+          # and verify.
+          APP_PATH=$(find src-tauri/target/release/bundle/macos -maxdepth 1 -name "*.app" | head -n 1)
+          if [ -z "$APP_PATH" ]; then
+            echo "::warning::No .app bundle found under src-tauri/target/release/bundle/macos/ -- skipping signing."
+            exit 0
+          fi
+          echo "Signing: $APP_PATH with identity '$MAC_SIGN_IDENTITY'"
+          /usr/bin/codesign \
+            --force \
+            --deep \
+            --options runtime \
+            --sign "$MAC_SIGN_IDENTITY" \
+            --keychain "$KEYCHAIN" \
+            "$APP_PATH"
+          /usr/bin/codesign --verify --deep --strict --verbose=2 "$APP_PATH"
+          echo "Signed OK"
+
+          # Cleanup: remove the temp keychain so we don't leave secrets around.
+          security delete-keychain "$KEYCHAIN"
+          rm -f "$P12_FILE"
+
       - name: Upload bundles as workflow artifacts
         if: always() && steps.skip_check.outputs.should_run == 'true'
         uses: actions/upload-artifact@v4
