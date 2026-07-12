@@ -10,11 +10,11 @@ still need an Apple Developer Program membership ($99/year). For personal use
 
 ## What This Gets You
 
-| Setup | First launch on your Mac |
-|---|---|
-| Unsigned build (current) | Gatekeeper blocks; you must run `xattr -d com.apple.quarantine Collier.app` or right-click -> Open -> Open anyway |
-| Self-signed build (this guide) | Cert prompt -> Always Open -> app launches without warnings forever |
-| Apple Developer ID | No prompt, instant launch |
+| Setup                          | First launch on your Mac                                                                                          |
+| ------------------------------ | ----------------------------------------------------------------------------------------------------------------- |
+| Unsigned build (current)       | Gatekeeper blocks; you must run `xattr -d com.apple.quarantine Collier.app` or right-click -> Open -> Open anyway |
+| Self-signed build (this guide) | Cert prompt -> Always Open -> app launches without warnings forever                                               |
+| Apple Developer ID             | No prompt, instant launch                                                                                         |
 
 ## Setup (5 minutes, one-time)
 
@@ -55,11 +55,11 @@ All outputs go to `~/collier-cert-output/`.
 
 In the GitHub repository, go to **Settings -> Secrets and variables -> Actions** and create three new repository secrets:
 
-| Secret name | Value |
-|---|---|
-| `MAC_SIGN_P12_BASE64` | Paste the entire contents of `~/collier-cert-output/collier-dev.p12.base64` |
-| `MAC_SIGN_PASSWORD` | The passphrase from your shell env (or recreate it -- you saved it somewhere safe, right?) |
-| `MAC_SIGN_IDENTITY` | `Collier Dev ID` (or whatever you set `CERT_NAME` to in the script) |
+| Secret name           | Value                                                                                      |
+| --------------------- | ------------------------------------------------------------------------------------------ |
+| `MAC_SIGN_P12_BASE64` | Paste the entire contents of `~/collier-cert-output/collier-dev.p12.base64`                |
+| `MAC_SIGN_PASSWORD`   | The passphrase from your shell env (or recreate it -- you saved it somewhere safe, right?) |
+| `MAC_SIGN_IDENTITY`   | `Collier Dev ID` (or whatever you set `CERT_NAME` to in the script)                        |
 
 ### 3. Trust the cert locally (recommended)
 
@@ -115,14 +115,14 @@ old GitHub Secrets on next push.
 
 ## Why not Apple Developer ID?
 
-| | Self-signed | Apple Developer ID |
-|---|---|---|
-| Cost | Free | $99/year |
-| Notarization | No | Required for distribution |
-| Gatekeeper on **your** Mac | Trust once, then warning-free | Warning-free |
-| Gatekeeper on **other** Macs | Warning (other users can't trust your cert) | Warning-free |
-| CI setup complexity | Low | Medium (need notarization step) |
-| Auto-updates (Tauri updater) | Works (uses minisign pubkey, separate concern) | Works |
+|                              | Self-signed                                    | Apple Developer ID              |
+| ---------------------------- | ---------------------------------------------- | ------------------------------- |
+| Cost                         | Free                                           | $99/year                        |
+| Notarization                 | No                                             | Required for distribution       |
+| Gatekeeper on **your** Mac   | Trust once, then warning-free                  | Warning-free                    |
+| Gatekeeper on **other** Macs | Warning (other users can't trust your cert)    | Warning-free                    |
+| CI setup complexity          | Low                                            | Medium (need notarization step) |
+| Auto-updates (Tauri updater) | Works (uses minisign pubkey, separate concern) | Works                           |
 
 Pick self-signed if you're the only user. Pick Developer ID if you distribute
 builds to other people.
