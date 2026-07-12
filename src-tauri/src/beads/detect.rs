@@ -353,14 +353,23 @@ mod tests {
             .expect("git init");
         // `bd init` is non-interactive in 1.0.5; pipe `y\n` defensively
         // in case a future version starts prompting.
-        let init_output = std::process::Command::new("bd")
-            .arg("init")
-            .current_dir(cwd)
-            .stdin(std::process::Stdio::piped())
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .spawn()
-            .expect("spawn bd init");
+        let init_output = std::process::Command::new(
+            // Same resolution as runner::resolve_bd_path -- duplicated
+            // here to avoid a cyclic dep between runner (which uses
+            // detect types) and detect (which needs to spawn bd init
+            // during self-test).
+            std::env::var("COLLIER_BD_PATH")
+                .ok()
+                .filter(|p| !p.is_empty())
+                .unwrap_or_else(|| "bd".to_string()),
+        )
+        .arg("init")
+        .current_dir(cwd)
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .expect("spawn bd init");
         // (We don't write to stdin — 1.0.5 doesn't need it. The
         // process just runs to completion on its own.)
 

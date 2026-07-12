@@ -30,3 +30,7 @@ jscpd-report.bak/
 # prettier --check otherwise fails on the missing trailing newline the bd
 # tool emits when it rewrites the file)
 .beads/push-state.json
+
+# Custom dev Dockerfiles (no prettier parser for them)
+Dockerfile.dev
+Dockerfile.dev.*

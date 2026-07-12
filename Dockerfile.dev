@@ -1,0 +1,60 @@
+# Dockerfile.dev — local/Coolify build environment for Collier
+# Basierend auf dem offiziellen Tauri-Build-Template:
+# https://v2.tauri.app/start/docker/
+#
+# Use:
+#   docker build -f Dockerfile.dev -t collier-dev .
+#   docker run -it --rm -v $(pwd):/app collier-dev bash
+#
+# Im Container dann:
+#   bun install
+#   cd src-tauri && cargo check
+#   cd src-tauri && cargo test
+#   cd .. && bun run tauri build
+
+FROM rust:1.81-bookworm
+
+# System deps fuer Tauri v2 + WebKitGTK
+# Diese Liste ist explizit (nicht aus einem Image-Tag) damit Coolify
+# bei einem Image-Update nicht ploetzlich eine kaputte Version bekommt.
+RUN apt-get update && apt-get install -y \
+    # Tauri-spezifisch (WebKitGTK 4.1 fuer Tauri v2 auf Linux)
+    libwebkit2gtk-4.1-dev \
+    libgtk-3-dev \
+    libayatana-appindicator3-dev \
+    librsvg2-dev \
+    libsoup-3.0-dev \
+    libjavascriptcoregtk-4.1-dev \
+    # Build-Tools
+    build-essential \
+    pkg-config \
+    curl \
+    wget \
+    file \
+    libxdo-dev \
+    libssl-dev \
+    # Node/Bun
+    ca-certificates \
+    unzip \
+    git \
+    && rm -rf /var/lib/apt/lists/*
+
+# Bun (fuer Frontend-Build)
+RUN curl -fsSL https://bun.sh/install | bash
+ENV PATH="/root/.bun/bin:${PATH}"
+
+WORKDIR /app
+
+# Cache: Cargo deps zuerst
+COPY src-tauri/Cargo.toml src-tauri/Cargo.lock ./src-tauri/
+RUN mkdir -p src-tauri/src && echo "fn main() {}" > src-tauri/src/main.rs && \
+    cd src-tauri && cargo fetch
+
+# Frontend deps cachen
+COPY package.json bun.lock* ./
+RUN bun install --frozen-lockfile || bun install
+
+# Restlicher Source
+COPY . .
+
+CMD ["/bin/bash"]

@@ -7,7 +7,7 @@
 //! `BdError` so the frontend can branch on the error type rather than
 //! parsing free-form strings.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use regex::Regex;
@@ -19,6 +19,77 @@ use tokio::process::Command;
 use tokio::time::timeout;
 
 use crate::beads::{envelope, BdError, BdResult};
+
+/// Resolve the absolute path to the `bd` binary on disk.
+///
+/// Tauri's spawned child processes inherit a sparse PATH from
+/// `launchd` on macOS (typically `/usr/bin:/bin:/usr/sbin:/sbin` only)
+/// and from systemd on Linux, so a bare `Command::new("bd")` won't
+/// find user-installed binaries in Homebrew prefixes, `~/.local/bin`,
+/// `~/.cargo/bin`, or `~/.bun/bin`. We probe the common install
+/// locations explicitly so the GUI can find `bd` regardless of the
+/// user's shell PATH. The returned absolute path is passed to
+/// `Command::new(<path>)` in `build_bd_command`, so PATH lookup is
+/// bypassed entirely (and so the binary is locked to that exact
+/// install for the lifetime of the child).
+///
+/// Returns `None` if no `bd` is found in any probed location; the
+/// caller surfaces a `BdError::NotFound` with an actionable hint.
+fn resolve_bd_path() -> Option<PathBuf> {
+    use std::process::Command as StdCommand;
+
+    // 1) Honor the user's explicit override if they set it.
+    if let Ok(custom) = std::env::var("COLLIER_BD_PATH") {
+        let p = PathBuf::from(&custom);
+        if p.is_file() {
+            return Some(p);
+        }
+    }
+
+    // 2) Ask the parent shell (which has the user's full PATH) what
+    //    `which bd` says. This is the most portable fallback because
+    //    it respects whatever the user has configured (asdf, nix,
+    //    fnm, mise, custom $PATH, etc.). We do this once per resolve
+    //    call -- it's a single fork+exec, cheap.
+    if let Ok(out) = StdCommand::new("/bin/sh")
+        .arg("-lc")
+        .arg("command -v bd 2>/dev/null || which bd 2>/dev/null")
+        .output()
+    {
+        if out.status.success() {
+            let s = String::from_utf8_lossy(&out.stdout).trim().to_string();
+            if !s.is_empty() {
+                let p = PathBuf::from(&s);
+                if p.is_file() {
+                    return Some(p);
+                }
+            }
+        }
+    }
+
+    // 3) Probe the well-known absolute paths across macOS + Linux.
+    //    Order matters: Homebrew on Apple Silicon (arm64) lives in
+    //    /opt/homebrew; Homebrew on Intel macs lives in /usr/local;
+    //    Linux user-local installs live in ~/.local/bin.
+    let home = std::env::var("HOME").unwrap_or_default();
+    let candidates: Vec<PathBuf> = {
+        let mut v = vec![];
+        if !home.is_empty() {
+            v.push(PathBuf::from(&home).join(".local/bin/bd"));
+            v.push(PathBuf::from(&home).join(".cargo/bin/bd"));
+            v.push(PathBuf::from(&home).join(".bun/bin/bd"));
+            v.push(PathBuf::from(&home).join("go/bin/bd"));
+        }
+        // Homebrew (macOS)
+        v.push(PathBuf::from("/opt/homebrew/bin/bd"));
+        v.push(PathBuf::from("/usr/local/bin/bd"));
+        // Linux distro packages (apt, dnf, pacman)
+        v.push(PathBuf::from("/usr/bin/bd"));
+        v.push(PathBuf::from("/snap/bin/bd"));
+        v
+    };
+    candidates.into_iter().find(|p| p.is_file())
+}
 
 /// Hard ceiling on every `bd` invocation. Chosen to be large enough
 /// for cold `bd list` on a large repo, small enough that a hung CLI
@@ -53,7 +124,13 @@ pub enum BdOutput {
 /// the test binary alive past the timeout) and for production
 /// (a stuck `bd` must not outlive the UI call that started it).
 fn build_bd_command(args: &[&str], cwd: &Path, stdin: bool) -> Command {
-    let mut cmd = Command::new("bd");
+    // Resolve to an absolute path. On macOS, Tauri-spawned children
+    // do NOT inherit the user's shell PATH (only the launchd PATH),
+    // so a bare `Command::new("bd")` fails on any Homebrew or
+    // user-local install. `resolve_bd_path` probes the well-known
+    // locations + the user's login shell PATH as a fallback.
+    let bd_bin = resolve_bd_path().unwrap_or_else(|| PathBuf::from("bd"));
+    let mut cmd = Command::new(&bd_bin);
     cmd.args(args)
         .current_dir(cwd)
         .env("BD_JSON_ENVELOPE", "1")
@@ -86,8 +163,21 @@ pub(crate) async fn spawn_and_collect(
     timeout_secs: u64,
     stdin_data: Option<&[u8]>,
 ) -> BdResult<BdOutput> {
-    let mut child = cmd.spawn().map_err(|e| BdError::IoError {
-        message: format!("failed to spawn bd: {e}"),
+    let mut child = cmd.spawn().map_err(|e| {
+        // `NotFound` is the OS-level errno when the binary is missing
+        // from PATH entirely. Surface this as `BdNotInPath` (a dedicated
+        // tuple variant in `BdError`) so the frontend can show the
+        // "install beads" recovery modal instead of a generic
+        // "failed to spawn bd" message. `BdError::NotFound` is a struct
+        // variant with an `id` field for issue-not-found errors --
+        // semantically wrong here, hence the dedicated variant.
+        if e.kind() == std::io::ErrorKind::NotFound {
+            BdError::BdNotInPath
+        } else {
+            BdError::IoError {
+                message: format!("failed to spawn bd: {e}"),
+            }
+        }
     })?;
 
     if let (Some(data), Some(mut pipe)) = (stdin_data, child.stdin.take()) {
