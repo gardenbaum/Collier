@@ -109,9 +109,9 @@ cat > "$OUTPUT_DIR/SECRETS.txt" <<SECRETS_EOF
 # Collier Code-Signing Cert - Secrets fuer GitHub
 # Diese Datei LOKAL loeschen sobald du sie in GitHub eingetragen hast!
 
-GH_SECRET_MAC_SIGN_P12_BASE64=Inhalt der Datei collier-dev.p12.base64
-GH_SECRET_MAC_SIGN_PASSWORD=aus SECRETS.txt Zeile darueber
-GH_SECRET_MAC_SIGN_IDENTITY=Collier Dev ID
+MAC_SIGN_P12_BASE64=Inhalt der Datei collier-dev.p12.base64 (BASE64-kodiert)
+MAC_SIGN_PASSWORD=[your-secret-value] SECRETS.txt Zeile darueber (dein Passwort)
+MAC_SIGN_IDENTITY=Collier Dev ID (exakt dieser Text)
 SECRETS_EOF
 # Now overwrite with the ACTUAL secret values
 printf "MAC_SIGN_PASSWORD=%s\nMAC_SIGN_IDENTITY=%s\n" "$COLLIER_CERT_PASSWORD" "$CERT_NAME" >> "$OUTPUT_DIR/SECRETS.txt"
