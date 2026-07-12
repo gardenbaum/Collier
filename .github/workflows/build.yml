@@ -136,9 +136,9 @@ jobs:
           # Decode the .p12 into a tempfile and create a temporary keychain
           # to hold it (rather than polluting the login keychain on the
           # ephemeral GitHub runner).
-           P12_FILE="$(mktemp -u -t collier-build).p12"
-
-           KEYCHAIN="$(mktemp -u -t collier-build).keychain-db"
+           P12_FILE="$(mktemp -t collier-build).p12"
+           KEYCHAIN="$(mktemp -t collier-build).keychain-db"
+           echo "$MAC_SIGN_P12_BASE64" | base64 --decode > "$P12_FILE"
            KEYCHAIN_PASSWORD="$(openssl rand -hex 16)"
            security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
           security set-keychain-settings -lut 21600 "$KEYCHAIN"
