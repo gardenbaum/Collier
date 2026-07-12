@@ -22,7 +22,7 @@
  * verbatim — callers supply their own testids inside those slots.
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { screen } from '@testing-library/react'
+import { act, fireEvent, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { render } from '@/test/test-utils'
 
@@ -193,5 +193,109 @@ describe('BootstrapDialog', () => {
     // DOM entirely (the modal is blocking and never present at all in
     // the closed state). Assert that no element renders.
     expect(screen.queryByText('Hidden')).not.toBeInTheDocument()
+  })
+
+  // -------------------------------------------------------------------
+  // Blocking-modal behavior: Escape / outside-pointer / outside-interact
+  // -------------------------------------------------------------------
+  // BootstrapDialog owns three inline event handlers passed to Radix's
+  // DialogContent that each call `event.preventDefault()`:
+  //   - onEscapeKeyDown: Escape must NOT close the modal
+  //   - onPointerDownOutside: pointerdown outside the modal must NOT close it
+  //   - onInteractOutside: any interaction outside the modal must NOT close it
+  //
+  // Without `preventDefault`, Radix would fire `onOpenChange(false)` and
+  // (for the pointer / interact cases) unmount the dialog content.
+  // Because the dialog is "blocking", callers control `open` themselves
+  // and the only meaningful behavior we can assert is that the inline
+  // handlers prevent Radix from closing — i.e. the content stays in the
+  // DOM after the event fires.
+
+  it('keeps the dialog mounted when Escape is pressed (onEscapeKeyDown preventDefault)', async () => {
+    const { BootstrapDialog } = await importSut()
+    render(
+      <BootstrapDialog
+        open={true}
+        title="Stays Title"
+        description="Stays Description"
+      >
+        <span>body</span>
+      </BootstrapDialog>
+    )
+
+    // Sanity: content rendered initially.
+    expect(screen.getByText('Stays Title')).toBeInTheDocument()
+    expect(screen.getByText('Stays Description')).toBeInTheDocument()
+    expect(
+      document.querySelector('[data-slot="dialog-content"]')
+    ).toBeInTheDocument()
+
+    // Radix listens for Escape in the capture phase on document; firing
+    // on document.body reaches it before any other listener.
+    await act(async () => {
+      fireEvent.keyDown(document.body, { key: 'Escape' })
+    })
+
+    // The dialog content must still be in the DOM — i.e. the inline
+    // `onEscapeKeyDown` handler called `event.preventDefault()` and
+    // Radix did not close the modal.
+    expect(screen.getByText('Stays Title')).toBeInTheDocument()
+    expect(screen.getByText('Stays Description')).toBeInTheDocument()
+    expect(
+      document.querySelector('[data-slot="dialog-content"]')
+    ).toBeInTheDocument()
+  })
+
+  it('keeps the dialog mounted on pointerdown outside the content (onPointerDownOutside + onInteractOutside preventDefault)', async () => {
+    const { BootstrapDialog } = await importSut()
+    render(
+      <BootstrapDialog
+        open={true}
+        title="Stays Title"
+        description="Stays Description"
+      >
+        <span>body</span>
+      </BootstrapDialog>
+    )
+
+    // Sanity: dialog rendered.
+    expect(screen.getByText('Stays Title')).toBeInTheDocument()
+    expect(
+      document.querySelector('[data-slot="dialog-content"]')
+    ).toBeInTheDocument()
+
+    // Radix's usePointerDownOutside defers attaching its document-level
+    // pointerdown listener via setTimeout(0) (see
+    // @radix-ui/react-dismissable-layer). Yield once so that timer
+    // fires before we dispatch — otherwise the listener isn't installed
+    // yet and POINTER_DOWN_OUTSIDE never reaches our handlers.
+    await new Promise(resolve => setTimeout(resolve, 0))
+
+    // Radix's usePointerDownOutside also skips events that originate
+    // inside the React tree (it sets isPointerInsideReactTreeRef via
+    // an onPointerDownCapture handler on the DismissableLayer wrapper).
+    // We therefore dispatch the event on a throwaway DOM node that is
+    // OUTSIDE React's tree — appended directly to document.body as a
+    // sibling of the React root container. Radix's document-level
+    // pointerdown listener fires both onPointerDownOutside AND
+    // onInteractOutside (see @radix-ui/react-dismissable-layer).
+    const outsideNode = document.createElement('div')
+    outsideNode.setAttribute('data-testid', 'outside-sibling')
+    document.body.appendChild(outsideNode)
+
+    try {
+      await act(async () => {
+        fireEvent.pointerDown(outsideNode)
+      })
+
+      // Dialog content must still be mounted — the inline handlers
+      // called preventDefault() and Radix did not unmount the modal.
+      expect(screen.getByText('Stays Title')).toBeInTheDocument()
+      expect(
+        document.querySelector('[data-slot="dialog-content"]')
+      ).toBeInTheDocument()
+    } finally {
+      outsideNode.remove()
+    }
   })
 })
