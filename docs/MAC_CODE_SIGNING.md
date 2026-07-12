@@ -21,16 +21,19 @@ still need an Apple Developer Program membership ($99/year). For personal use
 ### 1. Generate the certificate
 
 On your Mac, generate a passphrase for the .p12 file. Use any random 32-character
-string (the `openssl` command from the setup script's own README works, or any
-password manager). Then export it before running the setup script:
+string. The simplest way:
+
+1. Generate it with openssl in a terminal and copy the output.
+2. Or use any password manager's "generate random password" feature.
+
+Then export it before running the setup script:
 
 ```bash
-# Use any 32-character random string (NOT a memorable password).
+# Use any 32-character random string.
 # Generate with: openssl rand -base64 24 | tr -d "/+=" | head -c 32
-export COLLIER_CERT_PASSWORD="your-random-string-here"
+# Set env var to a 32-char random string. Do NOT use this literal value.
+export COLLIER_CERT_PASSWORD=[your-32-char-random-string]
 ```
-
-You can also save it to a file and source it: `export $(cat ~/.collier-cert-password)`
 
 Then run the setup script (it will read the passphrase from the env var):
 
@@ -55,7 +58,7 @@ In the GitHub repository, go to **Settings -> Secrets and variables -> Actions**
 | Secret name | Value |
 |---|---|
 | `MAC_SIGN_P12_BASE64` | Paste the entire contents of `~/collier-cert-output/collier-dev.p12.base64` |
-| `MAC_SIGN_PASSWORD` | The passphrase from `~/collier-cert-output/SECRETS.txt` |
+| `MAC_SIGN_PASSWORD` | The passphrase from your shell env (or recreate it -- you saved it somewhere safe, right?) |
 | `MAC_SIGN_IDENTITY` | `Collier Dev ID` (or whatever you set `CERT_NAME` to in the script) |
 
 ### 3. Trust the cert locally (recommended)
@@ -100,9 +103,9 @@ Subsequent launches are warning-free.
 
 ## Cleaning Up
 
-After entering the secrets in GitHub, delete `~/collier-cert-output/SECRETS.txt` —
-it contains the .p12 passphrase in plaintext. Keep the `.p12` file itself; if you
-need to re-import the cert on another Mac, you'll need it.
+After entering the secrets in GitHub, the passphrase you used is only stored in
+GitHub Secrets (encrypted). If you want to keep a local backup, save it in your
+password manager. Don't commit it anywhere.
 
 ## Rotating the Cert
 
