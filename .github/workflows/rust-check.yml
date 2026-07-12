@@ -2,7 +2,7 @@ name: rust-check
 
 on:
   push:
-    branches: [main, "test/**", "fix/**", "feat/**", "chore/**"]
+    branches: [main, 'test/**', 'fix/**', 'feat/**', 'chore/**']
   pull_request:
     branches: [main]
 
