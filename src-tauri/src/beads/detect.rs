@@ -363,13 +363,13 @@ mod tests {
                 .filter(|p| !p.is_empty())
                 .unwrap_or_else(|| "bd".to_string()),
         )
-            .arg("init")
-            .current_dir(cwd)
-            .stdin(std::process::Stdio::piped())
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .spawn()
-            .expect("spawn bd init");
+        .arg("init")
+        .current_dir(cwd)
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .expect("spawn bd init");
         // (We don't write to stdin — 1.0.5 doesn't need it. The
         // process just runs to completion on its own.)
 
