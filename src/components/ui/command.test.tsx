@@ -321,9 +321,15 @@ describe('CommandList', () => {
   // to be installed before render and torn down afterwards.
   let originalResizeObserver: typeof ResizeObserver | undefined
   class ResizeObserverStub {
-    observe(): void {}
-    unobserve(): void {}
-    disconnect(): void {}
+    observe(): void {
+      /* no-op */
+    }
+    unobserve(): void {
+      /* no-op */
+    }
+    disconnect(): void {
+      /* no-op */
+    }
   }
 
   it('renders with the command-list data-slot and the scroll-area base classes', () => {
