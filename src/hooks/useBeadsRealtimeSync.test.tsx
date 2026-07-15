@@ -14,6 +14,7 @@ vi.mock('@/lib/logger', () => ({
   },
 }))
 
+import { logger } from '@/lib/logger'
 import { useBeadsRealtimeSync } from './useBeadsRealtimeSync'
 
 // Capture every (eventName, handler) pair registered via
@@ -83,6 +84,10 @@ beforeEach(() => {
   vi.clearAllMocks()
   listeners.clear()
   unlistenFns.clear()
+  // Defensive: a previous test may have exposed the diag surface.
+  // Clear it so the bump helper skips on tests that don't opt in.
+  delete (globalThis as { __collierDiag__?: Record<string, number> })
+    .__collierDiag__
   // Default mock: every listen() call registers the handler in
   // the shared map and returns a fake unlisten that clears it.
   mockedListen.mockImplementation(
@@ -370,5 +375,154 @@ describe('useBeadsRealtimeSync', () => {
     // Cache unchanged: still 'open'.
     const list = qc.getQueryData<Issue[]>(['beads', 'list', REPO, {}])
     expect(list?.[0]?.status).toBe('open')
+  })
+
+  it('logs an error when listen() rejects for one of the targeted events', async () => {
+    // Override the listen mock so one event throws on registration.
+    // The setupListener wrapper must catch the rejection and emit a
+    // logger.error line — otherwise the rejection becomes an
+    // unhandled promise rejection that crashes the consumer's app.
+    mockedListen.mockImplementation(
+      (eventName: string, handler: ListenerCallback) => {
+        if (eventName === 'beads-data-reset') {
+          return Promise.reject(new Error('listener init failed'))
+        }
+        listeners.set(eventName, handler)
+        const unlisten: Unlisten = () => {
+          listeners.delete(eventName)
+          unlistenFns.delete(unlisten)
+        }
+        unlistenFns.add(unlisten)
+        return Promise.resolve(unlisten)
+      }
+    )
+
+    const qc = makeQueryClient()
+    renderWithClient(qc)
+
+    // Let the listen() rejection microtask resolve before we assert.
+    await act(async () => {
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    // The catch block in setupListener must have logged the failure
+    // tagged with the event name so the failure is traceable back to
+    // the targeted listener it belongs to.
+    expect(logger.error).toHaveBeenCalledWith(
+      'Failed to setup beads-data-reset listener',
+      expect.objectContaining({ error: expect.any(Error) })
+    )
+  })
+
+  it('bumps the diag counter when __collierDiag__ is exposed', async () => {
+    // Expose the diag surface (production code skips when undefined).
+    // The diag counters are read by the E2E suite to attribute lost
+    // events to the layer that dropped them; the bump helper is the
+    // only place that writes to it.
+    ;(
+      globalThis as { __collierDiag__?: Record<string, number> }
+    ).__collierDiag__ = {}
+
+    const qc = makeQueryClient()
+    useWorkspaceStore.setState({ repoPath: REPO })
+    renderWithClient(qc)
+    await act(async () => {
+      await Promise.resolve()
+    })
+
+    // Trigger a reset event with a mismatched repo_path so we
+    // exercise both bump('dataReset') AND bump('droppedRepoMismatch')
+    // — the two bump sites inside the data-reset handler.
+    await act(async () => {
+      emit('beads-data-reset', { repo_path: '/tmp/other-workspace', count: 25 })
+    })
+
+    const diag = (globalThis as { __collierDiag__?: Record<string, number> })
+      .__collierDiag__
+    expect(diag?.dataReset).toBe(1)
+    expect(diag?.droppedRepoMismatch).toBe(1)
+
+    // Cleanup so the next test starts from a clean diag surface.
+    delete (globalThis as { __collierDiag__?: Record<string, number> })
+      .__collierDiag__
+  })
+
+  it('does NOT touch caches for created events from a different repo', async () => {
+    // Sibling to the updated/deleted mismatch tests already in this
+    // file — beads-issue-created has the same repo_path filter, and
+    // the create branch must drop the event the same way the update
+    // and delete branches do.
+    const qc = makeQueryClient()
+    const existing = makeIssue({ id: 'beads-1' })
+    const created = makeIssue({ id: 'beads-2', title: 'New issue' })
+    qc.setQueryData<Issue[]>(['beads', 'list', REPO, {}], [existing])
+    useWorkspaceStore.setState({ repoPath: REPO })
+
+    renderWithClient(qc)
+    await act(async () => {
+      await Promise.resolve()
+    })
+
+    await act(async () => {
+      emit('beads-issue-created', {
+        repo_path: '/tmp/other-workspace',
+        issue: created,
+      })
+    })
+
+    // The active repo's caches must remain unchanged — beads-2 must
+    // not be inserted into the list and the show cache for beads-2
+    // must not be populated.
+    const list = qc.getQueryData<Issue[]>(['beads', 'list', REPO, {}])
+    expect(list?.map(i => i.id)).toEqual(['beads-1'])
+    expect(
+      qc.getQueryData<Issue>(['beads', 'show', REPO, 'beads-2'])
+    ).toBeUndefined()
+  })
+
+  it('discards a listener that resolves after the hook unmounts', async () => {
+    // Race: listen() is asynchronous, so it can resolve after the
+    // effect's cleanup has already flipped `isMounted = false`.
+    // The setupListener wrapper must detect that and call unlisten()
+    // immediately instead of pushing a now-stale listener into
+    // unlistenFns (the cleanup loop would otherwise try to double-
+    // unlisten it on the next unmount).
+    let resolveListen: (() => void) | null = null
+    const lateUnlisten = vi.fn() as unknown as Unlisten
+    mockedListen.mockImplementation(
+      (eventName: string, handler: ListenerCallback) => {
+        listeners.set(eventName, handler)
+        // Park the resolution so we control when listen() "completes".
+        // Note: production code is responsible for either calling
+        // unlisten() (discard branch) or pushing it into unlistenFns
+        // (live branch) AFTER the await — the mock does neither.
+        return new Promise<Unlisten>(resolve => {
+          resolveListen = () => resolve(lateUnlisten)
+        })
+      }
+    )
+
+    const qc = makeQueryClient()
+    const { unmount } = renderWithClient(qc)
+
+    // Unmount while every listen() promise is still pending — this
+    // flips isMounted to false inside the effect.
+    unmount()
+
+    // Now resolve the parked listen() promises. Each one will see
+    // isMounted=false and call unlisten() immediately rather than
+    // pushing the listener into unlistenFns.
+    await act(async () => {
+      if (resolveListen) resolveListen()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    // The late unlisten must have been discarded exactly once.
+    expect(lateUnlisten).toHaveBeenCalledTimes(1)
+    // And the unlistenFns set must be empty — every parked promise
+    // got the discard branch, none went into the cleanup loop.
+    expect(unlistenFns.size).toBe(0)
   })
 })
