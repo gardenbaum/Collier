@@ -73,4 +73,63 @@ describe('Resizable wrapper (react-resizable-panels)', () => {
       container.querySelector('[data-panel-group-direction="vertical"]')
     ).toBeInTheDocument()
   })
+
+  it('forwards group className and props while preserving the wrapper classes', () => {
+    const { container } = render(
+      <ResizablePanelGroup
+        className="custom-group"
+        data-testid="group"
+        direction="horizontal"
+      >
+        <ResizablePanel>Content</ResizablePanel>
+      </ResizablePanelGroup>
+    )
+
+    const group = screen.getByTestId('group')
+    expect(group).toHaveClass('custom-group')
+    expect(group).toHaveClass('flex', 'h-full', 'w-full')
+    expect(group).toHaveAttribute('data-slot', 'resizable-panel-group')
+    expect(
+      container.querySelector('[data-slot="resizable-panel"]')
+    ).toHaveTextContent('Content')
+  })
+
+  it('forwards panel props and handle className/data attributes', () => {
+    const { container } = render(
+      <ResizablePanelGroup direction="horizontal">
+        <ResizablePanel id="left-panel" data-testid="panel">
+          Left
+        </ResizablePanel>
+        <ResizableHandle
+          className="custom-handle"
+          data-testid="handle"
+          id="resize-handle"
+        />
+        <ResizablePanel>Right</ResizablePanel>
+      </ResizablePanelGroup>
+    )
+
+    expect(screen.getByTestId('panel')).toHaveAttribute('id', 'left-panel')
+    const handle = screen.getByTestId('handle')
+    expect(handle).toHaveClass('custom-handle')
+    expect(handle).toHaveClass('relative', 'w-px')
+    expect(handle).toHaveAttribute('id', 'resize-handle')
+    expect(
+      container.querySelectorAll('[data-slot="resizable-panel"]')
+    ).toHaveLength(2)
+  })
+
+  it('does not render a grip affordance when withHandle is false', () => {
+    const { container } = render(
+      <ResizablePanelGroup direction="horizontal">
+        <ResizablePanel>A</ResizablePanel>
+        <ResizableHandle withHandle={false} />
+        <ResizablePanel>B</ResizablePanel>
+      </ResizablePanelGroup>
+    )
+
+    expect(
+      container.querySelector('[data-slot="resizable-handle"] svg')
+    ).not.toBeInTheDocument()
+  })
 })
