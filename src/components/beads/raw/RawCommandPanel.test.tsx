@@ -124,16 +124,129 @@ describe('RawCommandPanel', () => {
     )
   })
 
-  it('ignores empty input and does not call runBdCommand', async () => {
+  it('renders stdout when a NonZeroExit error has no stderr', async () => {
+    mockRunBdCommand.mockResolvedValue({
+      status: 'error',
+      error: {
+        type: 'NonZeroExit',
+        code: 1,
+        stdout: 'command output',
+        stderr: '',
+      },
+    })
+
+    const { RawCommandPanel } = await importSut()
+    render(<RawCommandPanel cwd="/repo" />)
+
+    fireEvent.change(screen.getByTestId('raw-command-input'), {
+      target: { value: 'nope' },
+    })
+    fireEvent.click(screen.getByTestId('raw-command-submit'))
+
+    await waitFor(() => {
+      expect(screen.getByTestId('output-error').textContent).toContain(
+        'bd failed: command output'
+      )
+    })
+  })
+
+  it('renders the error type when no specific error message is available', async () => {
+    mockRunBdCommand.mockResolvedValue({
+      status: 'error',
+      error: { type: 'OtherError' },
+    })
+
+    const { RawCommandPanel } = await importSut()
+    render(<RawCommandPanel cwd="/repo" />)
+
+    fireEvent.change(screen.getByTestId('raw-command-input'), {
+      target: { value: 'nope' },
+    })
+    fireEvent.click(screen.getByTestId('raw-command-submit'))
+
+    await waitFor(() => {
+      expect(screen.getByTestId('output-error').textContent).toContain(
+        'OtherError'
+      )
+    })
+  })
+
+  it('renders a specific message when a typed error provides one', async () => {
+    mockRunBdCommand.mockResolvedValue({
+      status: 'error',
+      error: { type: 'OtherError', message: 'detailed failure' },
+    })
+
+    const { RawCommandPanel } = await importSut()
+    render(<RawCommandPanel cwd="/repo" />)
+
+    fireEvent.change(screen.getByTestId('raw-command-input'), {
+      target: { value: 'nope' },
+    })
+    fireEvent.click(screen.getByTestId('raw-command-submit'))
+
+    await waitFor(() => {
+      expect(screen.getByTestId('output-error').textContent).toContain(
+        'detailed failure'
+      )
+    })
+  })
+
+  it('renders an Error message when the error has no type field', async () => {
+    mockRunBdCommand.mockResolvedValue({
+      status: 'error',
+      error: new Error('command exploded'),
+    })
+
+    const { RawCommandPanel } = await importSut()
+    render(<RawCommandPanel cwd="/repo" />)
+
+    fireEvent.change(screen.getByTestId('raw-command-input'), {
+      target: { value: 'nope' },
+    })
+    fireEvent.click(screen.getByTestId('raw-command-submit'))
+
+    await waitFor(() => {
+      expect(screen.getByTestId('output-error').textContent).toContain(
+        'command exploded'
+      )
+    })
+  })
+
+  it('stringifies non-object errors', async () => {
+    mockRunBdCommand.mockResolvedValue({
+      status: 'error',
+      error: 'raw command failure',
+    })
+
+    const { RawCommandPanel } = await importSut()
+    render(<RawCommandPanel cwd="/repo" />)
+
+    fireEvent.change(screen.getByTestId('raw-command-input'), {
+      target: { value: 'nope' },
+    })
+    fireEvent.click(screen.getByTestId('raw-command-submit'))
+
+    await waitFor(() => {
+      expect(screen.getByTestId('output-error').textContent).toContain(
+        'raw command failure'
+      )
+    })
+  })
+
+  it('ignores whitespace-only input when the form is submitted directly', async () => {
     const { RawCommandPanel } = await importSut()
     render(<RawCommandPanel cwd="/repo" />)
 
     fireEvent.change(screen.getByTestId('raw-command-input'), {
       target: { value: '   ' },
     })
-    const submit = screen.getByTestId('raw-command-submit') as HTMLButtonElement
-    expect(submit.disabled).toBe(true)
+    fireEvent.submit(screen.getByRole('form', { name: 'Run bd command' }))
+
     expect(mockRunBdCommand).not.toHaveBeenCalled()
+    expect(screen.getByTestId('raw-command-history')).toHaveTextContent(
+      'History: 0'
+    )
   })
 
   it('preserves the AC-14 mono palette (no brand colour hex)', async () => {
