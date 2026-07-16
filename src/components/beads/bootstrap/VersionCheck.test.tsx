@@ -20,10 +20,13 @@ import { render } from '@/test/test-utils'
 ).IS_REACT_ACT_ENVIRONMENT = true
 
 // Hoisted mocks — must be declared before the import of the SUT.
-const { mockDetectBd, mockClose } = vi.hoisted(() => ({
-  mockDetectBd: vi.fn(),
-  mockClose: vi.fn(),
-}))
+const { mockDetectBd, mockClose, mockLoggerDebug, mockLoggerError } =
+  vi.hoisted(() => ({
+    mockDetectBd: vi.fn(),
+    mockClose: vi.fn(),
+    mockLoggerDebug: vi.fn(),
+    mockLoggerError: vi.fn(),
+  }))
 
 vi.mock('@/lib/tauri-bindings', () => ({
   commands: {
@@ -37,13 +40,13 @@ vi.mock('@tauri-apps/api/window', () => ({
   }),
 }))
 
-// Logger noise reduction
+// Logger noise reduction — debug/error captured for assertion.
 vi.mock('@/lib/logger', () => ({
   logger: {
-    debug: vi.fn(),
+    debug: mockLoggerDebug,
     info: vi.fn(),
     warn: vi.fn(),
-    error: vi.fn(),
+    error: mockLoggerError,
   },
 }))
 
@@ -66,6 +69,17 @@ const unsupportedBdInfo = {
 
 const supportedBdInfo = {
   version: [1, 0, 5] as [number, number, number],
+  schema_version: 1,
+  backend: 'jsonl' as const,
+  jsonl_path: '.beads/x.jsonl',
+}
+
+// `bd` is installed but didn't report a parseable version (e.g. `bd --version`
+// returned something unexpected). The component must pass through without
+// showing the modal — a null version is treated as "supported" (we can't
+// prove the user is on an unsupported major, so don't block the app).
+const nullVersionBdInfo = {
+  version: null,
   schema_version: 1,
   backend: 'jsonl' as const,
   jsonl_path: '.beads/x.jsonl',
@@ -117,5 +131,125 @@ describe('VersionCheck modal', () => {
 
     // onPass was called
     expect(onPass).toHaveBeenCalledTimes(1)
+  })
+
+  it('null version: passes through without modal (covers isSupportedVersion L43)', async () => {
+    const onPass = vi.fn()
+    mockDetectBd.mockResolvedValue({
+      status: 'ok',
+      data: nullVersionBdInfo,
+    })
+
+    const { VersionCheck } = await importSut()
+    render(<VersionCheck cwd={CWD} onPass={onPass} />)
+
+    await waitFor(() => {
+      expect(mockDetectBd).toHaveBeenCalledWith(CWD)
+    })
+
+    // Modal is NOT in the document — null version is treated as supported
+    expect(screen.queryByTestId('version-check-modal')).not.toBeInTheDocument()
+
+    // onPass was called exactly once
+    expect(onPass).toHaveBeenCalledTimes(1)
+  })
+
+  it('error status: passes through with logger.debug (covers L70, L72-L78)', async () => {
+    const onPass = vi.fn()
+    mockDetectBd.mockResolvedValue({
+      status: 'error',
+      error: 'bd: command not found on PATH',
+    })
+
+    const { VersionCheck } = await importSut()
+    render(<VersionCheck cwd={CWD} onPass={onPass} />)
+
+    await waitFor(() => {
+      expect(mockDetectBd).toHaveBeenCalledWith(CWD)
+    })
+
+    // Modal is NOT in the document — detect errors are non-blocking
+    expect(screen.queryByTestId('version-check-modal')).not.toBeInTheDocument()
+
+    // onPass was called (error path treats "can't detect" as pass-through)
+    expect(onPass).toHaveBeenCalledTimes(1)
+
+    // logger.debug captures the diagnostic with the error message and cwd
+    expect(mockLoggerDebug).toHaveBeenCalledWith(
+      'detectBd error during version check',
+      expect.objectContaining({
+        error: 'bd: command not found on PATH',
+        cwd: CWD,
+      })
+    )
+  })
+
+  it('rejection: passes through with logger.error (covers catch L89-L93)', async () => {
+    const onPass = vi.fn()
+    const boom = new Error('invoke("detect_bd") failed')
+    mockDetectBd.mockRejectedValue(boom)
+
+    const { VersionCheck } = await importSut()
+    render(<VersionCheck cwd={CWD} onPass={onPass} />)
+
+    await waitFor(() => {
+      expect(mockDetectBd).toHaveBeenCalledWith(CWD)
+    })
+
+    // Modal is NOT in the document — defensive pass-through on throw
+    expect(screen.queryByTestId('version-check-modal')).not.toBeInTheDocument()
+
+    // onPass was called (catch path also treats throw as pass-through)
+    expect(onPass).toHaveBeenCalledTimes(1)
+
+    // logger.error captures the throw with the original error and cwd
+    expect(mockLoggerError).toHaveBeenCalledWith(
+      'detectBd threw during version check',
+      expect.objectContaining({
+        err: boom,
+        cwd: CWD,
+      })
+    )
+  })
+
+  it('unmount before settle: both .then and .catch short-circuit via cancelled flag (covers L69, L89)', async () => {
+    // First mount: unmount, then REJECT — exercises the cancelled guard
+    // inside the .catch block (L89 true branch).
+    let rejectDetect!: (reason: unknown) => void
+    mockDetectBd.mockImplementationOnce(
+      () =>
+        new Promise((_res, rej) => {
+          rejectDetect = rej
+        })
+    )
+    const onPassReject = vi.fn()
+    const { VersionCheck } = await importSut()
+    const { unmount: unmountReject } = render(
+      <VersionCheck cwd={CWD} onPass={onPassReject} />
+    )
+    unmountReject()
+    rejectDetect(new Error('late failure after unmount'))
+    // Drain microtasks so the rejected promise's .catch handler runs.
+    await new Promise(resolve => setTimeout(resolve, 0))
+    expect(onPassReject).not.toHaveBeenCalled()
+
+    // Second mount: unmount, then RESOLVE — exercises the cancelled guard
+    // inside the .then block (L69 true branch). Fresh promise so the
+    // previous rejection doesn't suppress this one.
+    let resolveDetect!: (value: { status: string; data: unknown }) => void
+    mockDetectBd.mockImplementationOnce(
+      () =>
+        new Promise(res => {
+          resolveDetect = res
+        })
+    )
+    const onPassResolve = vi.fn()
+    const { unmount: unmountResolve } = render(
+      <VersionCheck cwd={CWD} onPass={onPassResolve} />
+    )
+    unmountResolve()
+    resolveDetect({ status: 'ok', data: supportedBdInfo })
+    await new Promise(resolve => setTimeout(resolve, 0))
+    expect(onPassResolve).not.toHaveBeenCalled()
   })
 })
