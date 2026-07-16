@@ -199,4 +199,68 @@ describe('Simplified Command System', () => {
       expect(focusSearchInput).toHaveBeenCalledTimes(1)
     })
   })
+
+  // Branch-coverage tests for `src/lib/commands/registry.ts`.
+  //
+  // The existing fixtures in `navigationCommands` always declare a
+  // `descriptionKey`, so the `descriptionKey ? ... : ''` ternary
+  // (line 23) never reaches the empty-string fallback. Likewise the
+  // "handles command execution errors" test only throws `new Error()`,
+  // so the non-Error branch of `error instanceof Error ? ... :
+  // 'Unknown error'` (line 58) is unreachable through the public
+  // surface. These two tests close both gaps and pin the behaviour.
+  describe('registry branch coverage', () => {
+    it('searches commands that omit descriptionKey without crashing on the missing key', () => {
+      // Register a command without a descriptionKey. The label still
+      // matches the search term, so the command should appear in the
+      // filtered list. The ternary on line 23 takes the falsy branch
+      // (descriptionKey is undefined → description becomes ''), the
+      // label-only `includes(search)` then keeps the command in the
+      // results, and `t(cmd.descriptionKey)` is never called.
+      const descriptionlessCommand: AppCommand = {
+        id: 'descriptionless',
+        labelKey: 'commands.descriptionless.label',
+        execute: vi.fn(),
+      }
+      registerCommands([descriptionlessCommand])
+
+      const searchResults = getAllCommands(
+        mockContext,
+        'descriptionless',
+        mockT
+      )
+
+      expect(searchResults).toContain(descriptionlessCommand)
+    })
+
+    it('wraps non-Error throws in the catch block with "Unknown error"', async () => {
+      // The catch on line 56-64 normalises every thrown value into a
+      // string. A `new Error('…')` takes the `instanceof Error` truthy
+      // branch (covered by the existing "handles command execution
+      // errors" test). Here we throw a non-Error value — a plain
+      // object — to drive the `'Unknown error'` fallback on line 58.
+      // The serialiser must not include `[object Object]` (which
+      // would happen if the implementation just stringified the raw
+      // value); the production code's intent is to mask unexpected
+      // shapes behind the literal "Unknown error".
+      const nonErrorThrower: AppCommand = {
+        id: 'non-error-thrower',
+        labelKey: 'commands.nonErrorThrower.label',
+        execute: () => {
+          // A plain object throw — exercises the `error instanceof
+          // Error` falsy branch on line 58. Production code masks
+          // non-Error values behind the literal "Unknown error".
+          throw { custom: true }
+        },
+      }
+      registerCommands([nonErrorThrower])
+
+      const result = await executeCommand('non-error-thrower', mockContext)
+
+      expect(result.success).toBe(false)
+      expect(result.error).toContain('Unknown error')
+      expect(result.error).not.toContain('[object Object]')
+      expect(result.error).toContain("'non-error-thrower'")
+    })
+  })
 })
