@@ -74,6 +74,55 @@ describe('QuickPane', () => {
     expect(recentItems[0]?.getAttribute('data-cmd')).toBe(pickedCmd)
   })
 
+  it('dedupes and moves to the top when re-clicking an existing recent item', async () => {
+    // Covers the recent-list onClick closure + the inner filter
+    // callback `c => c !== cmd` in handlePick: prev=['list', 'show']
+    // gets filtered, so the callback evaluates for both 'list'
+    // (kept — branch returns true) and 'show' (removed — returns
+    // false). Without a non-empty recent list, the filter short-
+    // circuits over `[]` and the closure is never invoked.
+    const onSelect = vi.fn()
+    const { QuickPane } = await importSut()
+    render(<QuickPane onSelect={onSelect} initialRecent={['list', 'show']} />)
+
+    const recentItems = screen.getAllByTestId('quick-pane-recent-item')
+    const showItem = recentItems.find(
+      item => item.getAttribute('data-cmd') === 'show'
+    )
+    if (!showItem) throw new Error('expected the show recent item')
+    fireEvent.click(showItem)
+
+    expect(onSelect).toHaveBeenCalledWith('show')
+    const after = screen.getAllByTestId('quick-pane-recent-item')
+    expect(after).toHaveLength(2)
+    expect(after[0]?.getAttribute('data-cmd')).toBe('show')
+    expect(after[1]?.getAttribute('data-cmd')).toBe('list')
+  })
+
+  it('invokes the filter callback when picking a suggestion while recent is non-empty', async () => {
+    // Covers the filter callback `c => c !== cmd` reached from the
+    // suggestion-list onClick path: when a suggestion is picked
+    // with a non-empty recent list, prev.filter iterates and the
+    // closure runs for each entry. Previous tests either picked a
+    // suggestion with empty recent (filter over `[]` short-
+    // circuits) or only hydrated initialRecent without clicking.
+    const onSelect = vi.fn()
+    const { QuickPane } = await importSut()
+    render(<QuickPane onSelect={onSelect} initialRecent={['list']} />)
+
+    const readySuggestion = screen
+      .getAllByTestId('quick-pane-suggestion-item')
+      .find(item => item.getAttribute('data-cmd') === 'ready')
+    if (!readySuggestion) throw new Error('expected the ready suggestion')
+    fireEvent.click(readySuggestion)
+
+    expect(onSelect).toHaveBeenCalledWith('ready')
+    const after = screen.getAllByTestId('quick-pane-recent-item')
+    expect(after).toHaveLength(2)
+    expect(after[0]?.getAttribute('data-cmd')).toBe('ready')
+    expect(after[1]?.getAttribute('data-cmd')).toBe('list')
+  })
+
   it('hydrates the recent list from initialRecent', async () => {
     const { QuickPane } = await importSut()
     render(<QuickPane initialRecent={['list', 'show']} />)
