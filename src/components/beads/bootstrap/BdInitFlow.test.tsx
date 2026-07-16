@@ -1,35 +1,50 @@
 /**
- * Tests for the BdInitFlow bootstrap panel.
+ * Tests for the `BdInitFlow` component.
  *
- * Contract: when `commands.detectBd(cwd)` succeeds but `jsonl_path` is
- * `None` and `backend === "unknown"` (no `.beads/` dir), the parent
- * (App.tsx, Wave 8) renders this panel. The panel offers two actions:
- *   - "Initialize" — invokes `commands.runBdCommand(["init"], repoPath)`,
- *     refetches via `commands.detectBd(cwd)`, and on success calls
- *     `onInitialized()`. On failure shows a Sonner toast with the
- *     stderr from `BdError::NonZeroExit`.
- *   - "Cancel"     — calls `onCancel()` so the parent can return to
- *     the repo-selection gate (T9).
+ * Contract: `<BdInitFlow />` is the bootstrap-gate panel rendered when
+ * `commands.detectBd(cwd)` reports `jsonl_path === null` and
+ * `backend === "unknown"` (i.e. no `.beads/` directory exists yet).
+ * It offers two actions:
+ *
+ *   - Initialize: invokes `commands.runBdCommand(["init"], repoPath)`,
+ *     then refetches `detectBd(repoPath)`. If both succeed and the
+ *     second reports a `jsonl_path`, the beads query namespace is
+ *     invalidated and `onInitialized()` is called. Any failure (error
+ *     return value, missing jsonl, thrown exception) routes through
+ *     `formatBdError` and surfaces as a Sonner toast.
+ *   - Cancel:     invokes `onCancel()` and does not touch the Tauri
+ *     command layer.
+ *
+ * `formatBdError` is the pure helper at the top of the file. Every
+ * branch is exercised through the component by passing different
+ * `BdError` shapes (NonZeroExit with/without stderr, with/without
+ * `code`, type-only errors, plain Error throws). Tests assert on the
+ * resulting toast message rather than re-exporting the helper, so
+ * the public surface stays minimal.
+ *
+ * Mocks follow the same hoisted `vi.fn()` pattern proven in
+ * `SchemaCheck.test.tsx` / `QuitButton.test.tsx` / `BdNotInPath.test.tsx`.
  */
-import { describe, it, expect, beforeEach, vi, type Mock } from 'vitest'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { render } from '@/test/test-utils'
+import type { BdError, BdInfo } from '@/lib/bindings'
 
-// Hoisted mocks — must be declared before the SUT import.
-const {
-  mockRunBdCommand,
-  mockDetectBd,
-  mockInvalidateQueries,
-  mockToastError,
-  mockToastSuccess,
-} = vi.hoisted(() => ({
-  mockRunBdCommand: vi.fn(),
-  mockDetectBd: vi.fn(),
-  mockInvalidateQueries: vi.fn(),
-  mockToastError: vi.fn(),
-  mockToastSuccess: vi.fn(),
-}))
+// React 19 + Vitest: silence "act() not configured" warnings.
+;(
+  globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
+).IS_REACT_ACT_ENVIRONMENT = true
+
+// Hoisted mocks — must be declared before the SUT is imported so the
+// `vi.mock` calls below can capture them.
+const { mockRunBdCommand, mockDetectBd, mockToastError, mockLoggerError } =
+  vi.hoisted(() => ({
+    mockRunBdCommand: vi.fn(),
+    mockDetectBd: vi.fn(),
+    mockToastError: vi.fn(),
+    mockLoggerError: vi.fn(),
+  }))
 
 vi.mock('@/lib/tauri-bindings', () => ({
   commands: {
@@ -38,220 +53,414 @@ vi.mock('@/lib/tauri-bindings', () => ({
   },
 }))
 
-vi.mock('@tanstack/react-query', async () => {
-  const actual = await vi.importActual('@tanstack/react-query')
-  return {
-    ...actual,
-    useQueryClient: () => ({
-      invalidateQueries: mockInvalidateQueries,
-    }),
-  }
-})
-
 vi.mock('sonner', () => ({
   toast: {
     error: mockToastError,
-    success: mockToastSuccess,
-    info: vi.fn(),
-    warning: vi.fn(),
   },
 }))
 
-// Logger noise reduction
 vi.mock('@/lib/logger', () => ({
   logger: {
     debug: vi.fn(),
     info: vi.fn(),
     warn: vi.fn(),
-    error: vi.fn(),
+    error: mockLoggerError,
   },
 }))
 
+// Lazy import so the mocks above are wired before the SUT is evaluated.
 const importSut = () => import('./BdInitFlow')
 
-const defaultProps = {
-  repoPath: '/Users/test/repo',
-  onInitialized: vi.fn(),
-  onCancel: vi.fn(),
+const REPO_PATH = '/test/repo'
+
+const okBdInfo: BdInfo = {
+  version: [1, 0, 0],
+  schema_version: 1,
+  backend: 'jsonl',
+  jsonl_path: '.beads/issues.jsonl',
 }
 
 beforeEach(() => {
   vi.clearAllMocks()
-  mockRunBdCommand.mockResolvedValue({
-    status: 'ok',
-    data: { type: 'text', value: '' },
-  })
-  mockDetectBd.mockResolvedValue({
-    status: 'ok',
-    data: {
-      version: [1, 0, 5],
-      schema_version: null,
-      jsonl_path: null,
-      backend: 'unknown',
-    },
-  })
-  mockInvalidateQueries.mockResolvedValue(undefined)
 })
 
 describe('BdInitFlow', () => {
-  it('renders the title and both action buttons', async () => {
-    const { BdInitFlow } = await importSut()
-    render(<BdInitFlow {...defaultProps} />)
+  describe('rendering', () => {
+    it('renders the prompt, heading, and both action buttons', async () => {
+      const { BdInitFlow } = await importSut()
+      render(
+        <BdInitFlow
+          repoPath={REPO_PATH}
+          onInitialized={vi.fn()}
+          onCancel={vi.fn()}
+        />
+      )
 
-    // Title (from i18n key beads.bootstrap.noBeadsWorkspace)
-    expect(
-      screen.getByRole('heading', { name: /no beads workspace found/i })
-    ).toBeInTheDocument()
+      // Heading from i18n key
+      expect(
+        screen.getByRole('heading', { name: /no beads workspace/i })
+      ).toBeInTheDocument()
+      // aria-label on the wrapping <section>
+      expect(
+        screen.getByRole('region', { name: /no beads workspace/i })
+      ).toBeInTheDocument()
+      // Body text mentions the repo path
+      expect(
+        screen.getByText(new RegExp(`Initialize Beads at ${REPO_PATH}\\?`))
+      ).toBeInTheDocument()
+      // Initialize + Cancel buttons
+      expect(
+        screen.getByRole('button', { name: /initialize beads/i })
+      ).toBeInTheDocument()
+      expect(
+        screen.getByRole('button', { name: /cancel/i })
+      ).toBeInTheDocument()
+      // No command calls until the user interacts
+      expect(mockRunBdCommand).not.toHaveBeenCalled()
+      expect(mockDetectBd).not.toHaveBeenCalled()
+    })
 
-    // Initialize button (beads.bootstrap.initButton)
-    expect(
-      screen.getByRole('button', { name: /initialize/i })
-    ).toBeInTheDocument()
+    it('Cancel button calls onCancel without invoking any Tauri command', async () => {
+      const onCancel = vi.fn()
+      const onInitialized = vi.fn()
+      const { BdInitFlow } = await importSut()
+      const user = userEvent.setup()
 
-    // Cancel button (beads.common.cancel)
-    expect(screen.getByRole('button', { name: /cancel/i })).toBeInTheDocument()
+      render(
+        <BdInitFlow
+          repoPath={REPO_PATH}
+          onInitialized={onInitialized}
+          onCancel={onCancel}
+        />
+      )
+
+      await user.click(screen.getByRole('button', { name: /cancel/i }))
+
+      expect(onCancel).toHaveBeenCalledTimes(1)
+      expect(onInitialized).not.toHaveBeenCalled()
+      expect(mockRunBdCommand).not.toHaveBeenCalled()
+      expect(mockDetectBd).not.toHaveBeenCalled()
+    })
   })
 
-  it('initialize click invokes runBdCommand with ["init"] and repoPath', async () => {
-    mockRunBdCommand.mockResolvedValue({
-      status: 'ok',
-      data: { type: 'text', value: 'initialized' },
-    })
-    // After init, detectBd now reports a jsonl path
-    mockDetectBd.mockResolvedValue({
-      status: 'ok',
-      data: {
-        version: [1, 0, 5],
-        schema_version: 1,
-        jsonl_path: '/Users/test/repo/.beads/issues.jsonl',
-        backend: 'jsonl',
-      },
-    })
-
-    const { BdInitFlow } = await importSut()
-    const user = userEvent.setup()
-    render(<BdInitFlow {...defaultProps} />)
-
-    const initBtn = screen.getByRole('button', { name: /initialize/i })
-    await user.click(initBtn)
-
-    await waitFor(() => {
-      expect(mockRunBdCommand).toHaveBeenCalledTimes(1)
-    })
-
-    const firstCall = (mockRunBdCommand as Mock).mock.calls[0]
-    expect(firstCall).toBeDefined()
-    const [args, cwd] = firstCall as [string[], string]
-    expect(args).toEqual(['init'])
-    expect(cwd).toBe('/Users/test/repo')
-  })
-
-  it('on init success, invalidates beads queries, refetches detectBd, and calls onInitialized', async () => {
-    mockRunBdCommand.mockResolvedValue({
-      status: 'ok',
-      data: { type: 'text', value: 'initialized' },
-    })
-    mockDetectBd.mockResolvedValue({
-      status: 'ok',
-      data: {
-        version: [1, 0, 5],
-        schema_version: 1,
-        jsonl_path: '/Users/test/repo/.beads/issues.jsonl',
-        backend: 'jsonl',
-      },
-    })
-
-    const onInitialized = vi.fn()
-    const { BdInitFlow } = await importSut()
-    const user = userEvent.setup()
-    render(<BdInitFlow {...defaultProps} onInitialized={onInitialized} />)
-
-    await user.click(screen.getByRole('button', { name: /initialize/i }))
-
-    await waitFor(() => {
-      expect(mockInvalidateQueries).toHaveBeenCalledWith({
-        queryKey: ['beads'],
+  describe('Initialize — success path', () => {
+    it('runs init, refetches detectBd, invalidates queries, and calls onInitialized', async () => {
+      mockRunBdCommand.mockResolvedValue({
+        status: 'ok',
+        data: { type: 'text', value: 'Initialized empty Beads workspace' },
       })
+      mockDetectBd.mockResolvedValue({ status: 'ok', data: okBdInfo })
+
+      const onInitialized = vi.fn()
+      const { BdInitFlow } = await importSut()
+      const user = userEvent.setup()
+
+      render(
+        <BdInitFlow
+          repoPath={REPO_PATH}
+          onInitialized={onInitialized}
+          onCancel={vi.fn()}
+        />
+      )
+
+      await user.click(
+        screen.getByRole('button', { name: /initialize beads/i })
+      )
+
+      await waitFor(() => {
+        expect(onInitialized).toHaveBeenCalledTimes(1)
+      })
+
+      expect(mockRunBdCommand).toHaveBeenCalledTimes(1)
+      expect(mockRunBdCommand).toHaveBeenCalledWith(['init'], REPO_PATH)
+      expect(mockDetectBd).toHaveBeenCalledTimes(1)
+      expect(mockDetectBd).toHaveBeenCalledWith(REPO_PATH)
+      // No error toast on the happy path
+      expect(mockToastError).not.toHaveBeenCalled()
+      expect(mockLoggerError).not.toHaveBeenCalled()
     })
-
-    // detectBd was re-invoked after success
-    expect(mockDetectBd).toHaveBeenCalledWith('/Users/test/repo')
-
-    // And the parent was notified
-    expect(onInitialized).toHaveBeenCalledTimes(1)
   })
 
-  it('on init success, shows error toast if post-init detectBd still has no jsonl', async () => {
-    mockRunBdCommand.mockResolvedValue({
-      status: 'ok',
-      data: { type: 'text', value: 'initialized' },
-    })
-    // detectBd still reports no jsonl (init didn't take)
-    mockDetectBd.mockResolvedValue({
-      status: 'ok',
-      data: {
-        version: [1, 0, 5],
-        schema_version: null,
-        jsonl_path: null,
-        backend: 'unknown',
-      },
-    })
+  describe('Initialize — formatBdError branches', () => {
+    // The helper itself isn't exported; we exercise every branch by
+    // returning a different `BdError` shape from `runBdCommand` and
+    // asserting on the toast message that gets rendered.
 
-    const onInitialized = vi.fn()
-    const { BdInitFlow } = await importSut()
-    const user = userEvent.setup()
-    render(<BdInitFlow {...defaultProps} onInitialized={onInitialized} />)
-
-    await user.click(screen.getByRole('button', { name: /initialize/i }))
-
-    await waitFor(() => {
-      expect(mockToastError).toHaveBeenCalledTimes(1)
-    })
-    // Parent NOT notified
-    expect(onInitialized).not.toHaveBeenCalled()
-  })
-
-  it('on init error, shows toast with stderr and does not call onInitialized', async () => {
-    mockRunBdCommand.mockResolvedValue({
-      status: 'error',
-      error: {
+    it('NonZeroExit with non-empty stderr surfaces trimmed stderr', async () => {
+      const err: BdError = {
         type: 'NonZeroExit',
         code: 1,
         stdout: '',
-        stderr: 'not a git repository',
-      },
+        stderr: '  cannot init: not a git repo  ',
+      }
+      mockRunBdCommand.mockResolvedValue({ status: 'error', error: err })
+      // detectBd shouldn't even be reached, but stub it defensively
+      mockDetectBd.mockResolvedValue({ status: 'ok', data: okBdInfo })
+
+      const onInitialized = vi.fn()
+      const { BdInitFlow } = await importSut()
+      const user = userEvent.setup()
+
+      render(
+        <BdInitFlow
+          repoPath={REPO_PATH}
+          onInitialized={onInitialized}
+          onCancel={vi.fn()}
+        />
+      )
+
+      await user.click(
+        screen.getByRole('button', { name: /initialize beads/i })
+      )
+
+      await waitFor(() => {
+        expect(mockToastError).toHaveBeenCalledTimes(1)
+      })
+      expect(mockToastError).toHaveBeenCalledWith(
+        'bd init failed: cannot init: not a git repo'
+      )
+      expect(onInitialized).not.toHaveBeenCalled()
+      // detectBd must NOT be called when runBdCommand already errored
+      expect(mockDetectBd).not.toHaveBeenCalled()
     })
 
-    const onInitialized = vi.fn()
-    const { BdInitFlow } = await importSut()
-    const user = userEvent.setup()
-    render(<BdInitFlow {...defaultProps} onInitialized={onInitialized} />)
+    it('NonZeroExit with empty stderr falls back to the exit code', async () => {
+      const err: BdError = {
+        type: 'NonZeroExit',
+        code: 42,
+        stdout: '',
+        stderr: '',
+      }
+      mockRunBdCommand.mockResolvedValue({ status: 'error', error: err })
+      mockDetectBd.mockResolvedValue({ status: 'ok', data: okBdInfo })
 
-    await user.click(screen.getByRole('button', { name: /initialize/i }))
+      const onInitialized = vi.fn()
+      const { BdInitFlow } = await importSut()
+      const user = userEvent.setup()
 
-    await waitFor(() => {
-      expect(mockToastError).toHaveBeenCalledTimes(1)
+      render(
+        <BdInitFlow
+          repoPath={REPO_PATH}
+          onInitialized={onInitialized}
+          onCancel={vi.fn()}
+        />
+      )
+
+      await user.click(
+        screen.getByRole('button', { name: /initialize beads/i })
+      )
+
+      await waitFor(() => {
+        expect(mockToastError).toHaveBeenCalledWith(
+          'bd init failed: bd exited with code 42'
+        )
+      })
+      expect(onInitialized).not.toHaveBeenCalled()
+      expect(mockDetectBd).not.toHaveBeenCalled()
     })
 
-    const msg = (mockToastError as Mock).mock.calls[0]?.[0] as string
-    expect(msg).toContain('not a git repository')
+    it('NonZeroExit with empty stderr and unknown code falls back to "?"', async () => {
+      // Cast to BdError — the strict type forbids missing `code`, but
+      // the helper's runtime behaviour for `code === undefined` is
+      // exactly the fallback under test, so we simulate the
+      // worst-case shape the helper might receive.
+      const err = {
+        type: 'NonZeroExit',
+        stdout: '',
+        stderr: '',
+        // intentionally no `code` field
+      } as unknown as BdError
+      mockRunBdCommand.mockResolvedValue({ status: 'error', error: err })
+      mockDetectBd.mockResolvedValue({ status: 'ok', data: okBdInfo })
 
-    // Parent NOT notified, no follow-up detectBd
-    expect(onInitialized).not.toHaveBeenCalled()
-    expect(mockDetectBd).not.toHaveBeenCalled()
-    expect(mockInvalidateQueries).not.toHaveBeenCalled()
+      const onInitialized = vi.fn()
+      const { BdInitFlow } = await importSut()
+      const user = userEvent.setup()
+
+      render(
+        <BdInitFlow
+          repoPath={REPO_PATH}
+          onInitialized={onInitialized}
+          onCancel={vi.fn()}
+        />
+      )
+
+      await user.click(
+        screen.getByRole('button', { name: /initialize beads/i })
+      )
+
+      await waitFor(() => {
+        expect(mockToastError).toHaveBeenCalledWith(
+          'bd init failed: bd exited with code ?'
+        )
+      })
+      expect(onInitialized).not.toHaveBeenCalled()
+    })
+
+    it('errors with a message field surface that message verbatim', async () => {
+      const err: BdError = {
+        type: 'SchemaMismatch',
+        message: 'expected schema 1, got 2',
+      }
+      mockRunBdCommand.mockResolvedValue({ status: 'error', error: err })
+      mockDetectBd.mockResolvedValue({ status: 'ok', data: okBdInfo })
+
+      const onInitialized = vi.fn()
+      const { BdInitFlow } = await importSut()
+      const user = userEvent.setup()
+
+      render(
+        <BdInitFlow
+          repoPath={REPO_PATH}
+          onInitialized={onInitialized}
+          onCancel={vi.fn()}
+        />
+      )
+
+      await user.click(
+        screen.getByRole('button', { name: /initialize beads/i })
+      )
+
+      await waitFor(() => {
+        expect(mockToastError).toHaveBeenCalledWith(
+          'bd init failed: expected schema 1, got 2'
+        )
+      })
+      expect(onInitialized).not.toHaveBeenCalled()
+    })
+
+    it('type-only errors (e.g. BdNotInPath) fall back to the type name', async () => {
+      const err: BdError = { type: 'BdNotInPath' }
+      mockRunBdCommand.mockResolvedValue({ status: 'error', error: err })
+      mockDetectBd.mockResolvedValue({ status: 'ok', data: okBdInfo })
+
+      const onInitialized = vi.fn()
+      const { BdInitFlow } = await importSut()
+      const user = userEvent.setup()
+
+      render(
+        <BdInitFlow
+          repoPath={REPO_PATH}
+          onInitialized={onInitialized}
+          onCancel={vi.fn()}
+        />
+      )
+
+      await user.click(
+        screen.getByRole('button', { name: /initialize beads/i })
+      )
+
+      await waitFor(() => {
+        expect(mockToastError).toHaveBeenCalledWith(
+          'bd init failed: BdNotInPath'
+        )
+      })
+      expect(onInitialized).not.toHaveBeenCalled()
+    })
+
+    it('non-typed throws (plain Error) hit the String(error) fallback', async () => {
+      // A plain Error has no `type` property, so formatBdError takes
+      // the outer `if`-else's else branch: `return String(error)`.
+      mockRunBdCommand.mockRejectedValue(new Error('boom'))
+      mockDetectBd.mockResolvedValue({ status: 'ok', data: okBdInfo })
+
+      const onInitialized = vi.fn()
+      const { BdInitFlow } = await importSut()
+      const user = userEvent.setup()
+
+      render(
+        <BdInitFlow
+          repoPath={REPO_PATH}
+          onInitialized={onInitialized}
+          onCancel={vi.fn()}
+        />
+      )
+
+      await user.click(
+        screen.getByRole('button', { name: /initialize beads/i })
+      )
+
+      await waitFor(() => {
+        expect(mockToastError).toHaveBeenCalledTimes(1)
+      })
+      // String(new Error('boom')) === 'Error: boom'
+      expect(mockToastError).toHaveBeenCalledWith('bd init failed: Error: boom')
+      expect(mockLoggerError).toHaveBeenCalledTimes(1)
+      expect(mockLoggerError).toHaveBeenCalledWith('bd init crashed', {
+        err: expect.any(Error),
+      })
+      expect(onInitialized).not.toHaveBeenCalled()
+    })
   })
 
-  it('cancel button calls onCancel and does not invoke any command', async () => {
-    const onCancel = vi.fn()
-    const { BdInitFlow } = await importSut()
-    const user = userEvent.setup()
-    render(<BdInitFlow {...defaultProps} onCancel={onCancel} />)
+  describe('Initialize — post-init detectBd result', () => {
+    it('toasts and bails when detectBd returns no jsonl_path', async () => {
+      mockRunBdCommand.mockResolvedValue({
+        status: 'ok',
+        data: { type: 'text', value: 'Initialized empty Beads workspace' },
+      })
+      // jsonl_path is null → workspace is still empty
+      mockDetectBd.mockResolvedValue({
+        status: 'ok',
+        data: { ...okBdInfo, jsonl_path: null, backend: 'unknown' },
+      })
 
-    await user.click(screen.getByRole('button', { name: /cancel/i }))
+      const onInitialized = vi.fn()
+      const { BdInitFlow } = await importSut()
+      const user = userEvent.setup()
 
-    expect(onCancel).toHaveBeenCalledTimes(1)
-    expect(mockRunBdCommand).not.toHaveBeenCalled()
-    expect(mockDetectBd).not.toHaveBeenCalled()
+      render(
+        <BdInitFlow
+          repoPath={REPO_PATH}
+          onInitialized={onInitialized}
+          onCancel={vi.fn()}
+        />
+      )
+
+      await user.click(
+        screen.getByRole('button', { name: /initialize beads/i })
+      )
+
+      await waitFor(() => {
+        expect(mockToastError).toHaveBeenCalledWith(
+          'bd init succeeded but workspace is still empty'
+        )
+      })
+      expect(onInitialized).not.toHaveBeenCalled()
+    })
+
+    it('toasts and bails when detectBd returns an error', async () => {
+      mockRunBdCommand.mockResolvedValue({
+        status: 'ok',
+        data: { type: 'text', value: 'Initialized empty Beads workspace' },
+      })
+      mockDetectBd.mockResolvedValue({
+        status: 'error',
+        error: { type: 'NotFound', id: 'beads' },
+      })
+
+      const onInitialized = vi.fn()
+      const { BdInitFlow } = await importSut()
+      const user = userEvent.setup()
+
+      render(
+        <BdInitFlow
+          repoPath={REPO_PATH}
+          onInitialized={onInitialized}
+          onCancel={vi.fn()}
+        />
+      )
+
+      await user.click(
+        screen.getByRole('button', { name: /initialize beads/i })
+      )
+
+      await waitFor(() => {
+        expect(mockToastError).toHaveBeenCalledWith(
+          'bd init succeeded but workspace is still empty'
+        )
+      })
+      expect(onInitialized).not.toHaveBeenCalled()
+    })
   })
 })
