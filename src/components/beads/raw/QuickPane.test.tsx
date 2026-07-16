@@ -84,6 +84,33 @@ describe('QuickPane', () => {
     expect(items[1]?.getAttribute('data-cmd')).toBe('show')
   })
 
+  it('clicks a recent item to invoke onSelect and reorder the list', async () => {
+    // ponytail: this test exists specifically to cover the recent-item
+    // click handler on QuickPane.tsx L173. The suggestion-click handler
+    // is exercised by "invokes onSelect and pushes the picked command
+    // to the top of recent" above, but the recent list rendered for
+    // initialRecent never had its onClick wired up in any other test,
+    // so the closure (`handlePick(cmd)` with `cmd` bound from the recent
+    // .map) stayed at 0 hits and pulled the file down to 95.83% lines.
+    const onSelect = vi.fn()
+    const { QuickPane } = await importSut()
+    render(<QuickPane initialRecent={['list', 'show']} onSelect={onSelect} />)
+
+    const items = screen.getAllByTestId('quick-pane-recent-item')
+    const secondItem = items[1]
+    if (!secondItem) throw new Error('expected a second recent item')
+    const pickedCmd = secondItem.getAttribute('data-cmd') ?? ''
+    expect(pickedCmd).toBe('show')
+
+    fireEvent.click(secondItem)
+
+    expect(onSelect).toHaveBeenCalledWith('show')
+    const reordered = screen.getAllByTestId('quick-pane-recent-item')
+    expect(reordered).toHaveLength(2)
+    expect(reordered[0]?.getAttribute('data-cmd')).toBe('show')
+    expect(reordered[1]?.getAttribute('data-cmd')).toBe('list')
+  })
+
   it('caps the recent list at maxRecent (default 5)', async () => {
     const onSelect = vi.fn()
     const { QuickPane } = await importSut()
