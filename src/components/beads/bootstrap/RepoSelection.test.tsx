@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { render, screen, waitFor } from '@/test/test-utils'
+import { render, screen, waitFor, act } from '@/test/test-utils'
 import { userEvent } from '@testing-library/user-event'
 import { commands } from '@/lib/tauri-bindings'
 
@@ -239,4 +239,213 @@ describe('RepoSelection', () => {
       )
     })
   })
+
+  it('treats a structured getCurrentDir IPC error as "not a repo"', async () => {
+    // The getCurrentDir command can fail with a structured IPC error
+    // (rather than a thrown exception). The component must set
+    // cwdStatus to 'not-a-repo' and skip detectBd/loadPreferences
+    // entirely — no logger.error, because the failure is a normal
+    // IPC result, not a thrown exception.
+    mockedGetCurrentDir.mockResolvedValue({
+      status: 'error',
+      error: 'no cwd',
+    })
+
+    render(<RepoSelection onSelect={onSelectMock} />)
+
+    // The "Use CWD" button must NOT render when the CWD probe failed
+    await waitFor(() => {
+      expect(screen.queryByTestId('use-cwd-button')).not.toBeInTheDocument()
+    })
+
+    // Structured IPC errors are not thrown, so logger.error (which
+    // only catches throw/reject from the probe promise chain) must
+    // not be invoked.
+    expect(mockedLoggerError).not.toHaveBeenCalled()
+
+    // detectBd/loadPreferences must NOT be called once getCurrentDir
+    // returned a non-ok result — the probe returns early.
+    expect(mockedDetectBd).not.toHaveBeenCalled()
+    expect(mockedLoadPreferences).not.toHaveBeenCalled()
+  })
+
+  it('shows the empty-state when loadPreferences returns a non-ok status', async () => {
+    // Even when the CWD probe succeeds, loadPreferences may fail.
+    // recentRepos must stay at its default [] — never crash, never
+    // overwrite with undefined data.
+    mockedLoadPreferences.mockResolvedValue({
+      status: 'error',
+      error: { type: 'IoError', message: 'disk full' },
+    })
+
+    render(<RepoSelection onSelect={onSelectMock} />)
+
+    // CWD link still renders (default CWD probe succeeds)
+    await screen.findByTestId('use-cwd-button')
+
+    // Recent list defaults to empty; the "no recents" message shows.
+    expect(
+      await screen.findByText(/no recent repositories yet/i)
+    ).toBeInTheDocument()
+
+    // No rows from a recents list, no crash on data access.
+    expect(screen.queryByTestId(/^recent-repo-/)).not.toBeInTheDocument()
+  })
+
+  it('uses an empty array when recent_repos is absent in prefs', async () => {
+    // The `recent_repos ?? []` short-circuit on line 53 must run when
+    // prefs load successfully but the field is absent (older prefs
+    // files written before this field existed still deserialize via
+    // `#[serde(default)]` and the field reads as undefined). Without
+    // the fallback the render would crash on `.map`.
+    mockedLoadPreferences.mockResolvedValue({
+      status: 'ok',
+      data: {
+        theme: 'system',
+        quick_pane_shortcut: null,
+        language: null,
+      },
+    })
+
+    render(<RepoSelection onSelect={onSelectMock} />)
+
+    // No crash; the "no recents" empty-state message renders.
+    expect(
+      await screen.findByText(/no recent repositories yet/i)
+    ).toBeInTheDocument()
+    expect(screen.queryByTestId(/^recent-repo-/)).not.toBeInTheDocument()
+  })
+
+  it('ignores late getCurrentDir resolution after unmount (Branch A)', async () => {
+    // The component unmounts between mount and the getCurrentDir
+    // promise resolving. The cancelled guard must short-circuit
+    // before any setState fires.
+    let resolveGetCurrentDir!: (v: { status: 'ok'; data: string }) => void
+    mockedGetCurrentDir.mockImplementation(
+      () =>
+        new Promise(resolve => {
+          resolveGetCurrentDir = resolve
+        })
+    )
+
+    const { unmount } = render(<RepoSelection onSelect={onSelectMock} />)
+    unmount()
+
+    // Resolve after unmount — the cancelled flag must swallow it.
+    // No logger.error, no console warning about setting state on an
+    // unmounted component.
+    await act(async () => {
+      resolveGetCurrentDir({ status: 'ok', data: '/late/cwd' })
+    })
+
+    // detectBd/loadPreferences never reached.
+    expect(mockedDetectBd).not.toHaveBeenCalled()
+    expect(mockedLoadPreferences).not.toHaveBeenCalled()
+    // Probe never rejected; the cancelled guard returns before any
+    // setState, so the .catch handler doesn't fire either.
+    expect(mockedLoggerError).not.toHaveBeenCalled()
+  })
+
+  it('ignores late detectBd resolution after unmount (Branch C)', async () => {
+    // Second unmount-race window: component unmounts after
+    // getCurrentDir resolves but before detectBd does.
+    let resolveDetectBd!: (v: {
+      status: 'ok'
+      data: {
+        version: [number, number, number] | null
+        schema_version: number | null
+        jsonl_path: string | null
+        backend: 'jsonl'
+      }
+    }) => void
+    mockedDetectBd.mockImplementation(
+      () =>
+        new Promise(resolve => {
+          resolveDetectBd = resolve
+        })
+    )
+
+    const { unmount } = render(<RepoSelection onSelect={onSelectMock} />)
+    // Wait for getCurrentDir to settle so we're past line 38/39-41
+    await waitFor(() => {
+      expect(mockedDetectBd).toHaveBeenCalled()
+    })
+    unmount()
+
+    await act(async () => {
+      resolveDetectBd({
+        status: 'ok',
+        data: {
+          version: [1, 0, 5],
+          schema_version: 1,
+          jsonl_path: null,
+          backend: 'jsonl',
+        },
+      })
+    })
+
+    // loadPreferences must NOT be reached after unmount.
+    expect(mockedLoadPreferences).not.toHaveBeenCalled()
+    expect(mockedLoggerError).not.toHaveBeenCalled()
+  })
+
+  it('ignores late loadPreferences resolution after unmount (Branch D)', async () => {
+    // Third unmount-race window: component unmounts after both
+    // getCurrentDir and detectBd resolve but before loadPreferences.
+    let resolveLoadPreferences!: (v: {
+      status: 'ok'
+      data: {
+        theme: 'system'
+        quick_pane_shortcut: null
+        language: null
+        recent_repos: string[]
+      }
+    }) => void
+    mockedLoadPreferences.mockImplementation(
+      () =>
+        new Promise(resolve => {
+          resolveLoadPreferences = resolve
+        })
+    )
+
+    const { unmount } = render(<RepoSelection onSelect={onSelectMock} />)
+    // Wait for detectBd to settle so we're past line 47.
+    await waitFor(() => {
+      expect(mockedLoadPreferences).toHaveBeenCalled()
+    })
+    unmount()
+
+    await act(async () => {
+      resolveLoadPreferences({
+        status: 'ok',
+        data: {
+          theme: 'system',
+          quick_pane_shortcut: null,
+          language: null,
+          recent_repos: ['/late/repo'],
+        },
+      })
+    })
+
+    // recentRepos must remain empty in the React state of the
+    // unmounted component (no setState happens). The rendered output
+    // is already torn down by unmount, so we just assert no logger
+    // error and no surprise setRecentRepo.
+    expect(mockedLoggerError).not.toHaveBeenCalled()
+  })
+
+  // ─────────────────────────────────────────────────────────────────
+  // The two `if (busy) return` re-entrancy guards in handleSelect (L66)
+  // and handlePickFolder (L80) are unreachable through any DOM-level
+  // API: every action button renders `disabled={busy}`, and React 19's
+  // synthetic event dispatcher short-circuits click handlers on
+  // disabled buttons regardless of whether we dispatch via
+  // `userEvent`, `fireEvent`, `dispatchEvent`, or strip the attribute
+  // ourselves. The guards exist as defense-in-depth (e.g. against a
+  // future refactor that drops the `disabled` prop) but cannot be
+  // exercised without source changes. Per the realistic-ceiling
+  // guidance for shadcn-style primitives, the unreachable branch
+  // bodies on L66 and L80 are documented here rather than tested via
+  // fragile `vi.spyOn`/fiber-internals hacks.
+  // ─────────────────────────────────────────────────────────────────
 })
