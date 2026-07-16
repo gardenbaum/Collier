@@ -167,7 +167,9 @@ describe('useIssueFieldUpdate — mutationFn', () => {
       await expect(result.current.mutateAsync('new')).rejects.toEqual(err)
     })
 
-    expect(result.current.isError).toBe(true)
+    await waitFor(() => {
+      expect(result.current.isError).toBe(true)
+    })
     expect(result.current.error).toEqual(err)
   })
 })
@@ -319,6 +321,52 @@ describe('useIssueFieldUpdate — onMutate optimistic patch', () => {
       await Promise.resolve()
     })
   })
+
+  it('leaves an undefined list value unchanged in the optimistic updater', async () => {
+    // ponytail: setQueriesData only calls its updater for existing
+    // query entries. Invoke the captured updater with undefined to
+    // cover the false side of the onMutate `prev ? ... : prev`
+    // ternary when the list keyspace has no cached entries.
+    const { Wrapper, client } = makeWrapper()
+    const setQueriesData = vi.spyOn(client, 'setQueriesData')
+    let resolveUpdate!: (v: { status: 'ok'; data: Issue }) => void
+    mockBdUpdate.mockImplementation(
+      () =>
+        new Promise(resolve => {
+          resolveUpdate = resolve
+        })
+    )
+
+    const { result } = renderHook(
+      () =>
+        useIssueFieldUpdate({
+          cwd: '/fake',
+          issueId: 'task-1',
+          buildInput: descriptionBuildInput,
+          applyToIssue: descriptionApplyToIssue,
+        }),
+      { wrapper: Wrapper }
+    )
+
+    act(() => {
+      result.current.mutate('new')
+    })
+
+    await waitFor(() => {
+      expect(setQueriesData).toHaveBeenCalledTimes(1)
+    })
+
+    const updater = setQueriesData.mock.calls[0]?.[1] as (
+      previous: Issue[] | undefined
+    ) => Issue[] | undefined
+    expect(updater(undefined)).toBeUndefined()
+
+    setQueriesData.mockRestore()
+    await act(async () => {
+      resolveUpdate({ status: 'ok', data: makeIssue('task-1') })
+      await Promise.resolve()
+    })
+  })
 })
 
 describe('useIssueFieldUpdate — onError revert', () => {
@@ -425,6 +473,60 @@ describe('useIssueFieldUpdate — onError revert', () => {
     // fallback string.
     expect(mockToast.error).toHaveBeenCalledWith('Could not save.')
   })
+
+  it('logs and toasts without touching the cache when mutation context is undefined', async () => {
+    // ponytail: remove onMutate from the built mutation so TanStack
+    // invokes onError with an undefined context. This exercises the
+    // false side of `ctx?.previousLists` without relying on an
+    // impossible public mutation path that skips onMutate.
+    const issueA = makeIssue('task-1')
+    const { Wrapper, client } = makeWrapper()
+    const listKey = ['beads', 'list', '/fake', { status: 'open' }]
+    const showKey = ['beads', 'show', '/fake', 'task-1']
+    client.setQueryData(listKey, [issueA])
+    client.setQueryData(showKey, issueA)
+
+    const mutationCache = client.getMutationCache()
+    const originalBuild = mutationCache.build.bind(mutationCache)
+    vi.spyOn(mutationCache, 'build').mockImplementation(
+      (clientArg, options, state) => {
+        const mutation = originalBuild(clientArg, options, state)
+        mutation.options.onMutate = undefined
+        return mutation
+      }
+    )
+
+    const err = { type: 'NonZeroExit', stderr: 'context missing' }
+    mockBdUpdate.mockRejectedValue(err)
+
+    const { result } = renderHook(
+      () =>
+        useIssueFieldUpdate({
+          cwd: '/fake',
+          issueId: 'task-1',
+          buildInput: descriptionBuildInput,
+          applyToIssue: descriptionApplyToIssue,
+        }),
+      { wrapper: Wrapper }
+    )
+
+    await act(async () => {
+      await expect(result.current.mutateAsync('will fail')).rejects.toEqual(err)
+    })
+    await waitFor(() => {
+      expect(result.current.isError).toBe(true)
+    })
+
+    expect(client.getQueryData<Issue[]>(listKey)).toEqual([issueA])
+    expect(client.getQueryData<Issue>(showKey)).toEqual(issueA)
+    expect(mockLogger.error).toHaveBeenCalledWith(
+      'issue field update failed',
+      expect.objectContaining({ err })
+    )
+    expect(mockToast.error).toHaveBeenCalledWith(
+      expect.stringContaining('context missing')
+    )
+  })
 })
 
 describe('useIssueFieldUpdate — onSuccess reconcile', () => {
@@ -478,5 +580,41 @@ describe('useIssueFieldUpdate — onSuccess reconcile', () => {
       'task-1',
     ])
     expect(showAfter?.description).toBe('from server')
+  })
+
+  it('keeps an undefined list value unchanged while reconciling a successful update', async () => {
+    // ponytail: as with onMutate, setQueriesData has no callback
+    // invocation for a missing query. Call the captured onSuccess
+    // updater with undefined to cover its false-side ternary.
+    const updated = makeIssue('task-1', { description: 'from server' })
+    const { Wrapper, client } = makeWrapper()
+    const setQueriesData = vi.spyOn(client, 'setQueriesData')
+    mockBdUpdate.mockResolvedValue({ status: 'ok', data: updated })
+
+    const { result } = renderHook(
+      () =>
+        useIssueFieldUpdate({
+          cwd: '/fake',
+          issueId: 'task-1',
+          buildInput: descriptionBuildInput,
+          applyToIssue: descriptionApplyToIssue,
+        }),
+      { wrapper: Wrapper }
+    )
+
+    await act(async () => {
+      await result.current.mutateAsync('server value')
+    })
+
+    await waitFor(() => {
+      expect(setQueriesData).toHaveBeenCalledTimes(2)
+    })
+    const updater = setQueriesData.mock.calls[1]?.[1] as (
+      previous: Issue[] | undefined
+    ) => Issue[] | undefined
+    expect(updater(undefined)).toBeUndefined()
+    expect(
+      client.getQueryData<Issue>(['beads', 'show', '/fake', 'task-1'])
+    ).toEqual(updated)
   })
 })
