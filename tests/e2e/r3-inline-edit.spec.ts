@@ -68,74 +68,95 @@ describe('Collier M1 R3 inline editing', () => {
   })
 
   after(async () => {
-    // ponytail: revert the row's status + priority through the
-    // same UI surface the spec exercises. We don't shell out to
-    // `bd update` — the test should depend only on the surface it
-    // covers. The inline select fires `commands.bdUpdate` and the
-    // watcher reconciles, same as the test itself.
+    // ponytail: revert the row's status + priority so the next
+    // spec (r6-status-overview) sees the original fixture
+    // distribution. The wdio workers run in their own processes
+    // but the Tauri app's Beads fixture is a single file on disk
+    // under /tmp/e2e-workspace — every spec that mutates it
+    // leaks state into the next. r3 is the only spec that calls
+    // `bd update` via the UI, so it owns the cleanup.
+    //
+    // The previous implementation drove the revert through the
+    // same inline-edit UI surface the spec exercises (a
+    // dispatchEvent on the row's `<select>`), and the
+    // `r3 cleanup did not land` waitUntil timed out on CI run
+    // 29383327833 — the only failing spec in a 17/17 run. The
+    // root cause sits across two failure modes that the
+    // helper-based approach below sidesteps:
+    //
+    //   1. **DOM-coupled revert.** The dispatchEvent only fires
+    //      the React onChange handler when the row's inline
+    //      `<select>` is mounted. When the virtualizer window
+    //      has unmounted the r3 row (test 3 opens the detail
+    //      drawer and the rendered scroll window can shift), the
+    //      dispatch silently no-ops and the cache never sees
+    //      the revert. The previous early-return on
+    //      `!row.isExisting()` was a best-effort skip, not a
+    //      guard: it left the fixture mutated for r6.
+    //
+    //   2. **WriteLock contention across two mutations.** The
+    //      UI path fires two separate mutations (status, then
+    //      priority), each with its own optimistic-patch +
+    //      bd-write + watcher-reconcile cycle. The bd writes
+    //      serialize behind the Rust `WriteLock` with a 2s
+    //      acquire timeout (see `WriteLock::DEFAULT_WRITE_LOCK_TIMEOUT`
+    //      in `src-tauri/src/beads/lock.rs`). On a cold CI
+    //      runner where test 2's mutation was still completing
+    //      when `after` ran, the second `bd update` failed
+    //      with `BdError::LockTimeout`, the optimistic patch
+    //      was reverted, and the waitUntil polled a cache that
+    //      never matched the original fixture.
+    //
+    // The cleanup now routes through the E2E-only
+    // `__collierRevertIssue__` handle exposed by `src/main.tsx`.
+    // One atomic `bd update` for status + priority (single lock
+    // acquisition, single watcher tick), plus a synchronous
+    // cache patch so the React Query state matches the fixture
+    // the moment `revertIssue` resolves. The inline-edit
+    // mutation flow itself is still covered by tests 1 / 2 / 3
+    // — this helper is the test-isolation contract, not a
+    // coverage gap.
+    //
+    // We still keep the waitUntil as a defense-in-depth check:
+    // the watcher tick will also patch the cache within ~1s
+    // (the helper's patch makes it consistent immediately, but
+    // a regression that bypasses the helper should still fail
+    // loudly here rather than leak state into r6).
     if (r3RowId === '') return
-    const row = await $(`[data-testid="issue-row"][data-issue-id="${r3RowId}"]`)
-    if (!(await row.isExisting())) {
-      // Watcher tick may have already settled to a state where
-      // the row's `data-issue-status` no longer matches the
-      // captured r3OriginalStatus (e.g. r6 set it to a different
-      // value first). Best-effort skip in that case.
-      return
-    }
-
-    type SetFieldArgs = [string | null, string, string]
-    const setField = async (testid: string, value: string): Promise<void> => {
-      await browser.execute(
-        ((id: string | null, tid: string, val: string) => {
-          if (!id) throw new Error('row id is null')
-          const r = document.querySelector(
-            `[data-testid="issue-row"][data-issue-id="${CSS.escape(id)}"]`
-          )
-          if (!r) throw new Error(`row ${id} not found`)
-          const sel = r.querySelector(
-            `[data-testid="${tid}"]`
-          ) as HTMLSelectElement | null
-          if (!sel) throw new Error(`${tid} not found in row`)
-          const setter = Object.getOwnPropertyDescriptor(
-            window.HTMLSelectElement.prototype,
-            'value'
-          )?.set
-          setter?.call(sel, val)
-          sel.dispatchEvent(new Event('change', { bubbles: true }))
-        }) as (...args: SetFieldArgs) => void,
-        r3RowId,
-        testid,
-        value
-      )
-    }
-
-    if (r3OriginalStatus !== '') {
-      await setField('inline-status-select', r3OriginalStatus)
-    }
+    const fields: { status?: string; priority?: number } = {}
+    if (r3OriginalStatus !== '') fields.status = r3OriginalStatus
     if (r3OriginalPriority !== '') {
-      await setField('inline-priority-select', r3OriginalPriority)
+      fields.priority = Number.parseInt(r3OriginalPriority, 10)
     }
-    // ponytail: the waitUntil below checks the cache, not the
-    // DOM. `IssueListView` is virtualized — the row we're
-    // reverting may have been unmounted by the virtualizer
-    // between the UI revert and now (e.g. tests 2 and 3
-    // scrolled the list, opened the detail drawer, etc., and
-    // the row dropped out of the 10-row viewport + 5-row
-    // overscan window). Reading the cache via `getCachedIssue`
-    // bypasses the DOM entirely: the cache always holds every
-    // issue, and the `bdUpdate` mutation's `onSuccess` patches
-    // the list cache with the returned server-side Issue, so
-    // by the time the watcher tick settles the cache reflects
-    // the reverted values. The fixture is what the r6 spec
-    // reads via `bdList`; if we hand off while the cache
-    // hasn't been patched yet, r6 sees the leaked-mutation
-    // counts (open=11, closed=7 instead of 10/8). Wait up to
-    // 10s for both fields to match — well under the wdio spec
-    // timeout (180s) and ~3x the observed bd-write + cache
-    // patch latency on the CI runner. The previous
-    // `browser.pause(1500)` was a fixed wait that wasted time
-    // on every run; reading the cache lets us return as soon
-    // as the patch lands.
+    await browser.execute(
+      async (
+        id: string,
+        status: string | null,
+        priority: number | null
+      ): Promise<void> => {
+        const revert = (
+          globalThis as {
+            __collierRevertIssue__?: (
+              issueId: string,
+              fields: { status?: string; priority?: number }
+            ) => Promise<unknown>
+          }
+        ).__collierRevertIssue__
+        if (revert === undefined) {
+          throw new Error(
+            '__collierRevertIssue__ not exposed — VITE_E2E build flag missing?'
+          )
+        }
+        const f: { status?: string; priority?: number } = {}
+        if (status !== null) f.status = status
+        if (priority !== null) f.priority = priority
+        await revert(id, f)
+      },
+      r3RowId,
+      fields.status ?? null,
+      fields.priority ?? null
+    )
+
     await browser.waitUntil(
       async () => {
         const cached = await getCachedIssue(r3RowId)
@@ -146,6 +167,11 @@ describe('Collier M1 R3 inline editing', () => {
         )
       },
       {
+        // ponytail: the helper patches the cache synchronously on
+        // resolve, so the first poll should match. 10s is a
+        // generous upper bound for a regression where the helper
+        // is bypassed and only the watcher tick reconciles (the
+        // r10 spec measures ~1.8s on CI cold-start — 5x headroom).
         timeout: 10_000,
         interval: 250,
         timeoutMsg: 'r3 cleanup did not land',
