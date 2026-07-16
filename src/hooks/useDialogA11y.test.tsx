@@ -34,12 +34,30 @@ function Harness({
   return (
     <div>
       <button data-testid="trigger">Open dialog</button>
-      <div ref={panelRef} tabIndex={-1} role="dialog">
+      <div ref={panelRef} tabIndex={-1} role="dialog" data-testid="panel">
         <button ref={explicitFocusRef} data-testid="first-field">
           First field
         </button>
         <button data-testid="middle-field">Middle field</button>
         <button data-testid="last-field">Last field</button>
+      </div>
+    </div>
+  )
+}
+
+/**
+ * Empty-panel variant: same hook wiring, but the dialog body contains
+ * no focusables. Used to exercise the `panel.focus()` fallback in
+ * `focusFirst` and the empty-focusables early return in `handleKeyDown`.
+ */
+function EmptyPanelHarness({ onClose }: Pick<HarnessProps, 'onClose'>) {
+  const panelRef = useRef<HTMLDivElement>(null)
+  useDialogA11y({ panelRef, onClose })
+  return (
+    <div>
+      <button data-testid="trigger">Open dialog</button>
+      <div ref={panelRef} tabIndex={-1} role="dialog" data-testid="panel">
+        {/* no focusable children */}
       </div>
     </div>
   )
@@ -194,5 +212,77 @@ describe('useDialogA11y', () => {
     })
     // Focus stays on the trigger (no trap).
     expect(document.activeElement).toBe(trigger)
+  })
+
+  it('falls back to focusing the panel itself when the panel has no focusables', async () => {
+    const trigger = document.createElement('button')
+    trigger.textContent = 'Open'
+    document.body.appendChild(trigger)
+    trigger.focus()
+
+    await act(async () => {
+      render(<EmptyPanelHarness onClose={() => undefined} />)
+    })
+    await act(async () => {
+      await new Promise(resolve => requestAnimationFrame(resolve))
+    })
+
+    // No focusables inside the panel → focusFirst walks all the
+    // branches and falls through to `panel.focus()` (line 109).
+    const panel = screen.getByTestId('panel')
+    expect(document.activeElement).toBe(panel)
+  })
+
+  it('Tab key on an empty panel is swallowed (no onClose, no crash)', async () => {
+    const onClose = vi.fn()
+    await act(async () => {
+      render(<EmptyPanelHarness onClose={onClose} />)
+    })
+    await act(async () => {
+      await new Promise(resolve => requestAnimationFrame(resolve))
+    })
+
+    await act(async () => {
+      window.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'Tab', bubbles: true })
+      )
+    })
+
+    // The handler hits the `focusables.length === 0` early-return
+    // branch (lines 128-129) and swallows the Tab without calling
+    // onClose or moving focus. Focus stays on the panel.
+    const panel = screen.getByTestId('panel')
+    expect(document.activeElement).toBe(panel)
+    expect(onClose).not.toHaveBeenCalled()
+  })
+
+  it('Shift+Tab from the panel itself wraps to the last focusable (active === panel branch)', async () => {
+    await act(async () => {
+      render(<Harness onClose={() => undefined} />)
+    })
+    await act(async () => {
+      await new Promise(resolve => requestAnimationFrame(resolve))
+    })
+
+    // focusFirst moved focus to first-field; now manually move it
+    // BACK to the panel itself, so `document.activeElement === panel`
+    // inside the Tab handler.
+    const panel = screen.getByTestId('panel')
+    panel.focus()
+    expect(document.activeElement).toBe(panel)
+
+    await act(async () => {
+      window.dispatchEvent(
+        new KeyboardEvent('keydown', {
+          key: 'Tab',
+          shiftKey: true,
+          bubbles: true,
+        })
+      )
+    })
+    // The `active === panel` half of the OR on line 134 is what
+    // makes this branch reachable; without it, Shift+Tab from the
+    // panel itself would silently let focus escape the dialog.
+    expect(document.activeElement).toBe(screen.getByTestId('last-field'))
   })
 })
