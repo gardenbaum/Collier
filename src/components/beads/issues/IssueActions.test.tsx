@@ -10,7 +10,7 @@
  * command and the right callback on success.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { screen, waitFor } from '@testing-library/react'
+import { screen, waitFor, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { render } from '@/test/test-utils'
 
@@ -373,5 +373,287 @@ describe('IssueActions', () => {
     expect(screen.getByTestId('actions-error').textContent).toContain(
       'no workspace'
     )
+  })
+
+  it('reopen mutation error surfaces in the actions-error alert', async () => {
+    mockBdReopen.mockResolvedValue({
+      status: 'error',
+      error: {
+        type: 'NonZeroExit',
+        code: 1,
+        stdout: '',
+        stderr: 'cannot reopen locked issue',
+      },
+    })
+
+    const { IssueActions } = await importSut()
+    const user = userEvent.setup()
+    render(
+      <IssueActions
+        cwd="/repo"
+        issue={closedIssue}
+        onUpdated={vi.fn()}
+        onDeleted={vi.fn()}
+        onCommentAdded={vi.fn()}
+      />
+    )
+
+    await user.click(screen.getByTestId('action-reopen'))
+
+    await waitFor(() => {
+      expect(screen.getByTestId('actions-error')).toBeInTheDocument()
+    })
+    expect(screen.getByTestId('actions-error').textContent).toContain(
+      'cannot reopen locked issue'
+    )
+  })
+
+  it('comment mutation error surfaces in the actions-error alert', async () => {
+    mockBdAddComment.mockResolvedValue({
+      status: 'error',
+      error: {
+        type: 'NonZeroExit',
+        code: 1,
+        stdout: '',
+        stderr: 'comment rejected by server',
+      },
+    })
+
+    const { IssueActions } = await importSut()
+    const user = userEvent.setup()
+    render(
+      <IssueActions
+        cwd="/repo"
+        issue={makeIssue({ status: 'open' })}
+        onUpdated={vi.fn()}
+        onDeleted={vi.fn()}
+        onCommentAdded={vi.fn()}
+      />
+    )
+
+    await user.click(screen.getByTestId('action-add-comment'))
+    await user.type(
+      screen.getByTestId('add-comment-textarea'),
+      'This will fail'
+    )
+    await user.click(screen.getByTestId('add-comment-submit'))
+
+    await waitFor(() => {
+      expect(screen.getByTestId('actions-error')).toBeInTheDocument()
+    })
+    expect(screen.getByTestId('actions-error').textContent).toContain(
+      'comment rejected by server'
+    )
+  })
+
+  it('delete mutation error surfaces in the actions-error alert', async () => {
+    mockBdDelete.mockResolvedValue({
+      status: 'error',
+      error: {
+        type: 'NonZeroExit',
+        code: 1,
+        stdout: '',
+        stderr: 'delete blocked by dep',
+      },
+    })
+
+    const { IssueActions } = await importSut()
+    const user = userEvent.setup()
+    render(
+      <IssueActions
+        cwd="/repo"
+        issue={makeIssue({ id: 'beads-42', status: 'open' })}
+        onUpdated={vi.fn()}
+        onDeleted={vi.fn()}
+        onCommentAdded={vi.fn()}
+      />
+    )
+
+    await user.click(screen.getByTestId('action-delete'))
+    await user.type(screen.getByTestId('delete-confirm-input'), 'beads-42')
+    await user.click(screen.getByTestId('delete-confirm-button'))
+
+    await waitFor(() => {
+      expect(screen.getByTestId('actions-error')).toBeInTheDocument()
+    })
+    expect(screen.getByTestId('actions-error').textContent).toContain(
+      'delete blocked by dep'
+    )
+  })
+
+  it('Cancel button in the delete panel collapses it and clears the typed id', async () => {
+    mockBdDelete.mockResolvedValue({ status: 'ok', data: null })
+
+    const { IssueActions } = await importSut()
+    const user = userEvent.setup()
+    render(
+      <IssueActions
+        cwd="/repo"
+        issue={makeIssue({ id: 'beads-42', status: 'open' })}
+        onUpdated={vi.fn()}
+        onDeleted={vi.fn()}
+        onCommentAdded={vi.fn()}
+      />
+    )
+
+    // Open the delete panel and type something.
+    await user.click(screen.getByTestId('action-delete'))
+    expect(screen.getByTestId('delete-confirm')).toBeInTheDocument()
+    await user.type(screen.getByTestId('delete-confirm-input'), 'beads-42')
+
+    // Cancel closes the panel.
+    await user.click(screen.getByTestId('delete-confirm-cancel'))
+    expect(screen.queryByTestId('delete-confirm')).not.toBeInTheDocument()
+
+    // Re-opening shows the confirm button disabled — confirms the
+    // typed text buffer was reset by handleCancelDelete.
+    await user.click(screen.getByTestId('action-delete'))
+    expect(screen.getByTestId('delete-confirm-button')).toBeDisabled()
+  })
+
+  it('whitespace-only comment does NOT fire bdAddComment', async () => {
+    mockBdAddComment.mockResolvedValue({ status: 'ok', data: null })
+
+    const { IssueActions } = await importSut()
+    const user = userEvent.setup()
+    render(
+      <IssueActions
+        cwd="/repo"
+        issue={makeIssue({ status: 'open' })}
+        onUpdated={vi.fn()}
+        onDeleted={vi.fn()}
+        onCommentAdded={vi.fn()}
+      />
+    )
+
+    await user.click(screen.getByTestId('action-add-comment'))
+    // Type only whitespace; the submit button is disabled while the
+    // draft trims to empty, so we have to invoke the form submit
+    // directly to drive handleCommentSubmit's `trimmed.length === 0`
+    // early-return branch.
+    await user.type(screen.getByTestId('add-comment-textarea'), '   \n  ')
+    fireEvent.submit(screen.getByTestId('add-comment-form'))
+
+    expect(mockBdAddComment).not.toHaveBeenCalled()
+  })
+
+  it('Close button switches to the disabled className while the mutation is pending', async () => {
+    // ponytail: a never-resolving promise keeps the mutation in
+    // `isPending: true` long enough for us to read the post-click
+    // className without race conditions.
+    mockBdClose.mockReturnValue(new Promise<never>(() => undefined))
+
+    const { IssueActions } = await importSut()
+    const user = userEvent.setup()
+    render(
+      <IssueActions
+        cwd="/repo"
+        issue={makeIssue({ status: 'open' })}
+        onUpdated={vi.fn()}
+        onDeleted={vi.fn()}
+        onCommentAdded={vi.fn()}
+      />
+    )
+
+    const closeButton = screen.getByTestId('action-close')
+    // Default side of the ternary: enabled class.
+    expect(closeButton.className).toContain('cursor-pointer')
+    expect(closeButton.className).not.toContain('cursor-not-allowed')
+
+    await user.click(closeButton)
+
+    await waitFor(() => {
+      expect(closeButton.className).toContain('cursor-not-allowed')
+    })
+    expect(closeButton.textContent).toContain('Closing')
+  })
+
+  it('Reopen button switches to the disabled className while the mutation is pending', async () => {
+    mockBdReopen.mockReturnValue(new Promise<never>(() => undefined))
+
+    const { IssueActions } = await importSut()
+    const user = userEvent.setup()
+    render(
+      <IssueActions
+        cwd="/repo"
+        issue={closedIssue}
+        onUpdated={vi.fn()}
+        onDeleted={vi.fn()}
+        onCommentAdded={vi.fn()}
+      />
+    )
+
+    const reopenButton = screen.getByTestId('action-reopen')
+    expect(reopenButton.className).toContain('cursor-pointer')
+    expect(reopenButton.className).not.toContain('cursor-not-allowed')
+
+    await user.click(reopenButton)
+
+    await waitFor(() => {
+      expect(reopenButton.className).toContain('cursor-not-allowed')
+    })
+    expect(reopenButton.textContent).toContain('Reopening')
+  })
+
+  it('Add Comment submit button switches to the disabled className while the mutation is pending', async () => {
+    mockBdAddComment.mockReturnValue(new Promise<never>(() => undefined))
+
+    const { IssueActions } = await importSut()
+    const user = userEvent.setup()
+    render(
+      <IssueActions
+        cwd="/repo"
+        issue={makeIssue({ status: 'open' })}
+        onUpdated={vi.fn()}
+        onDeleted={vi.fn()}
+        onCommentAdded={vi.fn()}
+      />
+    )
+
+    await user.click(screen.getByTestId('action-add-comment'))
+    await user.type(screen.getByTestId('add-comment-textarea'), 'pending text')
+    const submit = screen.getByTestId('add-comment-submit')
+    // Pre-click: enabled class, "Post comment" label.
+    expect(submit.className).toContain('cursor-pointer')
+    expect(submit.className).not.toContain('cursor-not-allowed')
+    expect(submit.textContent).toContain('Post comment')
+
+    await user.click(submit)
+
+    await waitFor(() => {
+      expect(submit.className).toContain('cursor-not-allowed')
+    })
+    expect(submit.textContent).toContain('Posting')
+  })
+
+  it('Delete Confirm button switches to the disabled className while the mutation is pending', async () => {
+    mockBdDelete.mockReturnValue(new Promise<never>(() => undefined))
+
+    const { IssueActions } = await importSut()
+    const user = userEvent.setup()
+    render(
+      <IssueActions
+        cwd="/repo"
+        issue={makeIssue({ id: 'beads-42', status: 'open' })}
+        onUpdated={vi.fn()}
+        onDeleted={vi.fn()}
+        onCommentAdded={vi.fn()}
+      />
+    )
+
+    await user.click(screen.getByTestId('action-delete'))
+    await user.type(screen.getByTestId('delete-confirm-input'), 'beads-42')
+    const confirm = screen.getByTestId('delete-confirm-button')
+    // Pre-click: enabled destructive class, "Confirm delete" label.
+    expect(confirm.className).toContain('cursor-pointer')
+    expect(confirm.className).not.toContain('cursor-not-allowed')
+    expect(confirm.textContent).toContain('Confirm delete')
+
+    await user.click(confirm)
+
+    await waitFor(() => {
+      expect(confirm.className).toContain('cursor-not-allowed')
+    })
+    expect(confirm.textContent).toContain('Deleting')
   })
 })
