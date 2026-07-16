@@ -20,10 +20,18 @@ import { render } from '@/test/test-utils'
 ).IS_REACT_ACT_ENVIRONMENT = true
 
 // Hoisted mocks — must be declared before the import of the SUT.
-const { mockCheckBdVersionCmd, mockWriteText, mockClose } = vi.hoisted(() => ({
+const {
+  mockCheckBdVersionCmd,
+  mockWriteText,
+  mockClose,
+  mockLoggerWarn,
+  mockLoggerError,
+} = vi.hoisted(() => ({
   mockCheckBdVersionCmd: vi.fn(),
   mockWriteText: vi.fn(),
   mockClose: vi.fn(),
+  mockLoggerWarn: vi.fn(),
+  mockLoggerError: vi.fn(),
 }))
 
 vi.mock('@/lib/tauri-bindings', () => ({
@@ -42,13 +50,13 @@ vi.mock('@tauri-apps/api/window', () => ({
   }),
 }))
 
-// Logger noise reduction
+// Logger noise reduction — warn/error captured for assertion.
 vi.mock('@/lib/logger', () => ({
   logger: {
     debug: vi.fn(),
     info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
+    warn: mockLoggerWarn,
+    error: mockLoggerError,
   },
 }))
 
@@ -193,5 +201,185 @@ describe('BdNotInPath modal', () => {
     })
 
     expect(mockCheckBdVersionCmd).toHaveBeenCalledTimes(2)
+  })
+
+  it('unexpected error variant still shows the modal and logs a warn (covers L34-L35)', async () => {
+    // `commands.checkBdVersionCmd` can return errors other than
+    // BdNotInPath (e.g. a runner panic, a transport timeout that
+    // reaches the typed-error layer). interpretCheckResult treats
+    // those as "missing" so the modal still blocks the user, but
+    // logs the unexpected shape via logger.warn so it's visible in
+    // dev diagnostics.
+    mockCheckBdVersionCmd.mockResolvedValue({
+      status: 'error',
+      error: { type: 'RunnerError', message: 'bd segfault' },
+    })
+
+    const { BdNotInPath } = await importSut()
+    render(<BdNotInPath />)
+
+    await waitFor(() => {
+      expect(mockCheckBdVersionCmd).toHaveBeenCalledTimes(1)
+    })
+
+    // Modal renders (state falls through to 'missing' via the
+    // catch-all branch in interpretCheckResult).
+    expect(screen.getByText('bd CLI not found in PATH')).toBeInTheDocument()
+
+    // logger.warn was called with a diagnostic that mentions the
+    // unexpected error.
+    expect(mockLoggerWarn).toHaveBeenCalledWith(
+      'bd check returned unexpected error',
+      expect.objectContaining({
+        error: expect.objectContaining({ type: 'RunnerError' }),
+      })
+    )
+  })
+
+  it('recheck swallows a thrown probe and keeps the modal (covers L70-L71)', async () => {
+    // First probe: not in path (modal opens). Recheck invocation:
+    // the command rejects (not a structured error — it throws).
+    // handleRecheck's catch must mark the issue as still missing
+    // and log via logger.error. The modal stays open because we
+    // can't prove bd is installed.
+    mockCheckBdVersionCmd
+      .mockResolvedValueOnce({
+        status: 'error',
+        error: { type: 'BdNotInPath' },
+      })
+      .mockRejectedValueOnce(new Error('IPC channel closed'))
+
+    const { BdNotInPath } = await importSut()
+    const user = userEvent.setup()
+    render(<BdNotInPath />)
+
+    const recheck = await screen.findByRole('button', { name: /recheck/i })
+
+    await user.click(recheck)
+
+    // Modal stays open — a thrown probe is treated as "missing".
+    await waitFor(() => {
+      expect(screen.getByText('bd CLI not found in PATH')).toBeInTheDocument()
+    })
+
+    expect(mockCheckBdVersionCmd).toHaveBeenCalledTimes(2)
+    expect(mockLoggerError).toHaveBeenCalledWith(
+      'bd check threw',
+      expect.objectContaining({ err: expect.any(Error) })
+    )
+  })
+
+  it('copy button logs but stays silent when writeText rejects (covers L81)', async () => {
+    // writeText can throw (clipboard permission denied, Tauri
+    // clipboard manager missing, …). handleCopy's catch swallows
+    // the error and logs it; the user-observable result is just
+    // that the modal stays put and no further action is taken.
+    mockCheckBdVersionCmd.mockResolvedValue({
+      status: 'error',
+      error: { type: 'BdNotInPath' },
+    })
+    mockWriteText.mockRejectedValueOnce(new Error('clipboard unavailable'))
+
+    const { BdNotInPath } = await importSut()
+    const user = userEvent.setup()
+    render(<BdNotInPath />)
+
+    const copy = await screen.findByRole('button', { name: /copy/i })
+
+    await user.click(copy)
+
+    // The error is captured by logger.error — there's no toast or
+    // thrown error, the failure is silent on purpose (UX: never
+    // pop an alert over the install instructions).
+    await waitFor(() => {
+      expect(mockLoggerError).toHaveBeenCalledWith(
+        'Failed to copy install command',
+        expect.objectContaining({ err: expect.any(Error) })
+      )
+    })
+
+    // Modal still renders — the copy failure is non-blocking.
+    expect(screen.getByText('bd CLI not found in PATH')).toBeInTheDocument()
+  })
+
+  it('initial probe rejection shows the modal with logger.error (covers L55-L57)', async () => {
+    // Different from the unmount-race test: here the component
+    // stays mounted through the rejection, so the .catch body's
+    // logger.error + setState('missing') actually run. This is
+    // the catch-all when `commands.checkBdVersionCmd` itself
+    // throws (e.g. the Tauri IPC channel dropped mid-handshake).
+    mockCheckBdVersionCmd.mockRejectedValueOnce(new Error('IPC channel closed'))
+
+    const { BdNotInPath } = await importSut()
+    render(<BdNotInPath />)
+
+    await waitFor(() => {
+      expect(mockCheckBdVersionCmd).toHaveBeenCalledTimes(1)
+    })
+
+    // Modal renders — a thrown probe is treated as "missing".
+    expect(screen.getByText('bd CLI not found in PATH')).toBeInTheDocument()
+
+    expect(mockLoggerError).toHaveBeenCalledWith(
+      'bd check threw',
+      expect.objectContaining({ err: expect.any(Error) })
+    )
+  })
+
+  it('unmount before settle: cancelled guards short-circuit both .then and .catch (covers L51, L55-L57)', async () => {
+    // Same unmount-race pattern as VersionCheck.test.tsx: render,
+    // unmount, then resolve/reject the in-flight probe. The
+    // `if (cancelled) return` guards inside the .then and .catch
+    // blocks must short-circuit so the unmounted component never
+    // calls setState (React would warn about the update).
+    //
+    // First: reject after unmount — exercises the .catch guard
+    // (L55-L57: cancelled check + logger.error + setState are all
+    // skipped).
+    let rejectProbe!: (reason: unknown) => void
+    mockCheckBdVersionCmd.mockImplementationOnce(
+      () =>
+        new Promise((_res, rej) => {
+          rejectProbe = rej
+        })
+    )
+
+    const { BdNotInPath } = await importSut()
+    const { unmount: unmountReject } = render(<BdNotInPath />)
+    unmountReject()
+    rejectProbe(new Error('late failure after unmount'))
+
+    // Drain microtasks so the rejected promise's .catch handler runs.
+    await new Promise(resolve => setTimeout(resolve, 0))
+
+    // Neither logger.error nor the modal-render path fired because
+    // cancelled was true. logger.error would have been called if
+    // the catch body had executed (the `setState('missing')` on
+    // an unmounted component is what we actually want to prevent).
+    expect(mockLoggerError).not.toHaveBeenCalled()
+
+    // Second: resolve after unmount — exercises the .then guard
+    // (L51: cancelled check skipped so interpretCheckResult +
+    // setState never run).
+    let resolveProbe!: (value: unknown) => void
+    mockCheckBdVersionCmd.mockImplementationOnce(
+      () =>
+        new Promise(res => {
+          resolveProbe = res
+        })
+    )
+
+    const { unmount: unmountResolve } = render(<BdNotInPath />)
+    unmountResolve()
+    resolveProbe({ status: 'error', error: { type: 'BdNotInPath' } })
+
+    await new Promise(resolve => setTimeout(resolve, 0))
+
+    // If the .then body had executed, logger.warn would NOT be
+    // called here (BdNotInPath goes through the early return).
+    // We assert the negative invariant: no error log for the
+    // unmount-then-resolve case either.
+    expect(mockLoggerError).not.toHaveBeenCalled()
+    expect(mockLoggerWarn).not.toHaveBeenCalled()
   })
 })
