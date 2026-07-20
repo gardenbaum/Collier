@@ -74,7 +74,7 @@ notify = "8"
 notify-debouncer-mini = "0.7"
 
 # Type-safe Tauri command bindings
-specta = { version = "=2.0.0-rc.22", features = ["derive", "serde_json", "chrono"] }
+specta = { version = "=2.0.0-rc.25", features = ["derive", "serde_json", "chrono"] }
 tauri-specta = { version = "=2.0.0-rc.21", features = ["typescript"] }
 specta-typescript = "=0.0.9"
 
