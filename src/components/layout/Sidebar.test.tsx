@@ -108,6 +108,42 @@ describe('Sidebar — views', () => {
     const listItem = screen.getByRole('tab', { name: /List/ })
     expect(listItem.getAttribute('data-active')).toBe('true')
   })
+
+  it('clicking a sidebar view tab switches the active view in workspace-store', () => {
+    // ponytail: defaults can leak across tests via persisted
+    // rehydration or earlier test mutations; reset to 'list'
+    // before each assertion so the click-target is well-defined.
+    useWorkspaceStore.setState({ activeView: 'list' })
+    render(<Sidebar />)
+
+    expect(useWorkspaceStore.getState().activeView).toBe('list')
+
+    // First click — switches to 'epic'.
+    act(() => {
+      screen.getByTestId('sidebar-view-epic').click()
+    })
+    expect(useWorkspaceStore.getState().activeView).toBe('epic')
+    // ponytail: data-active on the rendered tab mirrors the
+    // store, so the new active view is visibly highlighted.
+    expect(
+      screen.getByTestId('sidebar-view-epic').getAttribute('data-active')
+    ).toBe('true')
+    expect(
+      screen.getByTestId('sidebar-view-list').getAttribute('data-active')
+    ).toBe('false')
+
+    // Second click — switches again to 'graph'.
+    act(() => {
+      screen.getByTestId('sidebar-view-graph').click()
+    })
+    expect(useWorkspaceStore.getState().activeView).toBe('graph')
+    expect(
+      screen.getByTestId('sidebar-view-graph').getAttribute('data-active')
+    ).toBe('true')
+    expect(
+      screen.getByTestId('sidebar-view-epic').getAttribute('data-active')
+    ).toBe('false')
+  })
 })
 
 describe('Sidebar — section labels', () => {
@@ -279,6 +315,35 @@ describe('Sidebar — labels section', () => {
     })
     expect(useIssueFilterStore.getState().labels).toEqual([])
   })
+
+  it('shows the error placeholder and renders no label rows when bdLabelListAll returns an error status', async () => {
+    // ponytail: cover the `throw r.error` branch in
+    // `bdLabelListAll` queryFn (Sidebar.tsx line 153). When the
+    // Rust side returns `{status:'error', error: ...}` the
+    // queryFn throws, react-query transitions to error state
+    // (test client has `retry: false`), and the Sidebar swaps the
+    // labels list for `sidebar-labels-error` and renders nothing
+    // else — no per-label buttons.
+    mockBdLabelListAll.mockResolvedValue({
+      status: 'error',
+      error: { type: 'IoError', message: 'label boom' },
+    })
+    render(<Sidebar />)
+
+    expect(
+      await screen.findByTestId('sidebar-labels-error')
+    ).toBeInTheDocument()
+    // No per-label buttons should render in the error state.
+    // The placeholder testid `sidebar-labels-error` does NOT
+    // match `/^sidebar-label-/` (it has the plural `-labels-`),
+    // so this regex only catches real label rows.
+    expect(screen.queryAllByTestId(/^sidebar-label-/)).toHaveLength(0)
+    // Loading placeholder never appears once the error fires.
+    expect(
+      screen.queryByTestId('sidebar-labels-loading')
+    ).not.toBeInTheDocument()
+    expect(screen.queryByTestId('sidebar-labels-empty')).not.toBeInTheDocument()
+  })
 })
 
 describe('Sidebar — assignees section', () => {
@@ -322,6 +387,38 @@ describe('Sidebar — assignees section', () => {
     expect(
       await screen.findByTestId('sidebar-assignees-empty')
     ).toBeInTheDocument()
+  })
+
+  it('shows the error placeholder and renders no assignee rows when bdAssigneeListAll returns an error status', async () => {
+    // ponytail: cover the `throw r.error` branch in
+    // `bdAssigneeListAll` queryFn (Sidebar.tsx line 177). Same
+    // mock shape as the labels error path: when bd-side returns
+    // `{status:'error', error: ...}` the queryFn throws and
+    // react-query (test client: `retry: false`) transitions to
+    // error state. The Sidebar renders
+    // `sidebar-assignees-error` and no per-assignee buttons.
+    mockBdAssigneeListAll.mockResolvedValue({
+      status: 'error',
+      error: { type: 'IoError', message: 'assignee boom' },
+    })
+    render(<Sidebar />)
+
+    expect(
+      await screen.findByTestId('sidebar-assignees-error')
+    ).toBeInTheDocument()
+    // No per-assignee buttons should render in the error state.
+    // Regex is anchored to `sidebar-filter-assignee-` so it only
+    // catches real assignee rows — the plural
+    // `sidebar-assignees-error` placeholder does NOT match (it
+    // has `assignees-`, not `filter-assignee-`).
+    expect(screen.queryAllByTestId(/^sidebar-filter-assignee-/)).toHaveLength(0)
+    // Loading placeholder never appears once the error fires.
+    expect(
+      screen.queryByTestId('sidebar-assignees-loading')
+    ).not.toBeInTheDocument()
+    expect(
+      screen.queryByTestId('sidebar-assignees-empty')
+    ).not.toBeInTheDocument()
   })
 })
 
