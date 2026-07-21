@@ -55,6 +55,24 @@ describe('useScrollPositionStore', () => {
       ).toBe(0)
     })
 
+    it('reads saved positions for an inactive repo and falls back per view', () => {
+      useScrollPositionStore.setState({
+        _persistedByRepo: {
+          '/repo-b': { list: 321 },
+        },
+      })
+
+      expect(
+        useScrollPositionStore.getState().getForView('/repo-b', 'list')
+      ).toBe(321)
+      expect(
+        useScrollPositionStore.getState().getForView('/repo-b', 'graph')
+      ).toBe(0)
+      expect(
+        useScrollPositionStore.getState().getForView('/missing', 'list')
+      ).toBe(0)
+    })
+
     it('rejects negative offsets', () => {
       attachToWorkspaceStore(
         makeWorkspaceStub('/repo-a'),
@@ -89,6 +107,17 @@ describe('useScrollPositionStore', () => {
       expect(
         useScrollPositionStore.getState().getForView('/whatever', 'list')
       ).toBe(0)
+    })
+
+    it('does not change state when selecting the already-active repo', () => {
+      const ws = makeWorkspaceStub('/repo-a')
+      attachToWorkspaceStore(ws, useScrollPositionStore)
+      useScrollPositionStore.getState().setForView('list', 123)
+
+      useScrollPositionStore.getState()._setActiveRepoPath('/repo-a')
+
+      expect(useScrollPositionStore.getState().positions).toEqual({ list: 123 })
+      expect(useScrollPositionStore.getState()._activeRepoPath).toBe('/repo-a')
     })
   })
 
