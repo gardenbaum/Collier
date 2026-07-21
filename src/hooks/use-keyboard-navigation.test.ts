@@ -483,6 +483,40 @@ describe('useKeyboardNavigation', () => {
     })
   })
 
+  describe('unknown keys', () => {
+    it('ignores keys that have no shortcut binding (default branch in the switch)', () => {
+      // The switch in the keydown handler has explicit cases for
+      // j/k/Enter/h/l and a `default: break` for everything else.
+      // Pressing an unmapped key must not mutate any workspace
+      // state, open the drawer, switch the view, or call
+      // preventDefault — the key is not ours to consume.
+      const preventDefault = vi.fn()
+      makeRow('A')
+      makeRow('B')
+      renderHook(() => useKeyboardNavigation())
+
+      // No row selected: any of the unmapped keys leaves the
+      // cursor and the drawer untouched, and the event is not
+      // consumed.
+      pressKey('q', { preventDefault })
+      pressKey('foo', { preventDefault })
+      pressKey('z', { preventDefault })
+      expect(useWorkspaceStore.getState().selectedRowId).toBeNull()
+      expect(useWorkspaceStore.getState().selectedIssueId).toBeNull()
+      expect(useWorkspaceStore.getState().activeView).toBe('list')
+      expect(preventDefault).not.toHaveBeenCalled()
+
+      // With a row selected: the cursor stays put.
+      pressKey('j')
+      expect(useWorkspaceStore.getState().selectedRowId).toBe('A')
+      pressKey('q', { preventDefault })
+      pressKey('z', { preventDefault })
+      expect(useWorkspaceStore.getState().selectedRowId).toBe('A')
+      expect(useWorkspaceStore.getState().selectedIssueId).toBeNull()
+      expect(preventDefault).not.toHaveBeenCalled()
+    })
+  })
+
   describe('typing guards', () => {
     it('does not intercept j/k/Enter inside an <input type="text">', () => {
       makeRow('A')
@@ -505,6 +539,35 @@ describe('useKeyboardNavigation', () => {
       renderHook(() => useKeyboardNavigation())
 
       pressKey('j', { target: textarea })
+
+      expect(useWorkspaceStore.getState().selectedRowId).toBeNull()
+    })
+
+    it('does not intercept j/k/Enter inside a contenteditable element', () => {
+      // contenteditable surfaces are a typing target per the
+      // keyboard-nav contract — the user is editing rich text
+      // (e.g. issue description) and the global j/k/Enter must
+      // pass through to the field, not be stolen by the list
+      // navigator. Covers the `isContentEditable` branch in
+      // isTypingTarget.
+      //
+      // jsdom does NOT reflect the `contenteditable` HTML
+      // attribute onto the `isContentEditable` IDL property the
+      // hook reads — a known jsdom limitation. We set the
+      // attribute to document the intent and define the IDL
+      // property directly so the test exercises the production
+      // code path in jsdom, not just its absence.
+      makeRow('A')
+      const editable = document.createElement('div')
+      editable.setAttribute('contenteditable', 'true')
+      Object.defineProperty(editable, 'isContentEditable', {
+        value: true,
+        configurable: true,
+      })
+      document.body.appendChild(editable)
+      renderHook(() => useKeyboardNavigation())
+
+      pressKey('j', { target: editable })
 
       expect(useWorkspaceStore.getState().selectedRowId).toBeNull()
     })
