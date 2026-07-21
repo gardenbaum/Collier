@@ -633,4 +633,200 @@ describe('EpicView', () => {
       useIssueFilterStore.getState().toggleStatus('open')
     })
   })
+
+  /**
+   * M5 keyboard navigation — every treeitem carries its own
+   * keyDown handler so Enter / Space open the issue when the row
+   * is focused via the roving-tabindex path. The global hook
+   * already routes Enter for the selected row, so these handlers
+   * fire on the row's own keydown event when the user Tabs onto
+   * it explicitly. The tests below exercise the 4 positive paths
+   * (Enter + Space × epic + child) plus 2 negative paths that
+   * cover the false-branch of the `||` so all 17 branch slots
+   * and the 6 statement slots in EpicView.tsx L614-616 and
+   * L756-758 are reachable.
+   */
+  describe('Keyboard navigation', () => {
+    // The file-level `beforeEach` only clears call data via
+    // `vi.clearAllMocks()`. Queued `mockResolvedValueOnce` and
+    // the default impl registered by prior tests (the M6 perf
+    // tests queue two `mockResolvedValueOnce` slots and leave the
+    // 60-epic default) leak into this describe and override the
+    // `mockResolvedValue({...})` calls below. Reset the mock
+    // explicitly so each test starts from a fresh implementation.
+    beforeEach(() => {
+      mockBdList.mockReset()
+    })
+
+    // `preventDefault` spies operate on `KeyboardEvent.prototype`
+    // and must be torn down after each test — `clearAllMocks`
+    // does not restore spy implementations.
+    afterEach(() => {
+      vi.restoreAllMocks()
+    })
+
+    it('calls onOpenIssue(epic.id) when Enter is pressed on the epic treeitem', async () => {
+      mockBdList.mockResolvedValue({
+        status: 'ok',
+        data: [
+          makeEpic({ id: 'epic-auth', title: 'Auth epic' }),
+          makeChild({ id: 'auth-1', parent: 'epic-auth' }),
+        ],
+      })
+
+      const onOpenIssue = vi.fn()
+      const { EpicView } = await importSut()
+      render(<EpicView cwd="/fake" onOpenIssue={onOpenIssue} />)
+
+      await waitFor(() => {
+        expect(screen.getByTestId('epic-row')).toBeInTheDocument()
+      })
+
+      const epicRow = screen.getByTestId('epic-row')
+      const preventDefault = vi.spyOn(KeyboardEvent.prototype, 'preventDefault')
+      fireEvent.keyDown(epicRow, { key: 'Enter' })
+
+      expect(onOpenIssue).toHaveBeenCalledWith('epic-auth')
+      // React's synthetic-event delegator may call the native
+      // `preventDefault` once for the listener and once again as
+      // part of SyntheticEvent housekeeping, so we assert "called
+      // at least once" rather than a brittle exact count. The
+      // point is to verify the activation branch fired its
+      // `preventDefault()` — not how many times.
+      expect(preventDefault).toHaveBeenCalled()
+    })
+
+    it('calls onOpenIssue(epic.id) when Space is pressed on the epic treeitem', async () => {
+      mockBdList.mockResolvedValue({
+        status: 'ok',
+        data: [
+          makeEpic({ id: 'epic-auth', title: 'Auth epic' }),
+          makeChild({ id: 'auth-1', parent: 'epic-auth' }),
+        ],
+      })
+
+      const onOpenIssue = vi.fn()
+      const { EpicView } = await importSut()
+      render(<EpicView cwd="/fake" onOpenIssue={onOpenIssue} />)
+
+      await waitFor(() => {
+        expect(screen.getByTestId('epic-row')).toBeInTheDocument()
+      })
+
+      const epicRow = screen.getByTestId('epic-row')
+      const preventDefault = vi.spyOn(KeyboardEvent.prototype, 'preventDefault')
+      fireEvent.keyDown(epicRow, { key: ' ' })
+
+      expect(onOpenIssue).toHaveBeenCalledWith('epic-auth')
+      expect(preventDefault).toHaveBeenCalled()
+    })
+
+    it('calls onOpenIssue(child.id) when Enter is pressed on a child treeitem', async () => {
+      mockBdList.mockResolvedValue({
+        status: 'ok',
+        data: [
+          makeEpic({ id: 'epic-auth', title: 'Auth epic' }),
+          makeChild({ id: 'auth-1', parent: 'epic-auth' }),
+        ],
+      })
+
+      const onOpenIssue = vi.fn()
+      const { EpicView } = await importSut()
+      render(<EpicView cwd="/fake" onOpenIssue={onOpenIssue} />)
+
+      await waitFor(() => {
+        expect(screen.getByTestId('epic-child-row')).toBeInTheDocument()
+      })
+
+      const childRow = screen.getByTestId('epic-child-row')
+      const preventDefault = vi.spyOn(KeyboardEvent.prototype, 'preventDefault')
+      fireEvent.keyDown(childRow, { key: 'Enter' })
+
+      expect(onOpenIssue).toHaveBeenCalledWith('auth-1')
+      expect(preventDefault).toHaveBeenCalled()
+    })
+
+    it('calls onOpenIssue(child.id) when Space is pressed on a child treeitem', async () => {
+      mockBdList.mockResolvedValue({
+        status: 'ok',
+        data: [
+          makeEpic({ id: 'epic-auth', title: 'Auth epic' }),
+          makeChild({ id: 'auth-1', parent: 'epic-auth' }),
+        ],
+      })
+
+      const onOpenIssue = vi.fn()
+      const { EpicView } = await importSut()
+      render(<EpicView cwd="/fake" onOpenIssue={onOpenIssue} />)
+
+      await waitFor(() => {
+        expect(screen.getByTestId('epic-child-row')).toBeInTheDocument()
+      })
+
+      const childRow = screen.getByTestId('epic-child-row')
+      const preventDefault = vi.spyOn(KeyboardEvent.prototype, 'preventDefault')
+      fireEvent.keyDown(childRow, { key: ' ' })
+
+      expect(onOpenIssue).toHaveBeenCalledWith('auth-1')
+      expect(preventDefault).toHaveBeenCalled()
+    })
+
+    it('does not call onOpenIssue when a non-activation key is pressed on an epic treeitem', async () => {
+      // 'Tab' keeps the false-branch of `e.key === 'Enter' ||
+      // e.key === ' '` reachable on the epic-row path. We also
+      // verify `preventDefault` is NOT called — the row must
+      // leave default Tab handling alone so the browser can
+      // move focus to the next focusable element.
+      mockBdList.mockResolvedValue({
+        status: 'ok',
+        data: [
+          makeEpic({ id: 'epic-auth', title: 'Auth epic' }),
+          makeChild({ id: 'auth-1', parent: 'epic-auth' }),
+        ],
+      })
+
+      const onOpenIssue = vi.fn()
+      const { EpicView } = await importSut()
+      render(<EpicView cwd="/fake" onOpenIssue={onOpenIssue} />)
+
+      await waitFor(() => {
+        expect(screen.getByTestId('epic-row')).toBeInTheDocument()
+      })
+
+      const epicRow = screen.getByTestId('epic-row')
+      const preventDefault = vi.spyOn(KeyboardEvent.prototype, 'preventDefault')
+      fireEvent.keyDown(epicRow, { key: 'Tab' })
+
+      expect(onOpenIssue).not.toHaveBeenCalled()
+      expect(preventDefault).not.toHaveBeenCalled()
+    })
+
+    it('does not call onOpenIssue when a non-activation key is pressed on a child treeitem', async () => {
+      // Mirrors the epic negative test on the child row,
+      // covering the false-branch of L756's `||` so both halves
+      // of the `||` short-circuit reach 100% branch coverage.
+      mockBdList.mockResolvedValue({
+        status: 'ok',
+        data: [
+          makeEpic({ id: 'epic-auth', title: 'Auth epic' }),
+          makeChild({ id: 'auth-1', parent: 'epic-auth' }),
+        ],
+      })
+
+      const onOpenIssue = vi.fn()
+      const { EpicView } = await importSut()
+      render(<EpicView cwd="/fake" onOpenIssue={onOpenIssue} />)
+
+      await waitFor(() => {
+        expect(screen.getByTestId('epic-child-row')).toBeInTheDocument()
+      })
+
+      const childRow = screen.getByTestId('epic-child-row')
+      const preventDefault = vi.spyOn(KeyboardEvent.prototype, 'preventDefault')
+      fireEvent.keyDown(childRow, { key: 'Tab' })
+
+      expect(onOpenIssue).not.toHaveBeenCalled()
+      expect(preventDefault).not.toHaveBeenCalled()
+    })
+  })
 })
