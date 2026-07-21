@@ -63,6 +63,19 @@ function EmptyPanelHarness({ onClose }: Pick<HarnessProps, 'onClose'>) {
   )
 }
 
+/**
+ * No-panel variant: the hook is wired with a `panelRef` that is never
+ * bound to a rendered element, so `panelRef.current` stays `null` for
+ * the lifetime of the hook. Used to exercise the panel-null branches
+ * in `focusFirst` (line 103 false) and `handleKeyDown` (line 125 early
+ * return).
+ */
+function NoPanelHarness({ onClose }: Pick<HarnessProps, 'onClose'>) {
+  const panelRef = useRef<HTMLDivElement>(null)
+  useDialogA11y({ panelRef, onClose })
+  return <button data-testid="trigger">Open dialog</button>
+}
+
 beforeEach(() => {
   // Make sure each test starts with focus on the trigger.
   document.body.innerHTML = ''
@@ -284,5 +297,157 @@ describe('useDialogA11y', () => {
     // makes this branch reachable; without it, Shift+Tab from the
     // panel itself would silently let focus escape the dialog.
     expect(document.activeElement).toBe(screen.getByTestId('last-field'))
+  })
+
+  it('Tab from a middle focusable is a no-op (no preventDefault, no focus move)', async () => {
+    await act(async () => {
+      render(<Harness onClose={() => undefined} />)
+    })
+    await act(async () => {
+      await new Promise(resolve => requestAnimationFrame(resolve))
+    })
+
+    // Sit on a focusable that is neither first nor last nor the panel
+    // itself. From the handler's POV, this is a "no-op Tab" — the
+    // condition `active === last` is false and `event.shiftKey` is
+    // false, so the else-if body on lines 137-140 must NOT fire.
+    const middle = screen.getByTestId('middle-field')
+    middle.focus()
+    expect(document.activeElement).toBe(middle)
+
+    const preventDefaultSpy = vi.spyOn(
+      KeyboardEvent.prototype,
+      'preventDefault'
+    )
+
+    await act(async () => {
+      window.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'Tab', bubbles: true })
+      )
+    })
+
+    // Neither the trap nor preventDefault runs for a middle-field Tab.
+    expect(preventDefaultSpy).not.toHaveBeenCalled()
+    expect(document.activeElement).toBe(middle)
+  })
+
+  it('focusFirst is a no-op when panelRef.current is null', async () => {
+    const trigger = document.createElement('button')
+    trigger.textContent = 'Open'
+    document.body.appendChild(trigger)
+    trigger.focus()
+    expect(document.activeElement).toBe(trigger)
+
+    await act(async () => {
+      render(<NoPanelHarness onClose={() => undefined} />)
+    })
+    await act(async () => {
+      await new Promise(resolve => requestAnimationFrame(resolve))
+    })
+
+    // focusFirst walks: explicit (no initialFocusRef) → null/undefined,
+    // panel === null → branch on line 103 takes the false path, no
+    // focus move. The outside trigger keeps focus.
+    expect(document.activeElement).toBe(trigger)
+  })
+
+  it('Tab keydown is ignored when panelRef is null (no onClose, focus stays)', async () => {
+    const onClose = vi.fn()
+    await act(async () => {
+      render(<NoPanelHarness onClose={onClose} />)
+    })
+    await act(async () => {
+      await new Promise(resolve => requestAnimationFrame(resolve))
+    })
+
+    const trigger = screen.getByTestId('trigger')
+    trigger.focus()
+    expect(document.activeElement).toBe(trigger)
+
+    await act(async () => {
+      window.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'Tab', bubbles: true })
+      )
+    })
+
+    // handleKeyDown: panel === null → early return on lines 124-125.
+    // No preventDefault, no onClose, focus stays on the trigger.
+    expect(onClose).not.toHaveBeenCalled()
+    expect(document.activeElement).toBe(trigger)
+  })
+
+  it('unmount does not crash when the trigger element was removed from the DOM', async () => {
+    const trigger = document.createElement('button')
+    trigger.textContent = 'Open'
+    document.body.appendChild(trigger)
+    trigger.focus()
+    expect(document.activeElement).toBe(trigger)
+
+    let unmount: (() => void) | undefined
+    await act(async () => {
+      const result = render(<Harness onClose={() => undefined} />)
+      unmount = result.unmount
+    })
+    await act(async () => {
+      await new Promise(resolve => requestAnimationFrame(resolve))
+    })
+    // Focus is now inside the dialog (on first-field).
+    expect(document.activeElement).not.toBe(trigger)
+
+    // The race the cleanup guards against: the trigger element gets
+    // removed from the DOM before the dialog unmounts (a list
+    // re-render dropped the button that opened the dialog). Remove
+    // it here, then unmount.
+    trigger.remove()
+    expect(document.body.contains(trigger)).toBe(false)
+
+    // Cleanup must not throw, and must not try to focus the removed
+    // trigger (the `document.body.contains(trigger)` half of the
+    // guard on lines 152-158 is the alternate branch we're exercising).
+    await act(async () => {
+      expect(() => unmount?.()).not.toThrow()
+    })
+    // activeElement is no longer the removed trigger — it falls back
+    // to body (or wherever) once the panel unmounts, but the key
+    // guarantee is that the cleanup didn't crash and didn't refocus
+    // a detached element.
+    expect(document.activeElement).not.toBe(trigger)
+  })
+
+  it('non-Tab, non-Escape keydown is ignored (no preventDefault, no onClose)', async () => {
+    // Closes the remaining reachable branch on line 124
+    // (`if (event.key !== 'Tab') return` — true-branch). Every other
+    // test that dispatches a key uses either Escape (handled at line
+    // 119) or Tab (handled at line 137), so a non-Tab, non-Escape
+    // keypress is the only way to exercise the early return.
+    const onClose = vi.fn()
+    await act(async () => {
+      render(<Harness onClose={onClose} />)
+    })
+    await act(async () => {
+      await new Promise(resolve => requestAnimationFrame(resolve))
+    })
+
+    const first = screen.getByTestId('first-field')
+    first.focus()
+    expect(document.activeElement).toBe(first)
+
+    const preventDefaultSpy = vi.spyOn(
+      KeyboardEvent.prototype,
+      'preventDefault'
+    )
+
+    await act(async () => {
+      window.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })
+      )
+    })
+
+    // handleKeyDown: not Escape (line 119), not Tab (line 124 returns
+    // true) → handler returns. No preventDefault, no onClose, focus
+    // stays where it was.
+    expect(preventDefaultSpy).not.toHaveBeenCalled()
+    expect(onClose).not.toHaveBeenCalled()
+    expect(document.activeElement).toBe(first)
   })
 })
