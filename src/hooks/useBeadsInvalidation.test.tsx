@@ -4,6 +4,24 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { listen } from '@tauri-apps/api/event'
 import { toast } from 'sonner'
 import { useWorkspaceStore } from '@/store/workspace-store'
+
+// Hoist a stable logger mock so tests can assert on the
+// `.catch` reject path (`logger.error('Failed to setup ...')`).
+// The factory below exposes these same instances to the
+// source under test (via `vi.mock('@/lib/logger', ...)`).
+const { mockLogger } = vi.hoisted(() => ({
+  mockLogger: {
+    debug: vi.fn(),
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+    trace: vi.fn(),
+  },
+}))
+vi.mock('@/lib/logger', () => ({
+  logger: mockLogger,
+}))
+
 // Mock sonner toast
 vi.mock('sonner', () => ({
   toast: {
@@ -11,16 +29,6 @@ vi.mock('sonner', () => ({
     success: vi.fn(),
     error: vi.fn(),
     warning: vi.fn(),
-  },
-}))
-
-// Mock logger to keep test output clean
-vi.mock('@/lib/logger', () => ({
-  logger: {
-    debug: vi.fn(),
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
   },
 }))
 
@@ -33,6 +41,7 @@ let registeredEventName: string | null = null
 
 const mockedListen = vi.mocked(listen)
 const mockedToast = vi.mocked(toast)
+const mockedLoggerError = vi.mocked(mockLogger.error)
 
 /** Asserts the listen() callback was registered and returns it. */
 function capturedCallback(): ListenerCallback {
@@ -228,5 +237,81 @@ describe('useBeadsInvalidation (R10 toast-only path)', () => {
     })
 
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['beads'] })
+  })
+
+  it('logs an error via logger when listen() rejects', async () => {
+    // listen() returns a Promise — if the Tauri IPC channel
+    // refuses to register the listener (e.g. destroyed before
+    // the promise resolves, or the runtime is unavailable),
+    // the `.catch` handler surfaces the failure through
+    // `logger.error` so the user sees diagnostics in the
+    // advanced-prefs log file rather than a silent dead
+    // hook.
+    mockedListen.mockImplementationOnce(() =>
+      Promise.reject(new Error('IPC channel unavailable'))
+    )
+
+    renderWithClient(makeQueryClient())
+
+    // Two microtask hops: the .then's first .then() inside
+    // listen's promise chain runs, then the rejection
+    // propagates to .catch().
+    await act(async () => {
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    expect(mockedLoggerError).toHaveBeenCalledWith(
+      'Failed to setup beads-data-changed listener',
+      expect.objectContaining({ error: expect.any(Error) })
+    )
+  })
+
+  it('calls unlistenFn immediately when listen() resolves after unmount', async () => {
+    // Race: the user closes the window between the time the
+    // effect fires `listen(...)` and the time the runtime
+    // returns the unlisten handle. The cleanup sets
+    // `isMounted = false`; the late `.then(unlistenFn => ...)`
+    // branch sees `!isMounted` and tears the listener down
+    // synchronously instead of stashing a now-dead handle.
+    //
+    // This also exercises the cleanup's `if (unlisten)` ELSE
+    // branch — at unmount time, `unlisten` was still null
+    // (the listen promise hadn't resolved yet), so the
+    // `unlisten()` call inside the cleanup is correctly
+    // skipped rather than throwing on a null deref.
+    let resolveListen: ((unlisten: () => void) => void) | null = null
+    mockedListen.mockImplementationOnce(
+      () =>
+        new Promise(resolve => {
+          resolveListen = resolve
+        })
+    )
+
+    const { unmount } = renderWithClient(makeQueryClient())
+
+    // Let the effect fire and the listen promise register.
+    await act(async () => {
+      await Promise.resolve()
+    })
+
+    unmount()
+
+    // Now resolve the listen promise AFTER unmount. The
+    // effect's `.then` callback sees `isMounted === false`
+    // and must invoke the unlisten handle immediately.
+    const unlisten = vi.fn()
+    await act(async () => {
+      resolveListen?.(unlisten)
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    expect(unlisten).toHaveBeenCalledTimes(1)
+    // Sanity: the cleanup ran before resolution, so the
+    // captured callback was already torn down. A second
+    // resolution (e.g. from a stale IPC event) would have
+    // nowhere to fire.
+    expect(registeredCallback).toBeNull()
   })
 })
