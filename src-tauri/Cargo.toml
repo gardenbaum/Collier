@@ -76,7 +76,7 @@ notify-debouncer-mini = "0.7"
 # Type-safe Tauri command bindings
 specta = { version = "=2.0.0-rc.22", features = ["derive", "serde_json", "chrono"] }
 tauri-specta = { version = "=2.0.0-rc.21", features = ["typescript"] }
-specta-typescript = "=0.0.9"
+specta-typescript = "=0.0.12"
 
 # Transitive-dependency pin (NOT used directly in our code). `cookie 0.18.1` —
 # pulled in by Tauri core — fails to compile against `time` >= 0.3.48 due to an
