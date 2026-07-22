@@ -170,7 +170,14 @@ fn read_updater_config(config: &TauriConfig) -> UpdaterView {
 fn fingerprint_hex(pubkey: &str) -> String {
     use sha2::{Digest, Sha256};
     let digest = Sha256::digest(pubkey.as_bytes());
-    let hex = format!("{digest:x}");
+    // `sha2` 0.11 changed `digest()` to return `hybrid_array::Array<u8, N>`
+    // which does not implement `LowerHex` (used to be `GenericArray<u8, N>`).
+    // Convert via the `as_slice` view to bytes for hex encoding.
+    let hex = digest
+        .as_slice()
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect::<String>();
     hex.chars().take(16).collect()
 }
 

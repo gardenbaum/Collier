@@ -47,7 +47,7 @@ regex = "1"
 # ever returning the raw signing material to the webview. `sha2` is
 # already in the build tree via tauri-codegen, but a build dep is not
 # visible to the lib target — declare it explicitly here.
-sha2 = "0.10"
+sha2 = "0.11"
 
 # Async runtime for the bd CLI runner (T3): spawn `bd` as a child
 # process, wait with a 10s timeout, and pipe stdin for `bd init`.
