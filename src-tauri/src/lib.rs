@@ -30,9 +30,37 @@ pub use types::DEFAULT_QUICK_PANE_SHORTCUT;
 pub fn run() {
     let builder = bindings::generate_bindings();
 
-    // Export TypeScript bindings in debug builds
+    // Export TypeScript bindings in debug builds. The generated
+    // `src/lib/bindings.ts` is checked in to the repo and rebuilt
+    // via the ignored `cargo test export_bindings` (and
+    // `tauri-specta`'s CI), so re-exporting at every app start is
+    // only useful as a local-dev convenience. Two reasons to gate
+    // it behind an env var:
+    //
+    //   1. Specta v2.0.0-rc.25 made every Rust type a
+    //      `NamedDataType` (including `String` and builtins). The
+    //      `TypeMap` for our 49 commands is now large enough that
+    //      `.export(...)` dominates the cold-start path on a fresh
+    //      GitHub Actions runner. The previous 15s pre-warm kills
+    //      collier before the export finishes, so the first
+    //      wdio `/session` POST — which forces a fresh collier
+    //      spawn — pays the full cost and trips the 10-minute
+    //      `connectionRetryTimeout` in tests/e2e/wdio.conf.ts.
+    //   2. The default export path is the relative
+    //      `../src/lib/bindings.ts` (resolved from the spawned
+    //      collier's CWD). In CI that's `/tmp/e2e-workspace`, so
+    //      the path lands at `/tmp/src/lib/bindings.ts`, which is
+    //      never the file the frontend imports.
+    //
+    // CI sets `E2E_SKIP_EXPORT_BINDINGS=1` to skip the export.
+    // Local dev (no env var set) keeps the existing behaviour.
     #[cfg(debug_assertions)]
-    bindings::export_ts_bindings();
+    {
+        let skip = std::env::var_os("E2E_SKIP_EXPORT_BINDINGS").is_some();
+        if !skip {
+            bindings::export_ts_bindings();
+        }
+    }
 
     // Build with common plugins
     let mut app_builder = tauri::Builder::default();
