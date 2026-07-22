@@ -189,4 +189,56 @@ describe('DependencyTreeView', () => {
     const html = container.innerHTML.toLowerCase()
     expect(html).not.toContain('c2410c')
   })
+
+  it('renders the error state when bdDepTree returns { status: "error", error: ... }', async () => {
+    // ponytail: drives the IPC error-return path — `await result` resolves
+    // (no rejection), then the queryFn's `if (result.status === 'ok')`
+    // takes its FALSY branch and `throw result.error` lands the query in
+    // the error state.
+    mockBdDepTree.mockResolvedValue({
+      status: 'error',
+      error: 'bd: dep tree failed: cycle detected at beads-1',
+    })
+
+    const { DependencyTreeView } = await importSut()
+    render(
+      <DependencyTreeView
+        cwd="/fake"
+        issueId="beads-1"
+        onOpenIssue={() => undefined}
+      />
+    )
+
+    const errorEl = await screen.findByTestId('dep-tree-error')
+    expect(errorEl).toHaveAttribute('role', 'alert')
+    expect(errorEl.textContent).toContain(
+      'bd: dep tree failed: cycle detected at beads-1'
+    )
+    expect(screen.queryByTestId('dep-tree-view')).toBeNull()
+    expect(screen.queryByTestId('dep-tree-row')).toBeNull()
+    expect(screen.queryByTestId('dep-tree-empty')).toBeNull()
+  })
+
+  it('renders the error state when bdDepTree rejects', async () => {
+    // ponytail: drives the rejection path — `await commands.bdDepTree(...)`
+    // re-throws before the queryFn reaches the `if (result.status === 'ok')`
+    // branch, so only the `query.isError` truthy branch of the error guard
+    // is exercised here. Companion to the IPC error-return test above.
+    mockBdDepTree.mockRejectedValue(new Error('IPC channel closed'))
+
+    const { DependencyTreeView } = await importSut()
+    render(
+      <DependencyTreeView
+        cwd="/fake"
+        issueId="beads-1"
+        onOpenIssue={() => undefined}
+      />
+    )
+
+    const errorEl = await screen.findByTestId('dep-tree-error')
+    expect(errorEl).toHaveAttribute('role', 'alert')
+    expect(errorEl.textContent).toContain('IPC channel closed')
+    expect(screen.queryByTestId('dep-tree-view')).toBeNull()
+    expect(screen.queryByTestId('dep-tree-row')).toBeNull()
+  })
 })
