@@ -11,7 +11,7 @@
     "typescript-eslint": {
       "typescript": "$typescript"
     },
-    "undici": "^7.28.0"
+    "undici": "^8.0.0"
   },
   "engines": {
     "node": ">=20.0.0"
