@@ -405,7 +405,7 @@ jobs:
       # starting with a dot by default and .artifacts is hidden.
       - name: Upload E2E screenshot on failure
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: e2e-screenshots
           path: tests/e2e/.artifacts
