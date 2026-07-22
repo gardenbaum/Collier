@@ -74,9 +74,14 @@ notify = "8"
 notify-debouncer-mini = "0.7"
 
 # Type-safe Tauri command bindings
-specta = { version = "=2.0.0-rc.22", features = ["derive", "serde_json", "chrono"] }
-tauri-specta = { version = "=2.0.0-rc.21", features = ["typescript"] }
-specta-typescript = "=0.0.9"
+# All three Specta crates must move together — specta-typescript 0.0.9 pins
+# specta =2.0.0-rc.22, and specta-typescript 0.0.12 (along with tauri-specta
+# 2.0.0-rc.25) pins specta =2.0.0-rc.25. Pinning only one half breaks
+# `cargo check`; the coordinated set below is the smallest compatible bump
+# that resolves both Renovate PRs (#147 + #148) at once.
+specta = { version = "=2.0.0-rc.25", features = ["derive", "serde_json", "chrono"] }
+tauri-specta = { version = "=2.0.0-rc.25", features = ["typescript"] }
+specta-typescript = "=0.0.12"
 
 # Transitive-dependency pin (NOT used directly in our code). `cookie 0.18.1` —
 # pulled in by Tauri core — fails to compile against `time` >= 0.3.48 due to an
