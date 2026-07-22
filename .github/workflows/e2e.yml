@@ -221,6 +221,33 @@ jobs:
       #       use the local GIO VFS instead of Gvfsd (no GVFS in CI)
       #   - NO_AT_BRIDGE=1
       #       skip the accessibility bridge init that's slow on first boot
+      #
+      # ponytail: `RUST_MIN_STACK=33554432` (32 MiB) bumps the
+      # main-thread stack size from the OS default (~8 MiB). tauri-driver
+      # uses `tokio::main(flavor = "current_thread")` so every
+      # spawned task reuses the main thread; on the Specta
+      # v2.0.0-rc.25 binary (PR #150) the first /session POST
+      # body — which now includes more typed params per command —
+      # pushes hyper-util's HTTP/1 parser into a deeper recursion
+      # than the OS-default 8 MiB main-thread stack can hold;
+      # the task overflows, the relay dies mid-handshake, and
+      # WebKitWebDriver's POST /session waits forever. The
+      # overflow is logged 8× at job teardown (once per probe
+      # timeout), confirming the same task crashes repeatedly.
+      # 32 MiB is overkill for the actual call depth but cheap
+      # (the process resident set stays well under the 7 GiB
+      # runner limit) and turns the overflow into a clean
+      # timeout the probe step can catch in seconds.
+      #
+      # ponytail: `E2E_SKIP_EXPORT_BINDINGS=1` skips the
+      # debug-only `bindings::export_ts_bindings()` call in
+      # `src-tauri/src/lib.rs`. With Specta v2.0.0-rc.25's
+      # "everything is a NamedDataType" change, the TypeMap
+      # walk during `.export()` is heavier; the export also
+      # writes to `../src/lib/bindings.ts` from the runtime CWD
+      # (resolves to `/tmp/src/lib/bindings.ts` in CI, never the
+      # file the frontend imports). Set at RUNTIME here so the
+      # spawned collier inherits it, not at build time.
       - name: Start tauri-driver under Xvfb
         run: |
           set -euo pipefail
@@ -229,6 +256,8 @@ jobs:
           export WEBKIT_DISABLE_DMABUF_RENDERER=1
           export GIO_USE_VFS=local
           export NO_AT_BRIDGE=1
+          export RUST_MIN_STACK=33554432
+          export E2E_SKIP_EXPORT_BINDINGS=1
           nohup xvfb-run -a tauri-driver --port 4444 \
             > /tmp/tauri-driver.log 2>&1 &
           echo $! > /tmp/tauri-driver.pid
@@ -273,6 +302,69 @@ jobs:
           if [ -f /tmp/tauri-driver.log ]; then
             echo "----- tauri-driver.log (last 100 lines) -----" >&2
             tail -100 /tmp/tauri-driver.log >&2 || true
+          fi
+          exit 1
+
+      # Probe a real session create + DELETE before wdio starts.
+      #
+      # The previous two pre-warm steps prove that tauri-driver and
+      # WebKitWebDriver are LISTENING, but neither proves the full
+      # spawn-the-app + Dolt-cold-start + WebKit-handoff path works.
+      # On the Specta v2.0.0-rc.25 binary (PR #150 / run 29822144882)
+      # the relay and the native driver came up in <1s, but every
+      # subsequent /session POST hung until wdio's 10-min
+      # `connectionRetryTimeout` (tests/e2e/wdio.conf.ts) — burning
+      # 17 × 10 min = ~3 hours per CI run. The probe forces that
+      # cold-start path NOW, fails fast (~24 min cap) with a clean
+      # error if it's broken, and lets wdio start with the path
+      # already warm.
+      #
+      # Per-attempt `--max-time 660` is BELOW the 10-min wdio
+      # `connectionRetryTimeout` (600s) so the probe is strictly
+      # faster than the test it protects, but the actual session
+      # creation observed on a fresh runner with this binary is
+      # 3-6 min (Specta rc.25 TypeMap construction + Dolt cold start
+      # + WebKit init). 3 attempts at 660s + 5s sleep = ~33 min
+      # worst-case; we cap at 3 attempts because every attempt that
+      # times out without a sessionId means the native driver is
+      # wedged, not just slow.
+      - name: Probe session create + delete
+        env:
+          WEBKIT_DISABLE_SANDBOX_THIS_PROCESS: '1'
+          WEBKIT_DISABLE_DMABUF_RENDERER: '1'
+          GIO_USE_VFS: local
+          NO_AT_BRIDGE: '1'
+          E2E_SKIP_EXPORT_BINDINGS: '1'
+        run: |
+          set -euo pipefail
+          cd /tmp/e2e-workspace
+          probe_payload=$(cat <<JSON
+          {"capabilities":{"alwaysMatch":{"tauri:options":{"application":"$GITHUB_WORKSPACE/src-tauri/target/debug/collier"}}}}
+          JSON
+          )
+          attempt=0
+          while [ $attempt -lt 3 ]; do
+            attempt=$((attempt + 1))
+            response=$(curl -sf --max-time 660 -X POST \
+              -H 'Content-Type: application/json' \
+              -d "$probe_payload" \
+              http://127.0.0.1:4444/session 2>&1) || response=""
+            sid=$(printf '%s' "$response" \
+              | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('value',{}).get('sessionId',''))" 2>/dev/null) \
+              || sid=""
+            if [ -n "$sid" ]; then
+              echo "Probe session $sid created on attempt $attempt"
+              curl -sf --max-time 30 -X DELETE \
+                "http://127.0.0.1:4444/session/$sid" > /dev/null || true
+              exit 0
+            fi
+            echo "Probe attempt $attempt: no sessionId returned"
+            sleep 5
+          done
+          echo "Probe session creation failed after 3 attempts (~33 min)" >&2
+          if [ -f /tmp/tauri-driver.log ]; then
+            echo "----- tauri-driver.log (last 80 lines) -----" >&2
+            tail -80 /tmp/tauri-driver.log >&2 || true
           fi
           exit 1
 
