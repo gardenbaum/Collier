@@ -60,7 +60,7 @@ tokio = { version = "1", features = ["process", "time", "io-util", "rt", "macros
 # when `bd` is not installed. Picked over a hand-rolled PATH walk — the
 # crate handles platform quirks (PATHEXT on Windows, etc.) and is the
 # de-facto Rust answer.
-which = "7"
+which = "8"
 glob = "0.3"
 
 # Filesystem watcher for the Beads `.beads/` directory. Justification: no
