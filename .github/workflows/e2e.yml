@@ -237,6 +237,22 @@ jobs:
       #       use the local GIO VFS instead of Gvfsd (no GVFS in CI)
       #   - NO_AT_BRIDGE=1
       #       skip the accessibility bridge init that's slow on first boot
+      #
+      # ponytail: `RUST_MIN_STACK=33554432` (32 MiB) bumps the
+      # main-thread stack size from the OS default (~8 MiB). tauri-driver
+      # uses `tokio::main(flavor = "current_thread")` so every
+      # spawned task reuses the main thread; on the Specta
+      # v2.0.0-rc.25 binary (PR #150) the first /session POST
+      # forwards a body that triggers unbounded recursion in
+      # hyper-util's HTTP/1 parser, the tokio task overflows its
+      # stack, and the relay dies mid-handshake -- leaving
+      # WebKitWebDriver's /session POST waiting forever. The
+      # overflow is logged 8× at job teardown (once per probe
+      # timeout), confirming the same task crashes repeatedly.
+      # 32 MiB is overkill for the actual call depth but cheap
+      # (the process resident set stays well under the 7 GiB
+      # runner limit) and turns the overflow into a clean
+      # timeout the probe step can catch in seconds.
       - name: Start tauri-driver under Xvfb
         run: |
           set -euo pipefail
@@ -245,6 +261,7 @@ jobs:
           export WEBKIT_DISABLE_DMABUF_RENDERER=1
           export GIO_USE_VFS=local
           export NO_AT_BRIDGE=1
+          export RUST_MIN_STACK=33554432
           nohup xvfb-run -a tauri-driver --port 4444 \
             > /tmp/tauri-driver.log 2>&1 &
           echo $! > /tmp/tauri-driver.pid
@@ -302,9 +319,18 @@ jobs:
       # subsequent /session POST hung until wdio's 10-min
       # `connectionRetryTimeout` (tests/e2e/wdio.conf.ts) — burning
       # 17 × 10 min = ~3 hours per CI run. The probe forces that
-      # cold-start path NOW, fails fast (~8 min cap) with a clean
+      # cold-start path NOW, fails fast (~9 min cap) with a clean
       # error if it's broken, and lets wdio start with the path
       # already warm.
+      #
+      # Per-attempt `--max-time 180` is well under the 10-min wdio
+      # budget so the probe is strictly faster than the test it
+      # protects, but large enough to absorb a fresh-runner cold
+      # start (binary load + Dolt + WebKit + bindings wire-up —
+      # observed 60-90s on a busy Azure runner). 5 attempts at
+      # 180s + 5s sleep = ~15 min worst-case; we cap at 5 attempts
+      # because every attempt that times out without a sessionId
+      # means the native driver is wedged, not just slow.
       - name: Probe session create + delete
         env:
           WEBKIT_DISABLE_SANDBOX_THIS_PROCESS: '1'
@@ -319,9 +345,9 @@ jobs:
           JSON
           )
           attempt=0
-          while [ $attempt -lt 8 ]; do
+          while [ $attempt -lt 5 ]; do
             attempt=$((attempt + 1))
-            response=$(curl -sf --max-time 60 -X POST \
+            response=$(curl -sf --max-time 180 -X POST \
               -H 'Content-Type: application/json' \
               -d "$probe_payload" \
               http://127.0.0.1:4444/session 2>&1) || response=""
@@ -337,7 +363,7 @@ jobs:
             echo "Probe attempt $attempt: no sessionId returned"
             sleep 5
           done
-          echo "Probe session creation failed after 8 attempts (~8 min)" >&2
+          echo "Probe session creation failed after 5 attempts (~15 min)" >&2
           if [ -f /tmp/tauri-driver.log ]; then
             echo "----- tauri-driver.log (last 80 lines) -----" >&2
             tail -80 /tmp/tauri-driver.log >&2 || true
