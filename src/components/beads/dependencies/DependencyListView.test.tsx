@@ -353,4 +353,197 @@ describe('DependencyListView', () => {
     const html = container.innerHTML.toLowerCase()
     expect(html).not.toContain('c2410c')
   })
+
+  it('renders the error alert when bdDepList returns a Result error', async () => {
+    // Exercises branches 0[1] @ line 95 (falsy arm of the
+    // `if (result.status === 'ok')` check inside the bdDepList
+    // queryFn → `throw result.error`) and 0[1] @ line 177 (truthy
+    // arm of `if (depListQuery.isError)`). The queryFn receives a
+    // resolved object whose status is 'error', takes the falsy
+    // arm on line 95, executes the throw, and the query lands in
+    // error state.
+    //
+    // ponytail: line 180 renders `String(depListQuery.error)`.
+    // For a typed `BdError` object that stringifies to
+    // `'[object Object]'` — pin the current rendering. The
+    // bdDepAdd error path on line 343 uses `formatError` for
+    // human-readable text, see the dep-add-error test below.
+    mockBdDepList.mockResolvedValue({
+      status: 'error',
+      error: {
+        type: 'NonZeroExit',
+        code: 1,
+        stderr: 'bd: no beads repo',
+        stdout: '',
+      },
+    })
+
+    const { DependencyListView } = await importSut()
+    render(
+      <DependencyListView
+        cwd="/fake"
+        issueId="beads-1"
+        onOpenIssue={() => undefined}
+      />
+    )
+
+    const alert = await screen.findByTestId('deps-error')
+    expect(alert.getAttribute('role')).toBe('alert')
+    expect(alert.textContent).toBe('[object Object]')
+
+    // Mutually exclusive with the loading/empty/section states —
+    // the error branch short-circuits ALL of the below.
+    expect(screen.queryByTestId('deps-loading')).toBeNull()
+    expect(screen.queryByTestId('deps-empty')).toBeNull()
+    expect(screen.queryByTestId('deps-section-blocks')).toBeNull()
+    expect(screen.queryByTestId('dep-add-toggle')).toBeNull()
+  })
+
+  it('renders the error alert when bdDepList rejects', async () => {
+    // Mirror of the previous test for the rejection path. The
+    // `await commands.bdDepList(cwd, issueId)` call re-throws
+    // before line 95 is reached, so only the isError=true arm of
+    // line 177 is exercised (Branch 0[1] @ line 95 stays uncovered
+    // here — that's fine, the previous test owns it).
+    mockBdDepList.mockRejectedValue(new Error('IPC channel closed'))
+
+    const { DependencyListView } = await importSut()
+    render(
+      <DependencyListView
+        cwd="/fake"
+        issueId="beads-1"
+        onOpenIssue={() => undefined}
+      />
+    )
+
+    const alert = await screen.findByTestId('deps-error')
+    expect(alert.getAttribute('role')).toBe('alert')
+    expect(alert.textContent).toContain('IPC channel closed')
+  })
+
+  it('renders the dep-add-error alert when bdDepAdd returns a Result error', async () => {
+    // Exercises Branch 0[1] @ line 132 (falsy arm of
+    // `if (result.status === 'ok')` inside the bdDepAdd
+    // mutationFn → `throw result.error`) and the
+    // `addMutation.isError` truthy arm on line 341
+    // (`if (addMutation.isError)` → render dep-add-error box).
+    mockBdDepList.mockResolvedValue({ status: 'ok', data: [] })
+    mockBdDepAdd.mockResolvedValue({
+      status: 'error',
+      error: {
+        type: 'Validation',
+        message: 'beads-99 is not a known issue',
+        field: 'target_id',
+      },
+    })
+
+    const { DependencyListView } = await importSut()
+    render(
+      <DependencyListView
+        cwd="/fake"
+        issueId="beads-1"
+        onOpenIssue={() => undefined}
+      />
+    )
+
+    // Wait for the empty list, open the form, fill it, submit.
+    await waitFor(() => {
+      expect(screen.getByTestId('dep-add-toggle')).toBeInTheDocument()
+    })
+    fireEvent.click(screen.getByTestId('dep-add-toggle'))
+
+    const targetInput = screen.getByTestId('dep-add-target-id')
+    const setNativeValue = (el: HTMLInputElement, value: string) => {
+      const proto = Object.getOwnPropertyDescriptor(
+        el.constructor.prototype,
+        'value'
+      ) as PropertyDescriptor | undefined
+      proto?.set?.call(el, value)
+      el.dispatchEvent(new Event('change', { bubbles: true }))
+    }
+    setNativeValue(targetInput as HTMLInputElement, 'beads-99')
+
+    fireEvent.click(screen.getByTestId('dep-add-submit'))
+
+    const errorBox = await screen.findByTestId('dep-add-error')
+    expect(errorBox.getAttribute('role')).toBe('alert')
+    // formatError surfaces the BdError.message field for typed
+    // variants.
+    expect(errorBox.textContent).toContain('beads-99 is not a known issue')
+
+    await waitFor(() => {
+      expect(mockBdDepAdd).toHaveBeenCalledWith(
+        '/fake',
+        'beads-1',
+        'beads-99',
+        'blocks'
+      )
+    })
+  })
+
+  it('leaves the dep row in the DOM when bdDepRemove returns a Result error', async () => {
+    // Exercises Branch 0[1] @ line 115 (falsy arm of
+    // `if (result.status === 'ok')` inside the bdDepRemove
+    // mutationFn → `throw result.error`). The component has NO
+    // observable error UI for remove failures (no
+    // `dep-remove-error` testid) — TanStack Query's mutation
+    // store captures the throw on the `removeMutation.error`
+    // field, which the component does not render. The only
+    // observable behaviour is the negative one: a failed
+    // `bdDepRemove` does NOT fire the `onSuccess → invalidate`
+    // callback, so the row stays in the DOM. We assert both the
+    // mutation fired (proving line 114 was reached) and the row
+    // is still present (proving `onSuccess` did NOT fire).
+    mockBdDepList.mockResolvedValue({
+      status: 'ok',
+      data: [depBlocks1],
+    })
+    mockBdDepRemove.mockResolvedValue({
+      status: 'error',
+      error: {
+        type: 'NonZeroExit',
+        code: 2,
+        stderr: 'bd dep remove: permission denied',
+        stdout: '',
+      },
+    })
+
+    const { DependencyListView } = await importSut()
+    render(
+      <DependencyListView
+        cwd="/fake"
+        issueId="beads-1"
+        onOpenIssue={() => undefined}
+      />
+    )
+
+    // Sanity: the one row from the mocked dep list is visible.
+    await waitFor(() => {
+      expect(screen.getByTestId('dep-remove')).toBeInTheDocument()
+    })
+    expect(screen.getAllByTestId('dep-row')).toHaveLength(1)
+
+    fireEvent.click(screen.getByTestId('dep-remove'))
+
+    // The mutationFn ran (line 114 fired): mockBdDepRemove was
+    // called with the right arguments.
+    await waitFor(() => {
+      expect(mockBdDepRemove).toHaveBeenCalledWith(
+        '/fake',
+        'beads-1',
+        'beads-77'
+      )
+    })
+    // And the throw on line 116 took effect — the row is STILL
+    // in the DOM because the throw prevented onSuccess →
+    // invalidate from firing. If the component had accidentally
+    // not-thrown (e.g. swallowed the error and called
+    // invalidate anyway), the row would have disappeared after a
+    // refetch.
+    await waitFor(() => {
+      expect(mockBdDepList).toHaveBeenCalledTimes(1)
+    })
+    expect(screen.getByTestId('dep-row')).toBeInTheDocument()
+    expect(screen.getByTestId('dep-target-id')).toHaveTextContent('beads-77')
+  })
 })
