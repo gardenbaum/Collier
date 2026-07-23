@@ -353,4 +353,80 @@ describe('StatusOverviewView', () => {
     expect(screen.queryByTestId('status-grid')).not.toBeInTheDocument()
     expect(screen.queryByTestId('status-empty')).not.toBeInTheDocument()
   })
+
+  it('renders the raw status string as the label for a custom status with no i18n entry', async () => {
+    // Custom (Beads-v2-defined) statuses are not present in
+    // STATUS_I18N_KEY, so the label lookup
+    // `t(`beads.status.${STATUS_I18N_KEY[status] ?? status}`)` must
+    // fall through to the raw status string. Previously a custom
+    // card was rendered but its label was never asserted, so the
+    // `?? status` branch on line 281 was uncovered.
+    mockBdList.mockResolvedValue({
+      status: 'ok',
+      data: [
+        makeIssue({ id: 'o-1', status: 'open' }),
+        makeIssue({ id: 'r-1', status: 'review' }),
+        makeIssue({ id: 'r-2', status: 'review' }),
+        makeIssue({ id: 'r-3', status: 'review' }),
+      ],
+    })
+
+    const { StatusOverviewView } = await importSut()
+    render(<StatusOverviewView cwd="/fake" />)
+
+    await waitFor(() => {
+      expect(screen.getByTestId('status-grid')).toBeInTheDocument()
+    })
+
+    // The custom 'review' card is appended after the 5 known ones.
+    const reviewCard = screen
+      .getAllByTestId('status-card')
+      .find(c => c.getAttribute('data-status') === 'review')
+    if (!reviewCard) throw new Error('review card missing')
+
+    // The visible label element is the second <span> inside the
+    // header (the first is the colored dot). It must equal the
+    // raw status string, not 'beads.status.review' or any i18n key.
+    const spans = Array.from(reviewCard.querySelectorAll('span'))
+    const labelEl = spans.find(s => s.textContent === 'review')
+    expect(labelEl).toBeDefined()
+  })
+
+  it('clicking a card whose status is already in the filter keeps only that status', async () => {
+    // The click handler normalises the status filter to exactly
+    // the clicked value. Pre-seed an existing filter that already
+    // contains the clicked status (`['open', 'closed']`) so the
+    // for-loop on line 361 hits its `s === card.key` branch (no
+    // toggle) and the guard on line 363 hits its false branch
+    // (current.includes(card.key) is true, no extra toggle).
+    useIssueFilterStore.setState({ status: ['open', 'closed'] })
+
+    mockBdList.mockResolvedValue({
+      status: 'ok',
+      data: [
+        makeIssue({ id: 'o-1', status: 'open' }),
+        makeIssue({ id: 'c-1', status: 'closed' }),
+      ],
+    })
+
+    const { StatusOverviewView } = await importSut()
+    render(<StatusOverviewView cwd="/fake" />)
+
+    await waitFor(() => {
+      expect(screen.getByTestId('status-grid')).toBeInTheDocument()
+    })
+
+    const closedCard = screen
+      .getAllByTestId('status-card')
+      .find(c => c.getAttribute('data-status') === 'closed')
+    if (!closedCard) throw new Error('closed card missing')
+    await fireEvent.click(closedCard)
+
+    // 'open' was removed (for-loop toggle on line 361 with
+    // s !== 'closed'), 'closed' was NOT re-toggled (line 363 false
+    // branch — it was already in the filter). Result is exactly
+    // `['closed']`.
+    expect(useIssueFilterStore.getState().status).toEqual(['closed'])
+    expect(useWorkspaceStore.getState().activeView).toBe('list')
+  })
 })
