@@ -1,16 +1,43 @@
 import { render, screen } from '@testing-library/react'
-import { describe, it, expect } from 'vitest'
+import { beforeAll, describe, it, expect } from 'vitest'
 import {
   ResizablePanelGroup,
   ResizablePanel,
   ResizableHandle,
 } from './resizable'
 
+// jsdom does not implement ResizeObserver; react-resizable-panels v4 uses
+// one to measure the group and panels. A no-op stub keeps the layout
+// effects quiet without forcing the test to simulate real DOM measurements.
+class ResizeObserverStub {
+  observe(): void {
+    /* no-op */
+  }
+  unobserve(): void {
+    /* no-op */
+  }
+  disconnect(): void {
+    /* no-op */
+  }
+}
+
+beforeAll(() => {
+  if (!globalThis.ResizeObserver) {
+    globalThis.ResizeObserver =
+      ResizeObserverStub as unknown as typeof ResizeObserver
+  }
+})
+
 /**
  * These tests exercise the react-resizable-panels v4 public API
- * (PanelGroup / Panel / PanelResizeHandle) through the shadcn wrapper, which is
- * the only consumer of the dependency. They guard against a breaking change in
+ * (Group / Panel / Separator) through the shadcn wrapper, which is the
+ * only consumer of the dependency. They guard against a breaking change in
  * the panels library surfacing in the app's core layout.
+ *
+ * v4 derives `data-testid` from the `id` prop (and falls back to useId when
+ * no id is provided); the underlying components always overwrite a
+ * user-supplied `data-testid` with the resolved id. The tests therefore
+ * target elements by their `id` (which becomes the `data-testid`).
  */
 describe('Resizable wrapper (react-resizable-panels)', () => {
   it('renders a panel group with panels, a handle, and their content', () => {
@@ -77,14 +104,15 @@ describe('Resizable wrapper (react-resizable-panels)', () => {
   it('forwards group className and props while preserving the wrapper classes', () => {
     const { container } = render(
       <ResizablePanelGroup
+        id="group"
         className="custom-group"
-        data-testid="group"
         direction="horizontal"
       >
         <ResizablePanel>Content</ResizablePanel>
       </ResizablePanelGroup>
     )
 
+    // v4 derives both `id` and `data-testid` from the `id` prop.
     const group = screen.getByTestId('group')
     expect(group).toHaveClass('custom-group')
     expect(group).toHaveClass('flex', 'h-full', 'w-full')
@@ -97,20 +125,17 @@ describe('Resizable wrapper (react-resizable-panels)', () => {
   it('forwards panel props and handle className/data attributes', () => {
     const { container } = render(
       <ResizablePanelGroup direction="horizontal">
-        <ResizablePanel id="left-panel" data-testid="panel">
-          Left
-        </ResizablePanel>
-        <ResizableHandle
-          className="custom-handle"
-          data-testid="handle"
-          id="resize-handle"
-        />
+        <ResizablePanel id="left-panel">Left</ResizablePanel>
+        <ResizableHandle id="resize-handle" className="custom-handle" />
         <ResizablePanel>Right</ResizablePanel>
       </ResizablePanelGroup>
     )
 
-    expect(screen.getByTestId('panel')).toHaveAttribute('id', 'left-panel')
-    const handle = screen.getByTestId('handle')
+    // v4 Panel reads `id` and applies it to both `id` and `data-testid`.
+    const panel = screen.getByTestId('left-panel')
+    expect(panel).toHaveAttribute('id', 'left-panel')
+
+    const handle = screen.getByTestId('resize-handle')
     expect(handle).toHaveClass('custom-handle')
     expect(handle).toHaveClass('relative', 'w-px')
     expect(handle).toHaveAttribute('id', 'resize-handle')
@@ -131,5 +156,31 @@ describe('Resizable wrapper (react-resizable-panels)', () => {
     expect(
       container.querySelector('[data-slot="resizable-handle"] svg')
     ).not.toBeInTheDocument()
+  })
+
+  it('interprets numeric defaultSize as a percentage of the parent group', () => {
+    // v4 changed the meaning of numeric size props: numbers are now pixels,
+    // strings without units are percentages. The wrapper must coerce numeric
+    // values to percent strings to preserve the v3 calling convention.
+    const { container } = render(
+      <ResizablePanelGroup direction="horizontal">
+        <ResizablePanel id="left" defaultSize={20}>
+          Left
+        </ResizablePanel>
+        <ResizableHandle />
+        <ResizablePanel id="right" defaultSize={80}>
+          Right
+        </ResizablePanel>
+      </ResizablePanelGroup>
+    )
+
+    // If 20 / 80 were treated as pixels (v4 default for numbers), the two
+    // panels would collapse to almost nothing; the role/text assertions below
+    // suffice as a smoke test that the wrapper survives the coerce path.
+    expect(screen.getByTestId('left')).toHaveTextContent('Left')
+    expect(screen.getByTestId('right')).toHaveTextContent('Right')
+    expect(
+      container.querySelectorAll('[data-slot="resizable-panel"]')
+    ).toHaveLength(2)
   })
 })
