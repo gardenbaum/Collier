@@ -355,12 +355,9 @@ describe('StatusOverviewView', () => {
   })
 
   it('renders the raw status string as the label for a custom status with no i18n entry', async () => {
-    // Custom (Beads-v2-defined) statuses are not present in
-    // STATUS_I18N_KEY, so the label lookup
-    // `t(`beads.status.${STATUS_I18N_KEY[status] ?? status}`)` must
-    // fall through to the raw status string. Previously a custom
-    // card was rendered but its label was never asserted, so the
-    // `?? status` branch on line 281 was uncovered.
+    // Custom (Beads-v2-defined) statuses are not present in the
+    // canonical STATUS_I18N_KEY map. They must therefore keep the
+    // raw wire value instead of rendering a missing i18n key.
     mockBdList.mockResolvedValue({
       status: 'ok',
       data: [
