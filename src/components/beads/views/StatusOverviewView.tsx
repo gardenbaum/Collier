@@ -56,24 +56,26 @@ export interface StatusOverviewViewProps {
 /**
  * Lifecycle order for the canonical v1 statuses — matches
  * IssueListView's `statusRank` so the overview reads the same way
- * as the list. Stored as a `string[]` because `IssueStatus` is
- * now a plain string on the wire (custom statuses are first-class
- * per `docs/CONSTITUTION.md §3`).
+ * as the list. The const tuple keeps the canonical statuses typed
+ * separately from plain-string custom statuses on the wire (per
+ * `docs/CONSTITUTION.md §3`).
  */
-const KNOWN_STATUS_ORDER: readonly string[] = [
+const KNOWN_STATUS_ORDER = [
   'open',
   'in_progress',
   'blocked',
   'deferred',
   'closed',
-]
+] as const
+
+type KnownStatus = (typeof KNOWN_STATUS_ORDER)[number]
 
 /**
- * Default palette color per canonical v1 status. Custom statuses
- * fall back to `palette.textMuted` so they still render readably
- * even though we have no opinion about their colour.
+ * Default palette color per canonical v1 status. Custom cards
+ * bypass this map and use `palette.textMuted` directly because we
+ * have no opinion about their colour.
  */
-const STATUS_COLOR: Record<string, string> = {
+const STATUS_COLOR: Record<KnownStatus, string> = {
   open: palette.statusOpen,
   in_progress: palette.statusInProgress,
   blocked: palette.statusBlocked,
@@ -84,7 +86,7 @@ const STATUS_COLOR: Record<string, string> = {
 /** i18n key suffix per canonical v1 status — maps to
  * `beads.status.<key>` in every locale. Custom statuses get their
  * raw string as the label (no i18n entry). */
-const STATUS_I18N_KEY: Record<string, string> = {
+const STATUS_I18N_KEY: Record<KnownStatus, string> = {
   open: 'open',
   in_progress: 'inProgress',
   blocked: 'blocked',
@@ -231,9 +233,9 @@ interface StatusCard {
  * and can click into empty buckets. */
 function computeCards(
   issues: Issue[],
-  total: number,
-  labelFor: (status: string) => string
+  labelForKnownStatus: (status: KnownStatus) => string
 ): StatusCard[] {
+  const total = issues.length
   const counts = new Map<string, number>()
   for (const issue of issues) {
     counts.set(issue.status, (counts.get(issue.status) ?? 0) + 1)
@@ -243,8 +245,8 @@ function computeCards(
     const count = counts.get(status) ?? 0
     return {
       key: status,
-      label: labelFor(status),
-      color: STATUS_COLOR[status] ?? palette.textMuted,
+      label: labelForKnownStatus(status),
+      color: STATUS_COLOR[status],
       count,
       percent: total === 0 ? 0 : Math.round((count / total) * 100),
     }
@@ -255,13 +257,15 @@ function computeCards(
     .sort()
 
   const customCards: StatusCard[] = customKeys.map(key => {
-    const count = counts.get(key) ?? 0
+    // `customKeys` comes directly from `counts.keys()`, so this
+    // lookup is guaranteed to exist.
+    const count = counts.get(key) as number
     return {
       key,
       label: key,
       color: palette.textMuted,
       count,
-      percent: total === 0 ? 0 : Math.round((count / total) * 100),
+      percent: Math.round((count / total) * 100),
     }
   })
 
@@ -277,8 +281,8 @@ export function StatusOverviewView({ cwd }: StatusOverviewViewProps) {
 
   const cards = useMemo<StatusCard[]>(
     () =>
-      computeCards(data ?? [], data?.length ?? 0, status =>
-        t(`beads.status.${STATUS_I18N_KEY[status] ?? status}`)
+      computeCards(data ?? [], status =>
+        t(`beads.status.${STATUS_I18N_KEY[status]}`)
       ),
     [data, t]
   )
