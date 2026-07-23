@@ -1,0 +1,11 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "description": "Collier Renovate config. See package.json#overrides for dependency pins that depend on transitive compat (currently: undici is pinned to ^7.28.0 because jsdom@29.x requires undici v7's internal API).",
+  "packageRules": [
+    {
+      "description": "undici is pinned via package.json#overrides to ^7.28.0; jsdom@29.1.1 (the latest published version) requires the removed internal module undici/lib/handler/wrap-handler.js from undici v7. Drop this rule when jsdom releases a version that supports undici v8+.",
+      "matchPackageNames": ["undici"],
+      "enabled": false
+    }
+  ]
+}
