@@ -228,7 +228,6 @@ describe('recovery — cleanupOldFiles', () => {
 })
 
 describe('recovery — saveCrashState', () => {
-  let randomUUIDSpy: ReturnType<typeof vi.spyOn>
   let originalCrypto: Crypto | undefined
 
   beforeEach(() => {
@@ -256,7 +255,6 @@ describe('recovery — saveCrashState', () => {
       // @ts-expect-error — best-effort cleanup
       delete globalThis.crypto
     }
-    randomUUIDSpy?.mockRestore()
   })
 
   it('saves the crash payload and logs success', async () => {

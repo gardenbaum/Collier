@@ -96,7 +96,8 @@ function runBd(args: string[]): void {
     const stdout = e.stdout?.toString().trim() ?? ''
     const stderr = e.stderr?.toString().trim() ?? ''
     throw new Error(
-      `bd ${args.join(' ')} failed (exit=${e.status ?? '?'}):\n  stdout: ${stdout}\n  stderr: ${stderr}`
+      `bd ${args.join(' ')} failed (exit=${e.status ?? '?'}):\n  stdout: ${stdout}\n  stderr: ${stderr}`,
+      { cause: err }
     )
   }
 }
@@ -133,7 +134,8 @@ function runBdCapture(args: string[]): string {
     const stdout = e.stdout?.toString().trim() ?? ''
     const stderr = e.stderr?.toString().trim() ?? ''
     throw new Error(
-      `bd ${args.join(' ')} failed (exit=${e.status ?? '?'}):\n  stdout: ${stdout}\n  stderr: ${stderr}`
+      `bd ${args.join(' ')} failed (exit=${e.status ?? '?'}):\n  stdout: ${stdout}\n  stderr: ${stderr}`,
+      { cause: err }
     )
   }
 }

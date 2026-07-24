@@ -133,7 +133,8 @@ describe('M6 — large-backlog performance', () => {
       throw new Error(
         `[m6-perf] could not query fixture at ${fixtureDir}: ${
           (err as Error).message
-        }. Did the 'Generate large E2E fixture workspace (M6 perf)' CI step run?`
+        }. Did the 'Generate large E2E fixture workspace (M6 perf)' CI step run?`,
+        { cause: err }
       )
     }
     if (count < 1000) {

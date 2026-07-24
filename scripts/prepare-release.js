@@ -12,7 +12,9 @@ function exec(command, options = {}) {
       ...options,
     })
   } catch (error) {
-    throw new Error(`Command failed: ${command}\n${error.message}`)
+    throw new Error(`Command failed: ${command}\n${error.message}`, {
+      cause: error,
+    })
   }
 }
 

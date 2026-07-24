@@ -56,7 +56,12 @@ export default tseslint.config(
     },
     settings: {
       react: {
-        version: 'detect',
+        // Pin to a fixed version instead of 'detect'.
+        // 'detect' calls context.getFilename() inside eslint-plugin-react's
+        // version detection, but ESLint v10 removed that API, so we hardcode
+        // the version to bypass the broken code path.
+        // Bump this when react/package.json bumps its major or minor version.
+        version: '19.2.7',
       },
     },
   },
