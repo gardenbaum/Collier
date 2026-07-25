@@ -19,7 +19,7 @@
  * each fixture row mirrors the bd wire format with the minimum
  * fields the view reads.
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { screen, waitFor, fireEvent } from '@testing-library/react'
 import { render } from '@/test/test-utils'
 import type { GateEntry, Issue } from '@/lib/bindings'
@@ -247,5 +247,96 @@ describe('GatesView', () => {
     expect(rows).toHaveLength(2)
     expect(rows[0]?.getAttribute('data-gate-status')).toBe('review')
     expect(rows[1]?.getAttribute('data-gate-status')).toBe('on_hold')
+  })
+
+  it('falls back to the empty state when bdGateList returns ok with null data', async () => {
+    // Defensive branch at GatesView.tsx:240: `const entries = data ?? []`.
+    // The Rust contract is `Result<GateEntry[], BdError>`, so a literal
+    // null in `data` shouldn't arise from the bindings in production —
+    // but the `??` is the safety net if the queryFn ever returns a
+    // nullish value (e.g. a future refactor that conditionally
+    // returns the field). We cast the mock to simulate that reachable
+    // shape without touching the production code.
+    //
+    // Note: React Query v5 throws when a queryFn returns `undefined`
+    // (see `@tanstack/query-core/src/query.ts`'s `data is undefined`
+    // guard), so `null` is the only nullish value the `??` branch can
+    // realistically observe through the public queryFn contract.
+    mockBdGateList.mockResolvedValue({
+      status: 'ok',
+      data: null,
+    } as unknown as { status: 'ok'; data: GateEntry[] })
+
+    const { GatesView } = await importSut()
+    render(<GatesView cwd="/fake" onOpenIssue={() => undefined} />)
+
+    await waitFor(() => {
+      expect(screen.getByTestId('gates-empty')).toBeInTheDocument()
+    })
+    expect(screen.queryByTestId('gates-list')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('gates-error')).not.toBeInTheDocument()
+  })
+})
+
+// `relativeAge` (GatesView.tsx:149-157) reads `Date.now()` directly,
+// so we freeze the wall clock to make the four branches deterministic
+// without fighting the real system clock. The fixture timestamps are
+// chosen relative to the freeze so the assertions are stable across any
+// host that runs the suite.
+describe('GatesView - relative age format', () => {
+  const FROZEN_NOW = new Date('2026-06-25T00:00:00.000Z')
+
+  beforeEach(() => {
+    // Only fake `Date` — the React Query queryFn awaits via
+    // microtasks, which must continue to resolve normally.
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(FROZEN_NOW)
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it.each([
+    {
+      label: 'invalid timestamp falls back to the raw value',
+      created_at: 'not-a-real-date',
+      expected: 'not-a-real-date',
+    },
+    {
+      label: 'shows "just now" when < 1 minute old',
+      created_at: '2026-06-24T23:59:30.000Z', // 30s ago
+      expected: 'just now',
+    },
+    {
+      label: 'shows "Xm ago" when < 1 hour old',
+      created_at: '2026-06-24T23:55:00.000Z', // 5m ago
+      expected: '5m ago',
+    },
+    {
+      label: 'shows "Xh ago" when < 1 day old',
+      created_at: '2026-06-24T22:00:00.000Z', // 2h ago
+      expected: '2h ago',
+    },
+  ])('renders age label: $label', async ({ created_at, expected }) => {
+    mockBdGateList.mockResolvedValue({
+      status: 'ok',
+      data: [
+        makeEntry(
+          makeGateIssue({ id: 'bd-gate-age', status: 'open', created_at }),
+          false
+        ),
+      ] as GateEntry[],
+    })
+
+    const { GatesView } = await importSut()
+    render(<GatesView cwd="/fake" onOpenIssue={() => undefined} />)
+
+    await waitFor(() => {
+      expect(screen.getByTestId('gates-list')).toBeInTheDocument()
+    })
+
+    const row = screen.getByTestId('gate-row')
+    expect(row.textContent).toContain(expected)
   })
 })
