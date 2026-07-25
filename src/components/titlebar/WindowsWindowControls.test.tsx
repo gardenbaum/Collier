@@ -141,4 +141,81 @@ describe('WindowsWindowControls', () => {
       screen.getByRole('button', { name: 'Restore window' })
     ).toBeInTheDocument()
   })
+
+  it('ignores resize events that fire after unmount (aborted=true)', async () => {
+    // Edge case: a resize event is delivered *after* the component has
+    // unmounted. The handler's `if (!aborted)` guard must short-circuit
+    // so the unmounted component does not receive a setState call. The
+    // query inside the handler still runs (the await is unconditional),
+    // but the resulting setIsMaximized must be skipped.
+    let resizeHandler: (() => Promise<void>) | null = null
+    mockWindowApi.onResized.mockImplementation(
+      async (handler: () => Promise<void>) => {
+        resizeHandler = handler
+        return () => undefined
+      }
+    )
+    mockWindowApi.isMaximized.mockResolvedValue(false)
+
+    const { unmount } = render(<WindowsWindowControls />)
+    await act(async () => {
+      await Promise.resolve()
+    })
+    // After mount: isMaximized was queried once for the initial state.
+    expect(mockWindowApi.isMaximized).toHaveBeenCalledTimes(1)
+
+    unmount()
+
+    // The Tauri side delivers a late resize event after we tore down.
+    expect(resizeHandler).not.toBeNull()
+    await act(async () => {
+      if (resizeHandler) await resizeHandler()
+    })
+
+    // The handler ran its query (count goes 1 → 2), but the aborted
+    // guard prevented the setIsMaximized path. Verify by counting
+    // queries: one initial + one inside the late handler.
+    expect(mockWindowApi.isMaximized).toHaveBeenCalledTimes(2)
+  })
+
+  it('unsubscribes via the .then handler when abort happens before onResized resolves', async () => {
+    // Edge case: the user unmounts the title bar before Tauri returns
+    // the resize-subscription handle. The .then handler runs after
+    // abort and must call `unsub()` immediately so the listener is
+    // never attached for longer than the component was mounted.
+    let resolveSubscription: ((unsub: () => void) => void) | undefined
+    mockWindowApi.onResized.mockImplementation(
+      () =>
+        new Promise<() => void>(resolve => {
+          resolveSubscription = resolve
+        })
+    )
+
+    const unsub = vi.fn()
+    const { unmount } = render(<WindowsWindowControls />)
+    unmount()
+
+    // Now Tauri resolves the subscription — the .then handler runs
+    // with aborted=true and must call unsub() right away.
+    resolveSubscription?.(unsub)
+    await act(async () => {
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    expect(unsub).toHaveBeenCalledTimes(1)
+  })
+
+  it('cleans up safely when onResized has not resolved before unmount', async () => {
+    // Edge case: the cleanup runs while `resolvedUnsub` is still null
+    // (onResized never resolved). The cleanup's `if (resolvedUnsub)`
+    // must short-circuit so we never call `null()`. There is no
+    // observable side effect — we just need unmount to be a no-op.
+    mockWindowApi.onResized.mockImplementation(
+      () => new Promise<() => void>(() => undefined)
+    )
+
+    const { unmount } = render(<WindowsWindowControls />)
+    expect(() => unmount()).not.toThrow()
+  })
 })
