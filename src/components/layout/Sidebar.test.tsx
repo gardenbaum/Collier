@@ -25,20 +25,28 @@ import type {
 } from '@/lib/bindings'
 
 // ponytail: hoisted so the vi.mock factory can reference the mock fns.
-// The Sidebar fires `bdLabelListAll` and `bdAssigneeListAll` against
-// `repoPath` from `useWorkspaceStore`. Empty repoPath disables both
-// queries (see the `enabled: repoPath !== null` flag) so tests that
-// only exercise the view list / filter chip sections don't have to
-// mock the queries at all.
-const { mockBdLabelListAll, mockBdAssigneeListAll } = vi.hoisted(() => ({
-  mockBdLabelListAll: vi.fn(),
-  mockBdAssigneeListAll: vi.fn(),
-}))
+// The Sidebar fires `bdLabelListAll`, `bdAssigneeListAll`, and
+// `bdStatuses` against `repoPath` from `useWorkspaceStore`. Empty
+// repoPath disables all three queries (see the `enabled:
+// repoPath !== null` flag) so tests that only exercise the view list
+// / filter chip sections don't have to mock the queries at all. The
+// status catalog drives the status filter chips — when unstested, the
+// hook falls back to the v1 built-in status names so the existing
+// test suite covers the built-in label path. Tests that want to
+// exercise a custom status (the `statusLabelFor` fallback branch in
+// Sidebar.tsx line 74) override `mockBdStatuses` with `mockResolvedValueOnce`.
+const { mockBdLabelListAll, mockBdAssigneeListAll, mockBdStatuses } =
+  vi.hoisted(() => ({
+    mockBdLabelListAll: vi.fn(),
+    mockBdAssigneeListAll: vi.fn(),
+    mockBdStatuses: vi.fn(),
+  }))
 
 vi.mock('@/lib/tauri-bindings', () => ({
   commands: {
     bdLabelListAll: mockBdLabelListAll,
     bdAssigneeListAll: mockBdAssigneeListAll,
+    bdStatuses: mockBdStatuses,
   },
 }))
 
@@ -177,6 +185,44 @@ describe('Sidebar — filter chips per dimension', () => {
         screen.getByTestId(`sidebar-filter-status-${status}`)
       ).toBeInTheDocument()
     }
+  })
+
+  it('renders a custom status with the raw name as its label', async () => {
+    // ponytail: cover the `BUILTIN_STATUS_LABEL[name] ?? name`
+    // fallback branch in Sidebar.tsx line 74. The constitution
+    // (`docs/CONSTITUTION.md §3`) forbids hardcoding the 5 built-in
+    // statuses — a workspace can introduce a custom status via
+    // `bd config set status.custom "review:wip"`, and the Sidebar
+    // must surface the chip with the raw name as the visible label
+    // (there is no localized title for a custom status). The
+    // built-in path is covered by the test above; this one mocks
+    // `bdStatuses` to return an extra custom status and asserts the
+    // chip's text content is the raw name, not a Title-Cased label.
+    mockBdStatuses.mockResolvedValue({
+      status: 'ok',
+      data: {
+        builtin: [],
+        custom: [
+          {
+            name: 'review:wip',
+            category: 'wip',
+            icon: null,
+            description: null,
+            isBuiltin: false,
+          },
+        ],
+        statusNames: ['review:wip'],
+      },
+    })
+    render(<Sidebar />)
+
+    const chip = await screen.findByTestId('sidebar-filter-status-review:wip')
+    expect(chip).toBeInTheDocument()
+    // The custom status has no entry in BUILTIN_STATUS_LABEL, so
+    // the chip renders the raw name as the label (the `?? name`
+    // fallback). The built-in status "Open" would render "Open"
+    // (capitalised); the raw value proves we hit the fallback.
+    expect(chip.textContent).toBe('review:wip')
   })
 
   it('renders one toggle chip per priority enum value', () => {
@@ -343,6 +389,28 @@ describe('Sidebar — labels section', () => {
       screen.queryByTestId('sidebar-labels-loading')
     ).not.toBeInTheDocument()
     expect(screen.queryByTestId('sidebar-labels-empty')).not.toBeInTheDocument()
+  })
+
+  it('renders the empty placeholder when bdLabelListAll returns an empty list', async () => {
+    // ponytail: cover the `sortedLabels.length === 0` branch in
+    // Sidebar.tsx line 393. When a workspace has zero labels the
+    // Sidebar shows the same `—` placeholder used for the error
+    // state, but the data-testid is `sidebar-labels-empty` (not
+    // `-error`) so QA selectors can tell the two states apart. The
+    // empty-state testid is the only place `length === 0` is
+    // exercised — the populated case is covered by every other
+    // labels-section test.
+    mockBdLabelListAll.mockResolvedValue({ status: 'ok', data: [] })
+    render(<Sidebar />)
+
+    expect(
+      await screen.findByTestId('sidebar-labels-empty')
+    ).toBeInTheDocument()
+    // No per-label buttons in the empty state.
+    expect(screen.queryAllByTestId(/^sidebar-label-/)).toHaveLength(0)
+    // The error testid never appears alongside the empty testid —
+    // the two branches are mutually exclusive.
+    expect(screen.queryByTestId('sidebar-labels-error')).not.toBeInTheDocument()
   })
 })
 
