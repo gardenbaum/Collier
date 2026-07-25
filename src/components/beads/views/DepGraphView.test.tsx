@@ -336,4 +336,268 @@ describe('DepGraphView', () => {
     expect(canvas.getAttribute('data-pan-y')).not.toBeNull()
     expect(canvas.getAttribute('data-zoom')).not.toBeNull()
   })
+
+  // ------------------------------------------------------------------
+  // Helper coverage
+  // ------------------------------------------------------------------
+
+  it('truncates node titles longer than 30 chars with an ellipsis', async () => {
+    const longTitle =
+      'A task whose title is intentionally over thirty characters long'
+    mockBdGraph.mockResolvedValue({
+      status: 'ok',
+      data: {
+        nodes: [makeNode({ id: 'long', title: longTitle })],
+        edges: [],
+      },
+    })
+
+    const { DepGraphView } = await importSut()
+    render(<DepGraphView cwd="/fake" onOpenIssue={() => undefined} />)
+
+    await waitFor(() => {
+      expect(screen.getByTestId('graph-canvas')).toBeInTheDocument()
+    })
+
+    // The title is rendered as the second <text> child of the
+    // node group. jsdom carries the textContent verbatim; the
+    // truncation appends '…' and slices to 29 chars (30 with
+    // the ellipsis).
+    const texts = document.querySelectorAll('[data-node-id="long"] ~ text')
+    const titleNode = texts[texts.length - 1] as SVGTextElement | undefined
+    expect(titleNode).toBeDefined()
+    const rendered = titleNode?.textContent ?? ''
+    expect(rendered.endsWith('…')).toBe(true)
+    // 29 chars + 1 ellipsis = 30 visible chars, never the full title.
+    expect(rendered.length).toBe(30)
+    expect(rendered.length).toBeLessThan(longTitle.length)
+  })
+
+  it('emits data-kind="related" with dashed stroke for related edges', async () => {
+    // edgeStrokeStyle returns `strokeDasharray: '4 3'` for the
+    // 'related' kind. The two previous dep_type tests cover
+    // 'blocker' (solid, statusBlocked) and 'parent' (solid,
+    // mono7); 'related' is the third arm and the dashed stroke
+    // path was previously uncovered.
+    const graph: Graph = {
+      nodes: [makeNode({ id: 'a' }), makeNode({ id: 'b' })],
+      edges: [makeEdge({ source: 'b', target: 'a', depType: 'related' })],
+    }
+    mockBdGraph.mockResolvedValue({ status: 'ok', data: graph })
+
+    const { DepGraphView } = await importSut()
+    render(<DepGraphView cwd="/fake" onOpenIssue={() => undefined} />)
+
+    await waitFor(() => {
+      expect(screen.getByTestId('graph-canvas')).toBeInTheDocument()
+    })
+
+    const edge = screen.getAllByTestId('graph-edge')[0] as HTMLElement
+    expect(edge.getAttribute('data-kind')).toBe('related')
+    const dashedPath = edge.querySelector('path[stroke-dasharray="4 3"]')
+    expect(dashedPath).not.toBeNull()
+  })
+
+  // ------------------------------------------------------------------
+  // Pointer / wheel event handlers
+  // ------------------------------------------------------------------
+
+  it('starts a drag on pointerdown over canvas background', async () => {
+    mockBdGraph.mockResolvedValue({
+      status: 'ok',
+      data: { nodes: [makeNode({ id: 'a' })], edges: [] },
+    })
+
+    const { DepGraphView } = await importSut()
+    render(<DepGraphView cwd="/fake" onOpenIssue={() => undefined} />)
+
+    await waitFor(() => {
+      expect(screen.getByTestId('graph-canvas')).toBeInTheDocument()
+    })
+    const canvas = screen.getByTestId('graph-canvas')
+
+    // Dispatch the pointerdown directly on the SVG so the
+    // handler's e.target.closest('[data-testid="graph-node"]')
+    // lookup yields null (the SVG itself does not carry the
+    // graph-node testid).
+    fireEvent.pointerDown(canvas, { clientX: 100, clientY: 50 })
+
+    // Cursor switches to 'grabbing' while a drag is in flight —
+    // see svgStyleDragging in the source.
+    expect((canvas as HTMLElement).style.cursor).toBe('grabbing')
+  })
+
+  it('ignores pointerdown that starts on a node (does not begin a drag)', async () => {
+    // The handler explicitly bails when the pointerdown target
+    // is inside a graph-node element — node clicks own that
+    // interaction and a node drag would shadow the click
+    // handler. Cover the `target.closest(...) !== null` branch.
+    mockBdGraph.mockResolvedValue({
+      status: 'ok',
+      data: { nodes: [makeNode({ id: 'a' })], edges: [] },
+    })
+
+    const { DepGraphView } = await importSut()
+    render(<DepGraphView cwd="/fake" onOpenIssue={() => undefined} />)
+
+    await waitFor(() => {
+      expect(screen.getByTestId('graph-canvas')).toBeInTheDocument()
+    })
+
+    const node = document.querySelector('[data-node-id="a"]') as Element
+    expect(node).not.toBeNull()
+    fireEvent.pointerDown(node, { clientX: 50, clientY: 25 })
+
+    const canvas = screen.getByTestId('graph-canvas')
+    // Drag was NOT started, so the cursor remains the default
+    // 'grab' from svgStyle.
+    expect((canvas as HTMLElement).style.cursor).toBe('grab')
+  })
+
+  it('updates panX / panY when pointermove fires during a drag', async () => {
+    // After pointerdown at (100,50) and pointermove at (140,90),
+    // the delta is (+40, +40) and the SVG pan attributes must
+    // reflect that. (Initial panX / panY are 0 — the jsdom
+    // ResizeObserver stub never delivers a non-zero viewport,
+    // so the centring useLayoutEffect never commits.)
+    mockBdGraph.mockResolvedValue({
+      status: 'ok',
+      data: { nodes: [makeNode({ id: 'a' })], edges: [] },
+    })
+
+    const { DepGraphView } = await importSut()
+    render(<DepGraphView cwd="/fake" onOpenIssue={() => undefined} />)
+
+    await waitFor(() => {
+      expect(screen.getByTestId('graph-canvas')).toBeInTheDocument()
+    })
+    const canvas = screen.getByTestId('graph-canvas')
+
+    fireEvent.pointerDown(canvas, { clientX: 100, clientY: 50 })
+    fireEvent.pointerMove(canvas, { clientX: 140, clientY: 90 })
+
+    // dragStart.panX = 0, dragStart.panY = 0 → next = (0+40, 0+40).
+    expect(canvas.getAttribute('data-pan-x')).toBe('40')
+    expect(canvas.getAttribute('data-pan-y')).toBe('40')
+  })
+
+  it('does not change pan when pointermove fires without an active drag', async () => {
+    // handlePointerMove early-returns when dragStart === null.
+    // Without a prior pointerdown the pan attributes stay at 0.
+    mockBdGraph.mockResolvedValue({
+      status: 'ok',
+      data: { nodes: [makeNode({ id: 'a' })], edges: [] },
+    })
+
+    const { DepGraphView } = await importSut()
+    render(<DepGraphView cwd="/fake" onOpenIssue={() => undefined} />)
+
+    await waitFor(() => {
+      expect(screen.getByTestId('graph-canvas')).toBeInTheDocument()
+    })
+    const canvas = screen.getByTestId('graph-canvas')
+
+    fireEvent.pointerMove(canvas, { clientX: 140, clientY: 90 })
+
+    expect(canvas.getAttribute('data-pan-x')).toBe('0')
+    expect(canvas.getAttribute('data-pan-y')).toBe('0')
+  })
+
+  it('clears the drag on pointerup (subsequent pointermove is a no-op)', async () => {
+    // After pointerdown + pointermove + pointerup, another
+    // pointermove must not move the pan further. This proves
+    // handlePointerUp actually reset dragStart to null.
+    mockBdGraph.mockResolvedValue({
+      status: 'ok',
+      data: { nodes: [makeNode({ id: 'a' })], edges: [] },
+    })
+
+    const { DepGraphView } = await importSut()
+    render(<DepGraphView cwd="/fake" onOpenIssue={() => undefined} />)
+
+    await waitFor(() => {
+      expect(screen.getByTestId('graph-canvas')).toBeInTheDocument()
+    })
+    const canvas = screen.getByTestId('graph-canvas')
+
+    fireEvent.pointerDown(canvas, { clientX: 100, clientY: 50 })
+    fireEvent.pointerMove(canvas, { clientX: 120, clientY: 60 })
+    fireEvent.pointerUp(canvas)
+
+    // Cursor reverts to 'grab' once the drag ends.
+    expect((canvas as HTMLElement).style.cursor).toBe('grab')
+
+    fireEvent.pointerMove(canvas, { clientX: 999, clientY: 999 })
+    // Pan stayed at the post-drag value (20, 10); the post-up
+    // move did nothing.
+    expect(canvas.getAttribute('data-pan-x')).toBe('20')
+    expect(canvas.getAttribute('data-pan-y')).toBe('10')
+  })
+
+  it('zooms in on wheel with negative deltaY (data-zoom increases)', async () => {
+    // wheel: deltaY < 0 → deltaZoom = 1.1, so the new zoom
+    // multiplier is 1.1. The handler also re-pans so the
+    // point under the cursor stays under the cursor; with
+    // initial panX = panY = 0 and rect.left = rect.top = 0
+    // (jsdom default), the math is deterministic.
+    mockBdGraph.mockResolvedValue({
+      status: 'ok',
+      data: { nodes: [makeNode({ id: 'a' })], edges: [] },
+    })
+
+    const { DepGraphView } = await importSut()
+    render(<DepGraphView cwd="/fake" onOpenIssue={() => undefined} />)
+
+    await waitFor(() => {
+      expect(screen.getByTestId('graph-canvas')).toBeInTheDocument()
+    })
+    const canvas = screen.getByTestId('graph-canvas')
+
+    fireEvent.wheel(canvas, {
+      deltaY: -100,
+      clientX: 50,
+      clientY: 50,
+    })
+
+    // zoom 1 → 1.1; panX = 50 - 50*1.1 = -5 (same for Y).
+    // The pan math has a tiny floating-point drift; assert
+    // closeness on the parsed values rather than the raw
+    // string.
+    expect(canvas.getAttribute('data-zoom')).toBe('1.1')
+    expect(Number(canvas.getAttribute('data-pan-x'))).toBeCloseTo(-5, 6)
+    expect(Number(canvas.getAttribute('data-pan-y'))).toBeCloseTo(-5, 6)
+  })
+
+  it('zooms out on wheel with positive deltaY (data-zoom decreases)', async () => {
+    // wheel: deltaY > 0 → deltaZoom = 1/1.1, so the new zoom
+    // multiplier is ~0.909. Note: 0.2 is the ZOOM_MIN clamp,
+    // so a single wheel-out from zoom=1 stays above the floor.
+    mockBdGraph.mockResolvedValue({
+      status: 'ok',
+      data: { nodes: [makeNode({ id: 'a' })], edges: [] },
+    })
+
+    const { DepGraphView } = await importSut()
+    render(<DepGraphView cwd="/fake" onOpenIssue={() => undefined} />)
+
+    await waitFor(() => {
+      expect(screen.getByTestId('graph-canvas')).toBeInTheDocument()
+    })
+    const canvas = screen.getByTestId('graph-canvas')
+
+    fireEvent.wheel(canvas, {
+      deltaY: 100,
+      clientX: 0,
+      clientY: 0,
+    })
+
+    // 1 / 1.1 ≈ 0.90909…
+    const zoom = Number(canvas.getAttribute('data-zoom'))
+    expect(zoom).toBeCloseTo(1 / 1.1, 5)
+    expect(zoom).toBeLessThan(1)
+    // At (0,0) the cursor is at the same point as the pan
+    // origin, so the pan math yields (0, 0) unchanged.
+    expect(canvas.getAttribute('data-pan-x')).toBe('0')
+    expect(canvas.getAttribute('data-pan-y')).toBe('0')
+  })
 })
