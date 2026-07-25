@@ -290,6 +290,7 @@ describe('Collier M4 R10 targeted real-time sync', () => {
 
     // -- When: external `bd update` mutates the priority.
     const { execFileSync } = await import('node:child_process')
+    const startedAt = Date.now()
     execFileSync(
       'bd',
       ['update', '--quiet', `--priority=${newPriority}`, mutatedRowId],
@@ -316,6 +317,23 @@ describe('Collier M4 R10 targeted real-time sync', () => {
         interval: 100,
         timeoutMsg: `row ${mutatedRowId} priority never reflected external bd update within 3000ms`,
       }
+    )
+    const elapsedMs = Date.now() - startedAt
+    // ponytail: E2E diagnostics — same shape as the status test
+    // above. The watcher event counters point at the layer that
+    // dropped the priority update (issueUpdated=0 = watcher never
+    // fired, issueUpdated>0 but droppedRepoMismatch=issueUpdated =
+    // repo_path mismatch, otherwise = patch logic issue). Emitted
+    // unconditionally on success so a regression that *did* hit the
+    // 3 s budget is still visible in the CI log without waiting for
+    // a future timeout.
+    const diagAfter = await browser.execute(() => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const d = (globalThis as any).__collierDiag__ ?? null
+      return d
+    })
+    console.log(
+      `[e2e:r10] external bd priority update reflected in ${elapsedMs}ms (target <= 1500ms) diag=${JSON.stringify(diagAfter)}`
     )
   })
 })
