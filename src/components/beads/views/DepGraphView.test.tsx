@@ -22,32 +22,48 @@
  * handlers here don't need manual `useCallback`.
  */
 import { describe, it, expect, vi, beforeEach, beforeAll } from 'vitest'
-import { screen, waitFor, fireEvent } from '@testing-library/react'
+import { act, screen, waitFor, fireEvent } from '@testing-library/react'
+import type { RenderOptions } from '@testing-library/react'
 import { render } from '@/test/test-utils'
 import type { Graph, GraphEdge, GraphNode } from '@/lib/bindings'
+import type {
+  LaidOutEdge,
+  LaidOutGraph,
+  LaidOutNode,
+  computeLayout,
+} from './depGraphLayout'
+import type * as DepGraphLayoutModule from './depGraphLayout'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 
 // jsdom does not implement ResizeObserver. The component uses one
-// in a useEffect to drive the centre-on-layout behaviour; a no-op
-// stub keeps the effect's contract intact without requiring the
-// test to simulate real DOM measurements.
-class ResizeObserverStub {
-  observe(): void {
-    // intentionally empty
+// in a useEffect to drive the centre-on-layout behaviour; the spy
+// captures the callback so coverage tests can simulate real DOM
+// measurements and exercise the centring branch (lines 466-470)
+// plus the no-op re-centre branch (line 465). Existing tests
+// that don't fire the callback see the same behaviour as the
+// original no-op stub.
+class ResizeObserverSpy {
+  static instances: ResizeObserverSpy[] = []
+  callback: ResizeObserverCallback
+  observe = vi.fn()
+  unobserve = vi.fn()
+  disconnect = vi.fn()
+  constructor(cb: ResizeObserverCallback) {
+    this.callback = cb
+    ResizeObserverSpy.instances.push(this)
   }
-  unobserve(): void {
-    // intentionally empty
-  }
-  disconnect(): void {
-    // intentionally empty
+  fire(entries: ResizeObserverEntry[]): void {
+    this.callback(entries, this as unknown as ResizeObserver)
   }
 }
 beforeAll(() => {
   globalThis.ResizeObserver =
-    ResizeObserverStub as unknown as typeof ResizeObserver
+    ResizeObserverSpy as unknown as typeof ResizeObserver
 })
 
-const { mockBdGraph } = vi.hoisted(() => ({
+const { mockBdGraph, mockComputeLayout } = vi.hoisted(() => ({
   mockBdGraph: vi.fn(),
+  mockComputeLayout: vi.fn(),
 }))
 
 vi.mock('@/lib/tauri-bindings', () => ({
@@ -55,6 +71,21 @@ vi.mock('@/lib/tauri-bindings', () => ({
     bdGraph: mockBdGraph,
   },
 }))
+
+// Default to the real `computeLayout` so existing tests get the
+// genuine dagre output; coverage tests for the polyline / arrow
+// helpers inject degenerate point arrays via mockReturnValueOnce.
+// The factory captures the real implementation in a closure
+// variable so `beforeEach` can restore it after `mockReset()`.
+let realComputeLayout: typeof computeLayout | undefined
+vi.mock('./depGraphLayout', async importOriginal => {
+  const actual = await importOriginal<typeof DepGraphLayoutModule>()
+  realComputeLayout = actual.computeLayout
+  return {
+    ...actual,
+    computeLayout: mockComputeLayout.mockImplementation(realComputeLayout),
+  }
+})
 
 vi.mock('@/lib/logger', () => ({
   logger: {
@@ -87,9 +118,96 @@ function makeEdge(overrides: Partial<GraphEdge> = {}): GraphEdge {
   }
 }
 
+function makeLaidOutNode(
+  id: string,
+  overrides: Partial<LaidOutNode> = {}
+): LaidOutNode {
+  return {
+    id,
+    x: 0,
+    y: 0,
+    data: makeNode({ id }),
+    ...overrides,
+  }
+}
+
+function makeLaidOutEdge(overrides: Partial<LaidOutEdge> = {}): LaidOutEdge {
+  return {
+    source: 'a',
+    target: 'b',
+    depType: 'blocks',
+    points: [
+      { x: 0, y: 0 },
+      { x: 10, y: 10 },
+    ],
+    ...overrides,
+  }
+}
+
+function makeLayout(overrides: Partial<LaidOutGraph> = {}): LaidOutGraph {
+  return {
+    nodes: [makeLaidOutNode('a'), makeLaidOutNode('b')],
+    edges: [],
+    width: 100,
+    height: 100,
+    ...overrides,
+  }
+}
+
 beforeEach(() => {
   vi.clearAllMocks()
+  ResizeObserverSpy.instances = []
+  // Reset the implementation + queue from previous tests; the
+  // factory populates `realComputeLayout` on first import, so
+  // skip the reset on the very first beforeEach (the factory
+  // hasn't run yet and resetting would leave the mock without
+  // an implementation until importSut() is called inside the
+  // test).
+  if (realComputeLayout) {
+    mockComputeLayout.mockReset()
+    mockComputeLayout.mockImplementation(realComputeLayout)
+  }
 })
+
+function makeRect(width: number, height: number): DOMRectReadOnly {
+  return {
+    width,
+    height,
+    top: 0,
+    left: 0,
+    bottom: height,
+    right: width,
+    x: 0,
+    y: 0,
+    toJSON: () => ({}),
+  }
+}
+
+/**
+ * Render the component with React Query's cache pre-populated so
+ * `useQuery` returns `data` immediately — the component skips the
+ * loading state and the container ref attaches on the FIRST
+ * commit, not on a re-render. This is the only way the
+ * `useEffect(..., [])` that creates the ResizeObserver ever
+ * sees a non-null `containerRef.current` (the production code's
+ * effect runs once on mount and never re-runs). Pre-existing
+ * limitation; see the trailing comment in the coverage block
+ * for the policy.
+ */
+function renderWithCachedGraph(
+  ui: React.ReactElement,
+  graph: Graph,
+  options?: RenderOptions
+) {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  })
+  queryClient.setQueryData(['beads', 'graph', '/fake'], graph)
+  const wrapper = ({ children }: { children: React.ReactNode }) => (
+    <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+  )
+  return render(ui, { wrapper, ...options })
+}
 
 describe('DepGraphView', () => {
   it('renders a loading skeleton while bdGraph is pending', async () => {
@@ -599,5 +717,413 @@ describe('DepGraphView', () => {
     // origin, so the pan math yields (0, 0) unchanged.
     expect(canvas.getAttribute('data-pan-x')).toBe('0')
     expect(canvas.getAttribute('data-pan-y')).toBe('0')
+  })
+
+  // ------------------------------------------------------------------
+  // Coverage follow-up: defensive guards + ResizeObserver / centring
+  // branches that the original render-fixture tests never reached.
+  // The `mockComputeLayout` factory exposes `computeLayout` as a
+  // `vi.fn` that delegates to the real dagre-based layout by
+  // default; the tests below inject degenerate point arrays via
+  // `mockReturnValueOnce` to reach the polyline / arrow guards.
+  // ------------------------------------------------------------------
+
+  it('skips rendering an edge when its points array is empty (line 302)', async () => {
+    // The renderer short-circuits edges whose `points.length`
+    // is zero (dagre drops orphan edges this way). The branch
+    // is unreachable from real layouts — dagre never produces
+    // a zero-length points array — so inject one explicitly.
+    mockBdGraph.mockResolvedValue({
+      status: 'ok',
+      data: {
+        nodes: [makeNode({ id: 'a' }), makeNode({ id: 'b' })],
+        edges: [],
+      },
+    })
+    mockComputeLayout.mockReturnValueOnce(
+      makeLayout({
+        edges: [
+          makeLaidOutEdge({
+            source: 'a',
+            target: 'b',
+            depType: 'blocks',
+            points: [],
+          }),
+        ],
+      })
+    )
+
+    const { DepGraphView } = await importSut()
+    render(<DepGraphView cwd="/fake" onOpenIssue={() => undefined} />)
+
+    await waitFor(() => {
+      expect(screen.getByTestId('graph-canvas')).toBeInTheDocument()
+    })
+
+    // Edge returns null from the renderer → no graph-edge in the
+    // DOM. Nodes still render (the layout still has two nodes).
+    expect(screen.queryByTestId('graph-edge')).not.toBeInTheDocument()
+    expect(screen.getAllByTestId('graph-node').length).toBe(2)
+  })
+
+  it('returns an empty polyline path when the first point is undefined', async () => {
+    // The `if (!first) return ''` guard exists because TS
+    // `noUncheckedIndexedAccess` types `points[0]` as possibly
+    // undefined even when `points.length > 0`. dagre never
+    // produces a sparse array, so inject one to prove the guard.
+    mockBdGraph.mockResolvedValue({
+      status: 'ok',
+      data: {
+        nodes: [makeNode({ id: 'a' }), makeNode({ id: 'b' })],
+        edges: [],
+      },
+    })
+    const sparse: ({ x: number; y: number } | undefined)[] = [
+      undefined,
+      { x: 0, y: 0 },
+    ]
+    mockComputeLayout.mockReturnValueOnce(
+      makeLayout({
+        edges: [
+          makeLaidOutEdge({
+            source: 'a',
+            target: 'b',
+            depType: 'blocks',
+            points: sparse as unknown as readonly { x: number; y: number }[],
+          }),
+        ],
+      })
+    )
+
+    const { DepGraphView } = await importSut()
+    render(<DepGraphView cwd="/fake" onOpenIssue={() => undefined} />)
+
+    await waitFor(() => {
+      expect(screen.getByTestId('graph-canvas')).toBeInTheDocument()
+    })
+
+    const edge = screen.getByTestId('graph-edge')
+    const paths = edge.querySelectorAll('path')
+    // First path is the polyline: `if (!first) return ''` fires.
+    expect(paths[0]?.getAttribute('d')).toBe('')
+    // Second path is the arrow head: `prev` is also undefined.
+    expect(paths[1]?.getAttribute('d')).toBe('')
+  })
+
+  it('skips undefined intermediate points in the polyline (continue)', async () => {
+    // The `if (!p) continue` guard inside the polyline loop.
+    // Middle point is undefined → skipped → only the first and
+    // last segments land in the `d` attribute.
+    mockBdGraph.mockResolvedValue({
+      status: 'ok',
+      data: {
+        nodes: [makeNode({ id: 'a' }), makeNode({ id: 'b' })],
+        edges: [],
+      },
+    })
+    const sparse: ({ x: number; y: number } | undefined)[] = [
+      { x: 0, y: 0 },
+      undefined,
+      { x: 10, y: 10 },
+    ]
+    mockComputeLayout.mockReturnValueOnce(
+      makeLayout({
+        edges: [
+          makeLaidOutEdge({
+            source: 'a',
+            target: 'b',
+            depType: 'blocks',
+            points: sparse as unknown as readonly { x: number; y: number }[],
+          }),
+        ],
+      })
+    )
+
+    const { DepGraphView } = await importSut()
+    render(<DepGraphView cwd="/fake" onOpenIssue={() => undefined} />)
+
+    await waitFor(() => {
+      expect(screen.getByTestId('graph-canvas')).toBeInTheDocument()
+    })
+
+    const edge = screen.getByTestId('graph-edge')
+    const paths = edge.querySelectorAll('path')
+    // Middle undefined is skipped via `continue`: d jumps from
+    // (0,0) straight to (10,10).
+    expect(paths[0]?.getAttribute('d')).toBe('M 0 0 L 10 10')
+    // Arrow head: prev = sparse[1] = undefined → return ''.
+    expect(paths[1]?.getAttribute('d')).toBe('')
+  })
+
+  it('returns an empty arrow head when the polyline has fewer than two points', async () => {
+    // Degenerate edge: dagre normally produces ≥2 points per
+    // edge, but the renderer handles the single-point case for
+    // robustness. Covers `arrowHeadPath`'s `points.length < 2`
+    // early return.
+    mockBdGraph.mockResolvedValue({
+      status: 'ok',
+      data: { nodes: [makeNode({ id: 'a' })], edges: [] },
+    })
+    mockComputeLayout.mockReturnValueOnce(
+      makeLayout({
+        nodes: [makeLaidOutNode('a')],
+        edges: [
+          makeLaidOutEdge({
+            source: 'a',
+            target: 'a',
+            depType: 'blocks',
+            points: [{ x: 5, y: 5 }],
+          }),
+        ],
+      })
+    )
+
+    const { DepGraphView } = await importSut()
+    render(<DepGraphView cwd="/fake" onOpenIssue={() => undefined} />)
+
+    await waitFor(() => {
+      expect(screen.getByTestId('graph-canvas')).toBeInTheDocument()
+    })
+
+    const edge = screen.getByTestId('graph-edge')
+    const paths = edge.querySelectorAll('path')
+    // polyline: length=1, first defined → 'M 5 5'.
+    expect(paths[0]?.getAttribute('d')).toBe('M 5 5')
+    // arrowHead: length < 2 → ''.
+    expect(paths[1]?.getAttribute('d')).toBe('')
+  })
+
+  it('returns an empty arrow head when the last point is undefined', async () => {
+    // Sparse edge where the trailing segment is missing.
+    // `arrowHeadPath`'s `!last` branch fires.
+    mockBdGraph.mockResolvedValue({
+      status: 'ok',
+      data: {
+        nodes: [makeNode({ id: 'a' }), makeNode({ id: 'b' })],
+        edges: [],
+      },
+    })
+    const sparse: ({ x: number; y: number } | undefined)[] = [
+      { x: 0, y: 0 },
+      undefined,
+    ]
+    mockComputeLayout.mockReturnValueOnce(
+      makeLayout({
+        edges: [
+          makeLaidOutEdge({
+            source: 'a',
+            target: 'b',
+            depType: 'blocks',
+            points: sparse as unknown as readonly { x: number; y: number }[],
+          }),
+        ],
+      })
+    )
+
+    const { DepGraphView } = await importSut()
+    render(<DepGraphView cwd="/fake" onOpenIssue={() => undefined} />)
+
+    await waitFor(() => {
+      expect(screen.getByTestId('graph-canvas')).toBeInTheDocument()
+    })
+
+    const edge = screen.getByTestId('graph-edge')
+    const paths = edge.querySelectorAll('path')
+    // polyline: i=1 undefined → continue → 'M 0 0'.
+    expect(paths[0]?.getAttribute('d')).toBe('M 0 0')
+    // arrowHead: last = undefined → ''.
+    expect(paths[1]?.getAttribute('d')).toBe('')
+  })
+
+  it('returns an empty arrow head when the incoming segment has zero length', async () => {
+    // Co-located points: dx = dy = 0, len = hypot(0, 0) = 0.
+    // Covers `arrowHeadPath`'s `len === 0` early return.
+    mockBdGraph.mockResolvedValue({
+      status: 'ok',
+      data: {
+        nodes: [makeNode({ id: 'a' }), makeNode({ id: 'b' })],
+        edges: [],
+      },
+    })
+    mockComputeLayout.mockReturnValueOnce(
+      makeLayout({
+        edges: [
+          makeLaidOutEdge({
+            source: 'a',
+            target: 'b',
+            depType: 'blocks',
+            points: [
+              { x: 5, y: 5 },
+              { x: 5, y: 5 },
+            ],
+          }),
+        ],
+      })
+    )
+
+    const { DepGraphView } = await importSut()
+    render(<DepGraphView cwd="/fake" onOpenIssue={() => undefined} />)
+
+    await waitFor(() => {
+      expect(screen.getByTestId('graph-canvas')).toBeInTheDocument()
+    })
+
+    const edge = screen.getByTestId('graph-edge')
+    const paths = edge.querySelectorAll('path')
+    // polyline: both points equal → 'M 5 5 L 5 5'.
+    expect(paths[0]?.getAttribute('d')).toBe('M 5 5 L 5 5')
+    // arrowHead: len === 0 → ''.
+    expect(paths[1]?.getAttribute('d')).toBe('')
+  })
+
+  // ------------------------------------------------------------------
+  // ResizeObserver + centring useLayoutEffect. The component's
+  // `useEffect(..., [])` runs once on initial mount, but bdGraph
+  // is async so the ref attaches on a LATER render — the effect
+  // never re-runs and the ResizeObserver is never created in
+  // jsdom (and arguably in production, but that's a pre-existing
+  // bug separate from this coverage PR). To prove the defensive
+  // guards inside the effect body we pre-populate React Query's
+  // cache so the component renders the graph view on its first
+  // mount with the container ref already attached. The
+  // `renderWithCachedGraph` helper builds a fresh QueryClient
+  // per call and seeds it via `setQueryData`.
+  // ------------------------------------------------------------------
+
+  it('updates the viewport when the ResizeObserver fires', async () => {
+    // Cached graph → component renders the graph view on first
+    // mount → the `useEffect(..., [])` runs with the container
+    // ref attached and constructs the ResizeObserver.
+    const graph: Graph = { nodes: [makeNode({ id: 'a' })], edges: [] }
+    const { DepGraphView } = await importSut()
+    renderWithCachedGraph(
+      <DepGraphView cwd="/fake" onOpenIssue={() => undefined} />,
+      graph
+    )
+
+    await waitFor(() => {
+      expect(screen.getByTestId('graph-canvas')).toBeInTheDocument()
+    })
+
+    const ro = ResizeObserverSpy.instances[0]
+    expect(ro).toBeDefined()
+    if (!ro) return
+
+    // Sanity: jsdom's container is 0×0, so the initial pan/zoom
+    // stays at (0, 0, 1) because the centring effect's viewport
+    // guard at line 464 returns early.
+    const canvas = screen.getByTestId('graph-canvas')
+    expect(canvas.getAttribute('data-pan-x')).toBe('0')
+    expect(canvas.getAttribute('data-pan-y')).toBe('0')
+    expect(canvas.getAttribute('data-zoom')).toBe('1')
+
+    act(() => {
+      ro.fire([
+        {
+          contentRect: makeRect(800, 600),
+        } as unknown as ResizeObserverEntry,
+      ])
+    })
+
+    // After the callback fires the viewport is non-zero; the
+    // useLayoutEffect runs the centre-on-layout path and
+    // panX / panY / zoom take real (non-zero, non-1) values
+    // (lines 466-470).
+    await waitFor(() => {
+      expect(Number(canvas.getAttribute('data-pan-x'))).not.toBe(0)
+    })
+    expect(Number(canvas.getAttribute('data-pan-y'))).not.toBe(0)
+    expect(Number(canvas.getAttribute('data-zoom'))).not.toBe(1)
+  })
+
+  it('does not re-centre when the layoutKey matches the previously-centred layout', async () => {
+    // After the first centring, `centredForRef.current` is set
+    // to `layoutKey`. A subsequent viewport change (new object
+    // reference → state update → effect re-runs) sees
+    // `centredForRef.current === layoutKey` and returns early
+    // at line 465 — pan / zoom stay pinned.
+    const graph: Graph = { nodes: [makeNode({ id: 'a' })], edges: [] }
+    const { DepGraphView } = await importSut()
+    renderWithCachedGraph(
+      <DepGraphView cwd="/fake" onOpenIssue={() => undefined} />,
+      graph
+    )
+
+    await waitFor(() => {
+      expect(screen.getByTestId('graph-canvas')).toBeInTheDocument()
+    })
+
+    const ro = ResizeObserverSpy.instances[0]
+    expect(ro).toBeDefined()
+    if (!ro) return
+
+    // First fire: viewport becomes non-zero, layout gets centred.
+    act(() => {
+      ro.fire([
+        {
+          contentRect: makeRect(800, 600),
+        } as unknown as ResizeObserverEntry,
+      ])
+    })
+    const canvas = screen.getByTestId('graph-canvas')
+    await waitFor(() => {
+      expect(Number(canvas.getAttribute('data-pan-x'))).not.toBe(0)
+    })
+    const panX1 = canvas.getAttribute('data-pan-x')
+    const panY1 = canvas.getAttribute('data-pan-y')
+    const zoom1 = canvas.getAttribute('data-zoom')
+
+    // Second fire: viewport is updated again (new object), but
+    // centredForRef.current === layoutKey → early return at
+    // line 465. panX / panY / zoom stay pinned.
+    act(() => {
+      ro.fire([
+        {
+          contentRect: makeRect(800, 600),
+        } as unknown as ResizeObserverEntry,
+      ])
+    })
+
+    expect(canvas.getAttribute('data-pan-x')).toBe(panX1)
+    expect(canvas.getAttribute('data-pan-y')).toBe(panY1)
+    expect(canvas.getAttribute('data-zoom')).toBe(zoom1)
+  })
+
+  it('keeps the viewport<=0 early-return branch covered with a zero-size callback', async () => {
+    // Line 464: `if (viewport.width <= 0 || viewport.height
+    // <= 0) return`. Existing tests render in jsdom where the
+    // container is 0×0 so the guard fires implicitly; cover it
+    // explicitly here by firing the ResizeObserver with a
+    // zero-size rect — a real browser can produce this when a
+    // flex parent collapses.
+    const graph: Graph = { nodes: [makeNode({ id: 'a' })], edges: [] }
+    const { DepGraphView } = await importSut()
+    renderWithCachedGraph(
+      <DepGraphView cwd="/fake" onOpenIssue={() => undefined} />,
+      graph
+    )
+
+    await waitFor(() => {
+      expect(screen.getByTestId('graph-canvas')).toBeInTheDocument()
+    })
+
+    const ro = ResizeObserverSpy.instances[0]
+    expect(ro).toBeDefined()
+    if (!ro) return
+
+    act(() => {
+      ro.fire([
+        {
+          contentRect: makeRect(0, 0),
+        } as unknown as ResizeObserverEntry,
+      ])
+    })
+
+    // Viewport is { width: 0, height: 0 } → line 464 guard
+    // fires → pan/zoom stay at their initial values.
+    const canvas = screen.getByTestId('graph-canvas')
+    expect(canvas.getAttribute('data-pan-x')).toBe('0')
+    expect(canvas.getAttribute('data-pan-y')).toBe('0')
+    expect(canvas.getAttribute('data-zoom')).toBe('1')
   })
 })
