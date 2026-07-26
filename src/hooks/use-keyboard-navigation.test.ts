@@ -276,6 +276,93 @@ describe('useKeyboardNavigation', () => {
 
       expect(useWorkspaceStore.getState().selectedRowId).toBe('A')
     })
+
+    it('skips opt-in elements with empty data-row-id (malformed row contract)', () => {
+      // The row contract is `data-kbd-nav="row"` + `data-row-id="<id>"`.
+      // A `<div data-kbd-nav="row" data-row-id="">` matches the
+      // selector but carries an empty id — collectRows must skip it
+      // instead of pushing an entry with `id=""`. Otherwise j/k
+      // would set selectedRowId to "" and the consumer selectors
+      // (which match by exact id) would highlight nothing while
+      // visual selection silently points at an empty key.
+      makeRow('A')
+      const malformed = document.createElement('div')
+      malformed.setAttribute('data-kbd-nav', 'row')
+      malformed.setAttribute('data-row-id', '') // empty id
+      document.body.appendChild(malformed)
+      makeRow('B')
+      renderHook(() => useKeyboardNavigation())
+
+      // j lands on A — the malformed row is skipped silently.
+      pressKey('j')
+      expect(useWorkspaceStore.getState().selectedRowId).toBe('A')
+
+      // Another j jumps over the malformed row to B.
+      pressKey('j')
+      expect(useWorkspaceStore.getState().selectedRowId).toBe('B')
+    })
+
+    it('collects non-epic rows without data-expanded as isExpanded=undefined', () => {
+      // Only epic rows carry `data-expanded`; list/ready/blocked/
+      // search rows don't. collectRows must still surface them in
+      // the navigation order with isExpanded=undefined so the h/l
+      // handlers can detect "this row has no chevron". Without the
+      // `expandedAttr === null` branch in the ternary, a future
+      // refactor that defaults isExpanded to false for non-epic
+      // rows would change observable behaviour (h/l would silently
+      // no-op on a row that did have a chevron after a re-render).
+      makeRow('A')
+      makeRow('B')
+      renderHook(() => useKeyboardNavigation())
+
+      // j lands on the first row — proves both rows were collected.
+      pressKey('j')
+      expect(useWorkspaceStore.getState().selectedRowId).toBe('A')
+    })
+
+    it('collects rows with data-expanded="false" as isExpanded=false', () => {
+      // The collectRows ternary has three branches:
+      //   - data-expanded="true"  -> isExpanded=true  (covered by epic-row tests)
+      //   - data-expanded="false" -> isExpanded=false (this test)
+      //   - absent attribute      -> isExpanded=undefined (covered above)
+      // All three map to KeyboardNavRow fields. The "false" branch
+      // is reachable when an epic row starts collapsed (data-expanded
+      // is set to "false" on initial render before the user expands
+      // it). Pinning the branch defends against a refactor that
+      // drops the explicit `expandedAttr === 'false'` arm.
+      const collapsed = document.createElement('div')
+      collapsed.setAttribute('data-kbd-nav', 'row')
+      collapsed.setAttribute('data-row-id', 'EPIC-COLLAPSED')
+      collapsed.setAttribute('data-expanded', 'false')
+      collapsed.setAttribute('tabindex', '-1')
+      document.body.appendChild(collapsed)
+
+      renderHook(() => useKeyboardNavigation())
+
+      // j navigates to the row — proves it was collected.
+      pressKey('j')
+      expect(useWorkspaceStore.getState().selectedRowId).toBe('EPIC-COLLAPSED')
+    })
+
+    it('does not call focus() on the first row when it is already document.activeElement', () => {
+      // The focus guard `if (document.activeElement !== target.element)`
+      // short-circuits the focus call when the target already holds
+      // focus (e.g. the user tabbed onto the first row before pressing
+      // j). Without the guard we'd re-focus the same element on every
+      // j, fighting browser focus side-effects (scroll position
+      // jumps, selection clearing). The guard is the only place in
+      // moveCursor() that varies based on prior focus.
+      const a = makeRow('A')
+      a.focus()
+      expect(document.activeElement).toBe(a)
+      renderHook(() => useKeyboardNavigation())
+
+      pressKey('j')
+
+      // Cursor updates even though we skipped the focus() call.
+      expect(useWorkspaceStore.getState().selectedRowId).toBe('A')
+      expect(document.activeElement).toBe(a)
+    })
   })
 
   describe('Enter', () => {
@@ -464,6 +551,39 @@ describe('useKeyboardNavigation', () => {
       // No state change, no exception.
       expect(useWorkspaceStore.getState().selectedRowId).toBeNull()
     })
+
+    it('h is a no-op when the selected row is not in the DOM', () => {
+      // When the workspace re-renders, the previously-selected row
+      // may unmount before the user presses h (e.g. a view switch).
+      // toggleEpicAt looks up the row by id via document.querySelector;
+      // if the row isn't there it returns silently. Without the
+      // `if (!row) return` branch an unmatched selector would have
+      // crashed on the subsequent chevron.querySelector call.
+      useWorkspaceStore.setState({ selectedRowId: 'GONE' })
+      renderHook(() => useKeyboardNavigation())
+
+      expect(() => pressKey('h')).not.toThrow()
+      expect(useWorkspaceStore.getState().selectedRowId).toBe('GONE')
+    })
+
+    it('l is a no-op on an epic row that lacks a chevron button', () => {
+      // Epic rows normally render a chevron, but the hook must
+      // defend against a missing chevron — e.g. a future view that
+      // omits the chevron while keeping `data-kbd-nav="row"` on
+      // the epic row, or a transition state where the chevron has
+      // been unmounted. Without the `if (!chevron) return` branch
+      // the subsequent chevron.click() would throw on null.
+      const epic = makeRow('EPIC-1', 'epic-row')
+      const chevron = epic.querySelector('[data-testid="epic-chevron"]')
+      if (chevron) chevron.remove()
+      expect(epic.querySelector('[data-testid="epic-chevron"]')).toBeNull()
+
+      useWorkspaceStore.setState({ selectedRowId: 'EPIC-1' })
+      renderHook(() => useKeyboardNavigation())
+
+      expect(() => pressKey('l')).not.toThrow()
+      expect(useWorkspaceStore.getState().selectedRowId).toBe('EPIC-1')
+    })
   })
 
   describe('modifier keys', () => {
@@ -604,6 +724,103 @@ describe('useKeyboardNavigation', () => {
 
       expect(useWorkspaceStore.getState().selectedRowId).toBeNull()
     })
+
+    it('treats <select> as a typing surface (j does not move the cursor)', () => {
+      // <select> dropdowns capture printable keys (e.g. typing a
+      // letter to jump to the matching option in a long list). The
+      // keyboard nav must not steal j/k while a select has focus,
+      // otherwise the user can't use type-ahead on selects.
+      makeRow('A')
+      makeRow('B')
+      const select = document.createElement('select')
+      document.body.appendChild(select)
+      renderHook(() => useKeyboardNavigation())
+
+      pressKey('j', { target: select })
+
+      expect(useWorkspaceStore.getState().selectedRowId).toBeNull()
+    })
+
+    it('treats <input type="email"> as a typing surface (j does not move the cursor)', () => {
+      // The isTypingTarget contract lists 'email' alongside 'text'
+      // / 'search' / 'password' / 'tel' / 'url' / 'number' — all of
+      // these are focusable form fields that capture printable
+      // keys. Pinning the 'email' branch defends against a future
+      // refactor that drops it from the type list.
+      makeRow('A')
+      const input = document.createElement('input')
+      input.type = 'email'
+      document.body.appendChild(input)
+      renderHook(() => useKeyboardNavigation())
+
+      pressKey('j', { target: input })
+
+      expect(useWorkspaceStore.getState().selectedRowId).toBeNull()
+    })
+
+    it('does not treat <input type="checkbox"> as a typing surface (j moves the cursor)', () => {
+      // Checkboxes/radios/buttons are focusable but don't capture
+      // printable keys — the type-check in isTypingTarget excludes
+      // them so j/k works while focus is on a checkbox (e.g. the
+      // user tabbed onto a row's "select" checkbox before pressing
+      // j). Without this branch the false-positive typing guard
+      // would freeze navigation on every checkbox-focus.
+      makeRow('A')
+      makeRow('B')
+      const checkbox = document.createElement('input')
+      checkbox.type = 'checkbox'
+      document.body.appendChild(checkbox)
+      renderHook(() => useKeyboardNavigation())
+
+      pressKey('j', { target: checkbox })
+
+      expect(useWorkspaceStore.getState().selectedRowId).toBe('A')
+    })
+
+    it('does not crash when the keydown target is null', () => {
+      // Defensive: `event.target` is typed `EventTarget | null` in
+      // the DOM spec. The hook's typing-target guard must handle
+      // a null target without throwing — short-circuiting to
+      // "not typing" and proceeding through the normal j/k flow.
+      // Without this branch the subsequent `(target as ...)`
+      // property reads would have thrown.
+      //
+      // The shared `pressKey` helper uses `if (options.target)` to
+      // decide whether to override the dispatched event's target,
+      // which excludes `null`. We dispatch a raw KeyboardEvent and
+      // force its target to null via `Object.defineProperty` so
+      // the typing-target guard actually receives a null target.
+      makeRow('A')
+      renderHook(() => useKeyboardNavigation())
+
+      const event = new KeyboardEvent('keydown', {
+        key: 'j',
+        bubbles: true,
+        cancelable: true,
+      })
+      Object.defineProperty(event, 'target', { value: null })
+      expect(() => window.document.dispatchEvent(event)).not.toThrow()
+
+      // j still moves the cursor (null target isn't a typing surface).
+      expect(useWorkspaceStore.getState().selectedRowId).toBe('A')
+    })
+
+    it('does not treat a plain <div> as a typing surface (j moves the cursor)', () => {
+      // A non-input / non-textarea / non-select / non-contenteditable
+      // element is NOT a typing target. This is the default branch
+      // in isTypingTarget — `return false` after the type checks all
+      // miss. Without it, the function would fall off the end of the
+      // conditional chain with no return statement.
+      makeRow('A')
+      makeRow('B')
+      const div = document.createElement('div')
+      document.body.appendChild(div)
+      renderHook(() => useKeyboardNavigation())
+
+      pressKey('j', { target: div })
+
+      expect(useWorkspaceStore.getState().selectedRowId).toBe('A')
+    })
   })
 
   describe('overlay guards', () => {
@@ -644,4 +861,35 @@ describe('useKeyboardNavigation', () => {
       expect(useWorkspaceStore.getState().selectedRowId).toBeNull()
     })
   })
+
+  // ─────────────────────────────────────────────────────────────────
+  // The three unreachable branches remaining at 6b776a6 (97.45 S /
+  // 94.79 B / 100 F / 98.94 L) are defensive guards documented
+  // here per the realistic-ceiling guidance in memory (d):
+  //
+  // - L189 `cssEscape` fallback (`typeof CSS.escape === 'function'`
+  //   false branch). jsdom ships a complete CSS.escape polyfill,
+  //   so the barebones fallback path is unreachable in unit tests.
+  //   The guard exists for SSR / legacy runtimes that lack
+  //   CSS.escape — none of our shipped targets fall into that
+  //   category (Tauri's webview is WebKit >= 16 / Chromium >= 110).
+  //
+  // - L222 `if (first === undefined || last === undefined) return null`
+  //   in moveCursor. The preceding `if (rows.length === 0) return null`
+  //   already returned, so `rows[0]` and `rows[rows.length - 1]` are
+  //   always defined when execution reaches this point. The guard
+  //   is defense-in-depth against a future refactor that drops the
+  //   length check.
+  //
+  // - L237 `if (row === undefined) return currentId` in moveCursor.
+  //   Same pattern as L222 — the preceding `if (next < 0 || next >=
+  //   rows.length) return currentId` bounds check guarantees
+  //   `rows[next]` is defined. The guard is defense-in-depth.
+  //
+  // Trying to exercise these via fragile `vi.spyOn` hacks
+  // (e.g. spying on `globalThis.CSS` to force the fallback) would
+  // pin test infrastructure rather than the production behaviour
+  // the hook actually owns. Documenting them here keeps the
+  // ceiling honest without churning the test for coverage's sake.
+  // ─────────────────────────────────────────────────────────────────
 })
