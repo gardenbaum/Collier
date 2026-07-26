@@ -656,4 +656,72 @@ describe('IssueActions', () => {
     })
     expect(confirm.textContent).toContain('Deleting')
   })
+
+  it('does not close twice when clicked while the close mutation is pending', async () => {
+    mockBdClose.mockReturnValue(new Promise<never>(() => undefined))
+    const { IssueActions } = await importSut()
+    const user = userEvent.setup()
+    render(
+      <IssueActions
+        cwd="/repo"
+        issue={makeIssue({ status: 'open' })}
+        onUpdated={vi.fn()}
+        onDeleted={vi.fn()}
+        onCommentAdded={vi.fn()}
+      />
+    )
+    const closeButton = screen.getByTestId('action-close')
+    await user.click(closeButton)
+    await waitFor(() =>
+      expect(closeButton.className).toContain('cursor-not-allowed')
+    )
+    await user.click(closeButton)
+    expect(mockBdClose).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not reopen twice when clicked while the reopen mutation is pending', async () => {
+    mockBdReopen.mockReturnValue(new Promise<never>(() => undefined))
+    const { IssueActions } = await importSut()
+    const user = userEvent.setup()
+    render(
+      <IssueActions
+        cwd="/repo"
+        issue={closedIssue}
+        onUpdated={vi.fn()}
+        onDeleted={vi.fn()}
+        onCommentAdded={vi.fn()}
+      />
+    )
+    const reopenButton = screen.getByTestId('action-reopen')
+    await user.click(reopenButton)
+    await waitFor(() =>
+      expect(reopenButton.className).toContain('cursor-not-allowed')
+    )
+    await user.click(reopenButton)
+    expect(mockBdReopen).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not delete twice when confirmed while the delete mutation is pending', async () => {
+    mockBdDelete.mockReturnValue(new Promise<never>(() => undefined))
+    const { IssueActions } = await importSut()
+    const user = userEvent.setup()
+    render(
+      <IssueActions
+        cwd="/repo"
+        issue={makeIssue({ id: 'beads-42', status: 'open' })}
+        onUpdated={vi.fn()}
+        onDeleted={vi.fn()}
+        onCommentAdded={vi.fn()}
+      />
+    )
+    await user.click(screen.getByTestId('action-delete'))
+    await user.type(screen.getByTestId('delete-confirm-input'), 'beads-42')
+    const confirm = screen.getByTestId('delete-confirm-button')
+    await user.click(confirm)
+    await waitFor(() =>
+      expect(confirm.className).toContain('cursor-not-allowed')
+    )
+    await user.click(confirm)
+    expect(mockBdDelete).toHaveBeenCalledTimes(1)
+  })
 })
