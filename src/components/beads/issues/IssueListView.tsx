@@ -688,8 +688,12 @@ interface SortableHeaderProps {
  * a small arrow icon next to the label. Inactive headers show a
  * neutral up/down indicator so the column advertises its sortability
  * without visual noise.
+ *
+ * Exported for unit testing — the `align="right"` branch is reserved
+ * for future right-aligned columns (no production caller uses it
+ * today; see IssueListView.test.tsx for the direct test).
  */
-function SortableHeader({
+export function SortableHeader({
   label,
   sortKey,
   sort,

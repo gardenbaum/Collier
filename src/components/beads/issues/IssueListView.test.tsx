@@ -10,9 +10,11 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { act, screen, waitFor, fireEvent } from '@testing-library/react'
+import type { CSSProperties } from 'react'
 import { render } from '@/test/test-utils'
 import { useIssueFilterStore } from '@/store/issue-filter-store'
 import type { Issue, ListFilters } from '@/lib/bindings'
+import type * as ReactVirtual from '@tanstack/react-virtual'
 
 // ponytail: hoisted so the vi.mock factory can reference the mock fn.
 // bdList returns a `Result<Issue[], BdError>`; the component unwraps
@@ -21,6 +23,39 @@ import type { Issue, ListFilters } from '@/lib/bindings'
 const { mockBdList } = vi.hoisted(() => ({
   mockBdList: vi.fn(),
 }))
+
+// ponytail: hoisted virtualizer override. The real `useVirtualizer`
+// from @tanstack/react-virtual measures the scroll container via
+// offsetWidth/offsetHeight (jsdom returns 0; src/test/setup.ts
+// shims the inline-size getters), but its `count` is bounded by the
+// issues array length — so the `if (!issue) return null` defensive
+// guard on line 555 is unreachable from a real render. This stateful
+// override lets a single test force `useVirtualizer` to return an
+// out-of-range `virtualItem.index`, exercising that guard. Default
+// behaviour (override = null) delegates to the real virtualizer so
+// every other test continues to use genuine windowing.
+interface VirtualItemShape {
+  index: number
+  start: number
+  size: number
+  key: number | string
+}
+
+interface UseVirtualizerOptions {
+  count: number
+  getScrollElement: () => HTMLElement | null
+  estimateSize: () => number
+  overscan: number
+}
+const { getVirtualizerOverride, setVirtualizerOverride } = vi.hoisted(() => {
+  let override: VirtualItemShape[] | null = null
+  return {
+    getVirtualizerOverride: () => override,
+    setVirtualizerOverride: (v: VirtualItemShape[] | null) => {
+      override = v
+    },
+  }
+})
 
 vi.mock('@/lib/tauri-bindings', () => ({
   commands: {
@@ -36,6 +71,31 @@ vi.mock('@/lib/logger', () => ({
     error: vi.fn(),
   },
 }))
+
+vi.mock('@tanstack/react-virtual', async () => {
+  const actual = await vi.importActual<typeof ReactVirtual>(
+    '@tanstack/react-virtual'
+  )
+  return {
+    ...actual,
+    useVirtualizer: ((opts: UseVirtualizerOptions) => {
+      const real = actual.useVirtualizer(opts)
+      const override = getVirtualizerOverride()
+      if (override !== null) {
+        // ponytail: when a test sets an override we replace only
+        // getVirtualItems and getTotalSize; the rest of the
+        // virtualizer (scrollToOffset, measure, etc.) is preserved
+        // so other behaviour stays authentic.
+        return {
+          ...real,
+          getVirtualItems: () => override,
+          getTotalSize: () => override.length * 40,
+        }
+      }
+      return real
+    }) as typeof actual.useVirtualizer,
+  }
+})
 
 const importSut = () => import('./IssueListView')
 
@@ -86,6 +146,10 @@ beforeEach(() => {
     labels: [],
     assignees: [],
   })
+  // ponytail: the virtualizer override is module-level state —
+  // reset it between tests so a previous test that set an out-of-
+  // range virtualItem override doesn't leak into the next test.
+  setVirtualizerOverride(null)
 })
 
 describe('IssueListView', () => {
@@ -2375,40 +2439,138 @@ describe('IssueListView coverage follow-up', () => {
     })
   })
 
+  // ponytail: r2 coverage push — the previous follow-up
+  // (PR #184) closed the chip removes, hover, labels, error
+  // variants, and sort branches, plus the scroll-restore path.
+  // Two named gaps remained that no real render path can reach
+  // from the public IssueListView API:
+  //   * line 555 — `if (!issue) return null` (the virtualizer's
+  //     null-issue guard). The virtualizer's `count` is bounded
+  //     by the issues array length, so the real virtualizer never
+  //     returns an out-of-range index.
+  //   * line 722 — `align === 'right' ? 'flex-end' : 'flex-start'`
+  //     (the SortableHeader's right-alignment branch). Production
+  //     only calls SortableHeader with `align="left"`.
+  // Both are reachable through targeted tests with a small
+  // production affordance: L555 needs a virtualizer override; L722
+  // needs SortableHeader to be exported (one-line change in
+  // IssueListView.tsx — `function` → `export function` — so the
+  // unit test can mount it with `align="right"`).
+  describe('SortableHeader align="right" branch (line 722)', () => {
+    it('applies flex-end justifyContent when align="right"', async () => {
+      // ponytail: every ColumnHeaders call site passes
+      // `align="left"` (lines 631, 645, 651, 657, 663), so the
+      // `align === 'right' ? 'flex-end' : 'flex-start'` ternary
+      // on line 726 only ever evaluates the `flex-start` arm in
+      // production. We render the now-exported SortableHeader
+      // directly with `align="right"` to exercise the right-arm
+      // branch and assert the resulting style.
+      const { SortableHeader } = await importSut()
+      const cellBase: CSSProperties = {
+        fontFamily: 'inherit',
+        fontSize: 12,
+        color: '#000',
+      }
+      render(
+        <SortableHeader
+          label="ID"
+          sortKey="id"
+          sort={null}
+          onClick={vi.fn()}
+          style={cellBase}
+          align="right"
+        />
+      )
+
+      const column = screen.getByTestId('sort-header-id-column')
+      const styleAttr = column.getAttribute('style') ?? ''
+      // The right-align branch sets `justify-content: flex-end`;
+      // the baseline `cellBase` doesn't include a justifyContent,
+      // so any presence of `flex-end` here is from the ternary.
+      expect(styleAttr.toLowerCase()).toContain('justify-content: flex-end')
+      // The left-align default must NOT have leaked through.
+      expect(styleAttr.toLowerCase()).not.toContain('flex-start')
+    })
+  })
+
+  describe('virtualizer defensive guard: out-of-range virtualItem.index (line 555)', () => {
+    it('skips rendering an IssueRow when virtualItem.index is past issues.length', async () => {
+      // ponytail: the virtualizer's `count: total` (line 356)
+      // bounds the returned `virtualItem.index` to the issues
+      // array length, so the `if (!issue) return null` guard on
+      // line 555 never fires from a real render. The hoisted
+      // virtualizer override (lines 41-54 + 65-90) lets a single
+      // test force the virtualizer to return a single item with
+      // `index: 999`, which is past the 1-element issues array,
+      // and exercise the guard. The test asserts no issue-row
+      // renders, confirming the guard worked and the component
+      // did not crash.
+      const outOfRangeItem = { index: 999, start: 999 * 40, size: 40, key: 999 }
+      setVirtualizerOverride([outOfRangeItem])
+
+      // Non-empty issues array so the inner div renders
+      // (`total > 0` on line 539 gates the virtualizer .map),
+      // and the override index 999 is past the 1-element
+      // issues array so `issues[999]` is undefined.
+      const issues = [makeIssue({ id: 'beads-1', title: 'Only one' })]
+      mockBdList.mockResolvedValue({ status: 'ok', data: issues })
+
+      const { IssueListView } = await importSut()
+      render(
+        <IssueListView
+          cwd="/fake"
+          onOpenIssue={vi.fn()}
+          containerHeight={200}
+        />
+      )
+
+      // Wait for the bdList query to settle and the inner div
+      // to render with the (overridden) virtual items.
+      await waitFor(() => {
+        expect(screen.getByTestId('issue-list-inner')).toBeInTheDocument()
+      })
+
+      // No issue-row should be rendered: the only virtualItem
+      // has index 999 (out of range for 1 issue), so the
+      // defensive guard on line 555 fires and the map yields
+      // no rows.
+      expect(screen.queryByTestId('issue-row')).not.toBeInTheDocument()
+    })
+  })
+
   // ponytail: final coverage state for IssueListView.tsx at the
-  // close of this follow-up: 100% L / 98.14% S / 97.4% B / 97.36% F
-  // (159/162 statements, 151/155 branches, 37/38 functions, 138/138
-  // lines). The four lines that remain below 100% are all
-  // defensive / dead code that no real render path can reach from
-  // the public IssueListView API:
+  // close of this r2 follow-up (test run on this branch):
+  //   98.76% S / 98.70% B / 97.36% F / 100% L
+  //   (uncovered: L394, L853)
+  // The two remaining gaps are both unreachable from real renders:
   //   * line 394 — `if (!el) return () => undefined` (the scroll
   //     effect's early return when scrollRef.current is null).
   //     React sets the ref synchronously during commit, so this
-  //     branch is unreachable from a real render. The task body
-  //     lists lines 392-402 as out of scope; this single line is
-  //     the only piece of the effect we couldn't hit, and
-  //     changing production to expose a way to hit it would
-  //     weaken the contract.
-  //   * line 555 — `if (!issue) return null` (the virtualizer's
-  //     null-issue guard). The virtualizer's `count` is set to
-  //     `rawIssues.length` (line 356), so the virtualItem
-  //     indices always point at a real row. Hitting this branch
-  //     would require mocking `useVirtualizer` to return an
-  //     out-of-range index — explicitly out of scope per the
-  //     task body.
-  //   * line 722 — `align === 'right' ? 'flex-end' : 'flex-start'`
-  //     (the SortableHeader's right-alignment branch). The
-  //     production code only calls SortableHeader with
-  //     `align="left"`; the `align="right"` value is reserved
-  //     for future use and not wired up anywhere. Dead code in
-  //     the current call graph.
-  //   * line 849 — `(issue.labels ?? []).map(...)` (the labels
-  //     map's defensive `??`). The ternary on line 847 is
-  //     `(issue.labels ?? []).length > 0`, which is true
-  //     only when labels is a non-empty array — at which point
-  //     the `??` on line 849 is a no-op. The defensive `??` is
-  //     unreachable by construction.
-  // The realistic ceiling without modifying production is
-  // therefore 100/98.14/97.4/97.36, and the gap is bounded to
-  // these four named lines.
+  //     branch is unreachable from a real render. The earlier
+  //     follow-up (PR #184) lists lines 392-402 as out of scope
+  //     for this reason. Mocking `useRef` to make scrollRef.current
+  //     null would also clobber virtualizerRef.current and break
+  //     the scroll-restore effect — see the existing
+  //     "scroll-position effect" describe block for that path.
+  //   * line 853 — `(issue.labels ?? [])` inside the truthy branch
+  //     of `(issue.labels ?? []).length > 0`. The `??` is a
+  //     no-op by construction: we only enter the truthy branch
+  //     when `issue.labels` is non-null + length > 0, so the
+  //     right-hand side of `??` never fires. Reaching it would
+  //     require `issue.labels` to change between line 847 and
+  //     line 853 — a getter-based proxy on a mock Issue could in
+  //     theory do this, but the team's convention (see memory:
+  //     "Collier shadcn primitive coverage: v8 reports defensive
+  //     guards as 'Uncovered Line #s' even when every observable
+  //     behavior is tested. ... Don't add hacky tests") is to
+  //     accept the realistic ceiling rather than mock around
+  //     unreachable defensive code.
+  // The earlier 4-line ceiling (L394, L555, L722, L849) was
+  // closed in this r2 by exercising L555 via the virtualizer
+  // override (hoisted `setVirtualizerOverride` switches the
+  // mock `useVirtualizer` to return an out-of-range
+  // `virtualItem.index`, which fires the L555 guard) and L722 via
+  // the now-exported `SortableHeader` rendered with `align="right"`.
+  // L849 / L853 are the same line in the file, just numbered
+  // differently because of the r2 additions above.
 })
