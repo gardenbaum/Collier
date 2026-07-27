@@ -19,6 +19,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { fireEvent, screen, waitFor } from '@testing-library/react'
 import { render } from '@/test/test-utils'
 import type { Dependency } from '@/lib/bindings'
+import type { FormEvent } from 'react'
 
 // ponytail: hoisted so the vi.mock factory can reference the mock
 // fns. `bdDepList` resolves with controlled payloads for each test;
@@ -546,4 +547,264 @@ describe('DependencyListView', () => {
     expect(screen.getByTestId('dep-row')).toBeInTheDocument()
     expect(screen.getByTestId('dep-target-id')).toHaveTextContent('beads-77')
   })
+
+  it('submitting the add form with an empty target is a no-op', async () => {
+    // ponytail: line 146 — `if (trimmed.length === 0 || addMutation.isPending) return`.
+    // The submit button's `disabled` prop already guards the
+    // empty-input case (L317-319: `addMutation.isPending ||
+    // targetDraft.trim().length === 0`), so React drops the
+    // synthetic click. The form's `onSubmit` still fires if we
+    // dispatch `submit` directly, which lets us reach the
+    // belt-and-suspenders in-handler guard.
+    mockBdDepList.mockResolvedValue({ status: 'ok', data: [] })
+
+    const { DependencyListView } = await importSut()
+    render(
+      <DependencyListView
+        cwd="/fake"
+        issueId="beads-1"
+        onOpenIssue={() => undefined}
+      />
+    )
+
+    await waitFor(() => {
+      expect(screen.getByTestId('dep-add-toggle')).toBeInTheDocument()
+    })
+    fireEvent.click(screen.getByTestId('dep-add-toggle'))
+
+    // The submit button must be disabled when targetDraft is empty.
+    expect(screen.getByTestId('dep-add-submit')).toBeDisabled()
+
+    // Drive the form's onSubmit directly — handleAddSubmit sees
+    // `trimmed.length === 0` and bails at L146 before calling
+    // mutate().
+    const form = screen.getByTestId('dep-add-form')
+    fireEvent.submit(form)
+
+    // Give React a tick so any stray mutation call would surface.
+    await new Promise(resolve => {
+      setTimeout(resolve, 0)
+    })
+    expect(mockBdDepAdd).not.toHaveBeenCalled()
+  })
+
+  it('submitting the add form with a whitespace-only target is a no-op', async () => {
+    // ponytail: line 146 left half via `trim()` — the `.trim()`
+    // call on L145 collapses "   " to "". The submit button's
+    // `disabled` prop uses the same `targetDraft.trim().length
+    // === 0` check (L318), so the button is still disabled and
+    // we drive the onSubmit handler directly to hit the guard.
+    mockBdDepList.mockResolvedValue({ status: 'ok', data: [] })
+
+    const { DependencyListView } = await importSut()
+    render(
+      <DependencyListView
+        cwd="/fake"
+        issueId="beads-1"
+        onOpenIssue={() => undefined}
+      />
+    )
+
+    await waitFor(() => {
+      expect(screen.getByTestId('dep-add-toggle')).toBeInTheDocument()
+    })
+    fireEvent.click(screen.getByTestId('dep-add-toggle'))
+
+    const targetInput = screen.getByTestId('dep-add-target-id')
+    const setNativeValue = (el: HTMLInputElement, value: string) => {
+      const proto = Object.getOwnPropertyDescriptor(
+        el.constructor.prototype,
+        'value'
+      ) as PropertyDescriptor | undefined
+      proto?.set?.call(el, value)
+      el.dispatchEvent(new Event('change', { bubbles: true }))
+    }
+    setNativeValue(targetInput as HTMLInputElement, '   ')
+
+    // Confirm the draft is whitespace-only and the button is disabled.
+    expect(targetInput).toHaveValue('   ')
+    expect(screen.getByTestId('dep-add-submit')).toBeDisabled()
+
+    fireEvent.submit(screen.getByTestId('dep-add-form'))
+
+    await new Promise(resolve => {
+      setTimeout(resolve, 0)
+    })
+    expect(mockBdDepAdd).not.toHaveBeenCalled()
+  })
+
+  it('shows the "Adding…" label while the add mutation is in flight', async () => {
+    // ponytail: line 326 — the `addMutation.isPending ? 'Adding…'
+    // : 'Add'` ternary. A never-resolving promise keeps the
+    // mutation pending; the submit button label must swap to
+    // "Adding…" and the button must disable on the
+    // `addMutation.isPending` clause of L317-319.
+    mockBdDepList.mockResolvedValue({ status: 'ok', data: [] })
+    mockBdDepAdd.mockReturnValue(new Promise<never>(() => undefined))
+
+    const { DependencyListView } = await importSut()
+    render(
+      <DependencyListView
+        cwd="/fake"
+        issueId="beads-1"
+        onOpenIssue={() => undefined}
+      />
+    )
+
+    await waitFor(() => {
+      expect(screen.getByTestId('dep-add-toggle')).toBeInTheDocument()
+    })
+    fireEvent.click(screen.getByTestId('dep-add-toggle'))
+
+    const targetInput = screen.getByTestId('dep-add-target-id')
+    const setNativeValue = (el: HTMLInputElement, value: string) => {
+      const proto = Object.getOwnPropertyDescriptor(
+        el.constructor.prototype,
+        'value'
+      ) as PropertyDescriptor | undefined
+      proto?.set?.call(el, value)
+      el.dispatchEvent(new Event('change', { bubbles: true }))
+    }
+    setNativeValue(targetInput as HTMLInputElement, 'beads-99')
+
+    const submit = screen.getByTestId('dep-add-submit')
+    expect(submit.textContent).toBe('Add')
+
+    fireEvent.click(submit)
+
+    // Wait for the label to swap to "Adding…" — this proves the
+    // mutation flipped to pending.
+    await waitFor(() => {
+      expect(submit.textContent).toBe('Adding…')
+    })
+    expect(submit).toBeDisabled()
+  })
+
+  it('submitting the add form while pending does NOT re-fire bdDepAdd', async () => {
+    // ponytail: line 146 right half — `addMutation.isPending`.
+    // A never-resolving bdDepAdd keeps the mutation pending; the
+    // submit button disables (L317-319). React drops synthetic
+    // clicks on disabled form controls, so we drive the latest
+    // handleAddSubmit closure directly via a React-fiber test
+    // seam. Same pattern documented in IssueActions.test.tsx
+    // (`latestOnClick`) — adapted for the form's `onSubmit`.
+    mockBdDepList.mockResolvedValue({ status: 'ok', data: [] })
+    mockBdDepAdd.mockReturnValue(new Promise<never>(() => undefined))
+
+    const { DependencyListView } = await importSut()
+    render(
+      <DependencyListView
+        cwd="/fake"
+        issueId="beads-1"
+        onOpenIssue={() => undefined}
+      />
+    )
+
+    await waitFor(() => {
+      expect(screen.getByTestId('dep-add-toggle')).toBeInTheDocument()
+    })
+    fireEvent.click(screen.getByTestId('dep-add-toggle'))
+
+    const targetInput = screen.getByTestId('dep-add-target-id')
+    const setNativeValue = (el: HTMLInputElement, value: string) => {
+      const proto = Object.getOwnPropertyDescriptor(
+        el.constructor.prototype,
+        'value'
+      ) as PropertyDescriptor | undefined
+      proto?.set?.call(el, value)
+      el.dispatchEvent(new Event('change', { bubbles: true }))
+    }
+    setNativeValue(targetInput as HTMLInputElement, 'beads-99')
+
+    const submit = screen.getByTestId('dep-add-submit')
+    fireEvent.click(submit)
+
+    // Wait for the mutation to flip pending (label flips to
+    // "Adding…") so the post-rerender handleAddSubmit closure
+    // captures `addMutation.isPending === true`.
+    await waitFor(() => {
+      expect(submit.textContent).toBe('Adding…')
+    })
+
+    // Drive the latest handleAddSubmit closure directly — it
+    // bails on the right half of the L146 guard.
+    const form = screen.getByTestId('dep-add-form') as HTMLFormElement
+    latestFormOnSubmit(form)({
+      preventDefault: () => undefined,
+    } as unknown as FormEvent)
+
+    expect(mockBdDepAdd).toHaveBeenCalledTimes(1)
+  })
+
+  it('clicking remove while pending does NOT re-fire bdDepRemove', async () => {
+    // ponytail: line 166 — `if (removeMutation.isPending) return`.
+    // The remove button disables on `removeMutation.isPending`
+    // (L251) and React drops the synthetic click, so we drive
+    // the latest handleRemove closure directly via the
+    // React-fiber test seam.
+    mockBdDepList.mockResolvedValue({
+      status: 'ok',
+      data: [depBlocks1, depBlocks2],
+    })
+    mockBdDepRemove.mockReturnValue(new Promise<never>(() => undefined))
+
+    const { DependencyListView } = await importSut()
+    render(
+      <DependencyListView
+        cwd="/fake"
+        issueId="beads-1"
+        onOpenIssue={() => undefined}
+      />
+    )
+
+    await waitFor(() => {
+      expect(screen.getAllByTestId('dep-remove')).toHaveLength(2)
+    })
+
+    const removeButtons = screen.getAllByTestId('dep-remove')
+    const firstRemove = removeButtons[0] as HTMLElement
+    fireEvent.click(firstRemove)
+
+    // Wait for the row to disable (proves mutation flipped pending).
+    await waitFor(() => {
+      expect(firstRemove).toBeDisabled()
+    })
+
+    // Drive the latest handleRemove closure directly — it
+    // captures removeMutation.isPending === true and bails at
+    // L166 before calling mutate().
+    latestOnClick(firstRemove)()
+
+    expect(mockBdDepRemove).toHaveBeenCalledTimes(1)
+  })
 })
+
+// ponytail: React-fiber test seam for invoking the latest
+// `onSubmit` / `onClick` closure after a rerender. Documented in
+// IssueActions.test.tsx (PR #189); reused here for the
+// handleAddSubmit / handleRemove guards that React would
+// otherwise filter out via the synthetic-event system when the
+// triggering button is disabled.
+function latestFormOnSubmit(form: HTMLFormElement): (e: FormEvent) => void {
+  const fiberKey = Object.keys(form).find(k => k.startsWith('__reactFiber'))
+  if (!fiberKey) throw new Error('No React fiber found on form')
+  const fiber = (form as unknown as Record<string, unknown>)[fiberKey] as {
+    memoizedProps: { onSubmit?: (e: FormEvent) => void }
+    alternate?: { memoizedProps: { onSubmit?: (e: FormEvent) => void } }
+  }
+  const fromAlternate = fiber.alternate?.memoizedProps?.onSubmit
+  return (fromAlternate ?? fiber.memoizedProps.onSubmit) as (
+    e: FormEvent
+  ) => void
+}
+
+function latestOnClick(el: HTMLElement): () => void {
+  const fiberKey = Object.keys(el).find(k => k.startsWith('__reactFiber'))
+  if (!fiberKey) throw new Error('No React fiber found on element')
+  const fiber = (el as unknown as Record<string, unknown>)[fiberKey] as {
+    memoizedProps: { onClick?: () => void }
+    alternate?: { memoizedProps: { onClick?: () => void } }
+  }
+  return (fiber.alternate?.memoizedProps?.onClick ??
+    fiber.memoizedProps.onClick) as () => void
+}
