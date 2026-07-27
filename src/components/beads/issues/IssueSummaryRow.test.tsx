@@ -116,4 +116,62 @@ describe('IssueSummaryRow', () => {
     const row = screen.getByTestId('ready-row')
     expect(row.querySelector('[data-testid="dep-badge"]')).toBeNull()
   })
+
+  it('falls back to 0 when both dependency_count and dependent_count are missing', () => {
+    // ponytail: bd show --json omits `dependency_count` /
+    // `dependent_count` (see bindings.d.ts L1241+), so the field on
+    // the wire is `undefined`. The row guards both with `?? 0`
+    // (IssueSummaryRow.tsx L71-72) before forwarding to the badge —
+    // this test exercises the RIGHT branch of both `??` operators.
+    const { dependency_count: _dc, dependent_count: _dd, ...rest } = sampleIssue
+    render(
+      <ul>
+        <IssueSummaryRow
+          // Cast so we can pass an Issue shape where the optional
+          // count fields are absent (matches the bd show wire shape).
+          issue={
+            rest as unknown as Parameters<typeof IssueSummaryRow>[0]['issue']
+          }
+          isKeyboardSelected={false}
+          testidPrefix="ready"
+        />
+      </ul>
+    )
+
+    const row = screen.getByTestId('ready-row')
+    // Both fallbacks fire → blockedBy=0, blocks=0 → badge returns null.
+    expect(row.querySelector('[data-testid="dep-badge"]')).toBeNull()
+  })
+
+  it('falls back to 0 for dependency_count while keeping dependent_count', () => {
+    // Asymmetric case — only the INCOMING count is missing. The
+    // outgoing count stays populated, so the badge should still
+    // render the "blocks N" pill (with its real count) and the
+    // "blocked by" pill must stay hidden (its count is the ?? 0
+    // fallback = 0). Pins that the missing field never produces a
+    // spurious "blocked by 0" chip.
+    const { dependency_count: _dc, ...rest } = sampleIssue
+    render(
+      <ul>
+        <IssueSummaryRow
+          issue={
+            { ...rest, dependent_count: 2 } as unknown as Parameters<
+              typeof IssueSummaryRow
+            >[0]['issue']
+          }
+          isKeyboardSelected={false}
+          testidPrefix="blocked"
+        />
+      </ul>
+    )
+
+    const row = screen.getByTestId('blocked-row')
+    const badge = row.querySelector('[data-testid="dep-badge"]')
+    expect(badge).not.toBeNull()
+    if (!badge) throw new Error('dep-badge should be present')
+    expect(badge.getAttribute('data-blocked-by')).toBeNull()
+    expect(badge.getAttribute('data-blocks')).toBe('2')
+    expect(row.querySelector('[data-testid="dep-badge-blocked-by"]')).toBeNull()
+    expect(row.querySelector('[data-testid="dep-badge-blocks"]')).toBeTruthy()
+  })
 })
