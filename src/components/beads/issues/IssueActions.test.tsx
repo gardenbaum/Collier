@@ -724,4 +724,157 @@ describe('IssueActions', () => {
     await user.click(confirm)
     expect(mockBdDelete).toHaveBeenCalledTimes(1)
   })
+
+  // ponytail: PR #186 added "does not X twice while pending" tests
+  // above. They document the user-observable behaviour but they do
+  // NOT exercise the in-handler `if (…isPending) return` guards at
+  // L142 / L147 / L164 — both userEvent.click and fireEvent.click are
+  // dropped before onClick fires when the React-managed `disabled`
+  // prop is true (React's synthetic event system filters disabled
+  // form controls at the dispatch step, regardless of the underlying
+  // DOM state). The four tests below reach the guards by invoking
+  // the latest onClick closure via a tiny React-fiber test seam
+  // (the alternate fiber holds the post-rerender props, including
+  // the refreshed handler that captured the in-flight mutation's
+  // pending state). This is the only way to drive the handler
+  // directly without mutating source — same pattern documented in
+  // AGENTS.md for "test seam for handler invocation".
+  function latestOnClick(el: HTMLElement): () => void {
+    const fiberKey = Object.keys(el).find(k => k.startsWith('__reactFiber'))
+    if (!fiberKey) throw new Error('No React fiber found on element')
+    const fiber = (el as unknown as Record<string, unknown>)[fiberKey] as {
+      memoizedProps: { onClick?: () => void }
+      alternate?: { memoizedProps: { onClick?: () => void } }
+    }
+    return (fiber.alternate?.memoizedProps?.onClick ??
+      fiber.memoizedProps.onClick) as () => void
+  }
+
+  it('handleClose guard: invoking onClick while close is pending does NOT re-fire bdClose', async () => {
+    // bdClose never resolves -> closeMutation.isPending stays true
+    // -> action-close is disabled and the L142 guard is reachable
+    // only if we invoke the latest handleClose closure directly.
+    mockBdClose.mockReturnValue(new Promise<never>(() => undefined))
+    const { IssueActions } = await importSut()
+    const user = userEvent.setup()
+    render(
+      <IssueActions
+        cwd="/repo"
+        issue={makeIssue({ status: 'open' })}
+        onUpdated={vi.fn()}
+        onDeleted={vi.fn()}
+        onCommentAdded={vi.fn()}
+      />
+    )
+    const closeButton = screen.getByTestId('action-close')
+
+    // First click goes through (button still enabled in React's view).
+    await user.click(closeButton)
+    await waitFor(() =>
+      expect(closeButton.className).toContain('cursor-not-allowed')
+    )
+
+    // Drive the post-rerender handleClose closure directly: it
+    // captured closeMutation.isPending === true and bails at L142
+    // before calling mutate(). The second bdClose call is suppressed
+    // by the guard, not by the disabled attribute.
+    latestOnClick(closeButton)()
+
+    expect(mockBdClose).toHaveBeenCalledTimes(1)
+  })
+
+  it('handleReopen guard: invoking onClick while reopen is pending does NOT re-fire bdReopen', async () => {
+    mockBdReopen.mockReturnValue(new Promise<never>(() => undefined))
+    const { IssueActions } = await importSut()
+    const user = userEvent.setup()
+    render(
+      <IssueActions
+        cwd="/repo"
+        issue={closedIssue}
+        onUpdated={vi.fn()}
+        onDeleted={vi.fn()}
+        onCommentAdded={vi.fn()}
+      />
+    )
+    const reopenButton = screen.getByTestId('action-reopen')
+
+    await user.click(reopenButton)
+    await waitFor(() =>
+      expect(reopenButton.className).toContain('cursor-not-allowed')
+    )
+
+    // handleReopen runs with reopenMutation.isPending === true,
+    // takes the early-return at L147 and bails before mutate().
+    latestOnClick(reopenButton)()
+
+    expect(mockBdReopen).toHaveBeenCalledTimes(1)
+  })
+
+  it('handleDeleteConfirm guard: mismatched confirmText short-circuits the handler via disabled-button seam', async () => {
+    // L164 left half: `confirmText !== issue.id`. The Confirm button
+    // is disabled because `confirmEnabled` is the conjunction of
+    // text-match AND !pending — a mismatched typed id alone is enough
+    // to disable it (no mutation in flight). userEvent and fireEvent
+    // both respect React's `disabled` filter, so we drive the
+    // handler directly via the latest onClick closure to hit the
+    // belt-and-suspenders text-mismatch guard.
+    mockBdDelete.mockResolvedValue({ status: 'ok', data: null })
+    const { IssueActions } = await importSut()
+    const user = userEvent.setup()
+    render(
+      <IssueActions
+        cwd="/repo"
+        issue={makeIssue({ id: 'beads-42', status: 'open' })}
+        onUpdated={vi.fn()}
+        onDeleted={vi.fn()}
+        onCommentAdded={vi.fn()}
+      />
+    )
+    await user.click(screen.getByTestId('action-delete'))
+    await user.type(screen.getByTestId('delete-confirm-input'), 'beads-99')
+    const confirm = screen.getByTestId('delete-confirm-button')
+
+    // userEvent.click would no-op here (button is disabled). Drive
+    // the latest handleDeleteConfirm closure directly — it sees
+    // confirmText !== issue.id, returns at L164 left side.
+    expect(confirm).toBeDisabled()
+    latestOnClick(confirm)()
+
+    expect(mockBdDelete).not.toHaveBeenCalled()
+  })
+
+  it('handleDeleteConfirm guard: invoking onClick while delete is pending does NOT re-fire bdDelete', async () => {
+    // L164 right half: `deleteMutation.isPending`. Confirm is enabled
+    // (text matches, no pending yet); the first click fires mutate()
+    // and the mutation flips to pending. Driving the latest
+    // handleDeleteConfirm closure directly hits the right half of
+    // the `||` guard.
+    mockBdDelete.mockReturnValue(new Promise<never>(() => undefined))
+    const { IssueActions } = await importSut()
+    const user = userEvent.setup()
+    render(
+      <IssueActions
+        cwd="/repo"
+        issue={makeIssue({ id: 'beads-42', status: 'open' })}
+        onUpdated={vi.fn()}
+        onDeleted={vi.fn()}
+        onCommentAdded={vi.fn()}
+      />
+    )
+    await user.click(screen.getByTestId('action-delete'))
+    await user.type(screen.getByTestId('delete-confirm-input'), 'beads-42')
+    const confirm = screen.getByTestId('delete-confirm-button')
+
+    await user.click(confirm)
+    await waitFor(() =>
+      expect(confirm.className).toContain('cursor-not-allowed')
+    )
+
+    // confirmText === issue.id but deleteMutation.isPending === true
+    // — handleDeleteConfirm takes the right half of the L164 guard
+    // and returns.
+    latestOnClick(confirm)()
+
+    expect(mockBdDelete).toHaveBeenCalledTimes(1)
+  })
 })
