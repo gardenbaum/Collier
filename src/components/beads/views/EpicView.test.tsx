@@ -18,6 +18,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { act, screen, waitFor, fireEvent } from '@testing-library/react'
 import { render } from '@/test/test-utils'
 import { useIssueFilterStore } from '@/store/issue-filter-store'
+import { useWorkspaceStore } from '@/store/workspace-store'
 
 const { mockBdList } = vi.hoisted(() => ({
   mockBdList: vi.fn(),
@@ -485,6 +486,153 @@ describe('EpicView', () => {
 
       const row = screen.getByTestId('epic-row')
       expect(row.getAttribute('aria-label')).toContain('Authentication')
+    })
+  })
+
+  /**
+   * ChildrenList selection rendering — when the M5 keyboard cursor
+   * (`selectedRowId` in the workspace store) points at a child of
+   * an expanded epic, that row must advertise the selection so the
+   * user can see where `j`/`k` is. Three observable branches in
+   * ChildrenList were unreachable while every test used the default
+   * `selectedRowId: null`:
+   *
+   *   - `data-row-selected={isSelected ? 'true' : 'false'}` (L751)
+   *   - `tabIndex={isSelected ? 0 : -1}`                  (L752)
+   *   - `...(isSelected ? childRowSelectedStyle : null)`   (L763)
+   *
+   * Driving `selectedRowId` to a real child id flips `isSelected`
+   * true on that row, hitting the previously-empty branch of each
+   * ternary and lifting branch coverage from 88% toward the ceiling.
+   * The sibling rows still render the unselected side of the same
+   * ternary (covered by every other test), so the suite as a whole
+   * covers both halves without re-asserting the unselected path
+   * exhaustively.
+   */
+  describe('ChildrenList selection rendering', () => {
+    // mockBdList is the only mock-with-queue in this file; the
+    // file-level `beforeEach` only clears call data via
+    // `vi.clearAllMocks()`. Reset the impl so a queued default
+    // from a sibling describe block can't bleed into the
+    // mockResolvedValue calls below. Also reset the workspace
+    // store's `selectedRowId` so a previous selection doesn't
+    // leak across cases.
+    beforeEach(() => {
+      mockBdList.mockReset()
+      // Wrap in `act` so React doesn't log an "update was not
+      // wrapped in act" warning when this fires before the
+      // component subscribes (the component hasn't mounted yet,
+      // but Zustand's store update still goes through React's
+      // batching scheduler).
+      act(() => {
+        useWorkspaceStore.setState({ selectedRowId: null })
+      })
+    })
+    afterEach(() => {
+      // Same wrap — the EpicView component is unmounted by the
+      // time afterEach runs, but the act() call keeps the
+      // console clean and signals intent (this mutation is a
+      // post-render reset, not a state update the test
+      // observes).
+      act(() => {
+        useWorkspaceStore.setState({ selectedRowId: null })
+      })
+    })
+
+    it('applies the selected style + roving tabindex to the child that matches selectedRowId', async () => {
+      mockBdList.mockResolvedValue({
+        status: 'ok',
+        data: [
+          makeEpic({ id: 'epic-auth' }),
+          makeChild({
+            id: 'auth-1',
+            title: 'Login',
+            parent: 'epic-auth',
+          }),
+          makeChild({
+            id: 'auth-2',
+            title: 'OAuth',
+            parent: 'epic-auth',
+          }),
+        ],
+      })
+
+      // Drive the cursor onto the second child before render so
+      // the children list paints with auth-2 already selected —
+      // matches how the real M5 hook updates the store before the
+      // tree re-renders. Wrapped in `act` so React batches the
+      // mutation with the upcoming mount.
+      act(() => {
+        useWorkspaceStore.setState({ selectedRowId: 'auth-2' })
+      })
+
+      const { EpicView } = await importSut()
+      render(<EpicView cwd="/fake" onOpenIssue={() => undefined} />)
+
+      await waitFor(() => {
+        expect(screen.getAllByTestId('epic-child-row')).toHaveLength(2)
+      })
+
+      const rows = screen.getAllByTestId('epic-child-row')
+      const byIssueId = new Map(
+        rows.map(r => [r.getAttribute('data-issue-id'), r] as const)
+      )
+      const selected = byIssueId.get('auth-2')
+      const unselected = byIssueId.get('auth-1')
+      if (!selected || !unselected) {
+        throw new Error('expected both auth-1 and auth-2 child rows')
+      }
+
+      expect(selected).toHaveAttribute('data-row-selected', 'true')
+      expect(selected).toHaveAttribute('tabindex', '0')
+      expect(selected).toHaveAttribute('aria-selected', 'true')
+      // childRowSelectedStyle contributes a 2px left-edge ring
+      // (`boxShadow: inset 2px 0 0 0 rgb(94, 106, 210)`) — the
+      // only observable visual signal the cursor highlight
+      // ships, so assert it directly on the inline style.
+      expect((selected as HTMLElement).style.boxShadow).toContain(
+        'inset 2px 0 0 0'
+      )
+
+      // The sibling row still goes down the unselected branch of
+      // the same ternaries — i.e. the negative side stays covered
+      // by this single test, so we don't have to re-assert it in
+      // every other case.
+      expect(unselected).toHaveAttribute('data-row-selected', 'false')
+      expect(unselected).toHaveAttribute('tabindex', '-1')
+      expect(unselected).toHaveAttribute('aria-selected', 'false')
+    })
+
+    it('keeps every child unselected when selectedRowId matches an epic instead of a child', async () => {
+      mockBdList.mockResolvedValue({
+        status: 'ok',
+        data: [
+          makeEpic({ id: 'epic-auth' }),
+          makeChild({ id: 'auth-1', parent: 'epic-auth' }),
+          makeChild({ id: 'auth-2', parent: 'epic-auth' }),
+        ],
+      })
+
+      // Cursor on the parent epic, not on any child. ChildrenList
+      // should treat both child rows as unselected even though
+      // `selectedRowId` is non-null — the equality check is `child.id
+      // === selectedRowId`, not "selectedRowId is set".
+      act(() => {
+        useWorkspaceStore.setState({ selectedRowId: 'epic-auth' })
+      })
+
+      const { EpicView } = await importSut()
+      render(<EpicView cwd="/fake" onOpenIssue={() => undefined} />)
+
+      await waitFor(() => {
+        expect(screen.getAllByTestId('epic-child-row')).toHaveLength(2)
+      })
+
+      const rows = screen.getAllByTestId('epic-child-row')
+      for (const row of rows) {
+        expect(row).toHaveAttribute('data-row-selected', 'false')
+        expect(row).toHaveAttribute('tabindex', '-1')
+      }
     })
   })
 
