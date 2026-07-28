@@ -34,3 +34,12 @@ jscpd-report.bak/
 # Custom dev Dockerfiles (no prettier parser for them)
 Dockerfile.dev
 Dockerfile.dev.*
+
+# Renovate config files (JSON5 with trailing-comments; no built-in
+# prettier parser for .json5 without the prettier-plugin-json5 plugin,
+# and renovate config is read-only declarative policy anyway)
+renovate.json
+renovate.json5
+.renovaterc
+.renovaterc.json
+.renovaterc.json5
