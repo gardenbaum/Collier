@@ -181,6 +181,54 @@ describe('useStatusCatalog', () => {
     expect(mockBdStatuses).not.toHaveBeenCalled()
   })
 
+  it('queryFn throws a defensive error when invoked with cwd === null', async () => {
+    // The `enabled: cwd !== null` gate at the bottom of useStatusCatalog
+    // keeps queryFn from running automatically while no workspace is
+    // selected, but queryFn itself still carries the same null-check
+    // as an explicit throw (useStatusCatalog.ts L103-107) — the comment
+    // there calls it a defensive backstop for a future regression of
+    // the `enabled` gate. This test exercises that backstop directly
+    // by registering the hook with cwd=null (which seeds a cache
+    // entry whose queryFn closure captures cwd=null) and then
+    // invoking the registered queryFn out of band. The thrown error
+    // is the only observable proof that the inner guard still fires,
+    // and pinning its message guards against a typo like
+    // `throw new Error(...)` losing the literal `cwd is null` string
+    // the production stack traces rely on.
+    const client = new QueryClient({
+      defaultOptions: {
+        queries: { retry: false, gcTime: 0 },
+      },
+    })
+    function Wrapper({ children }: { children: ReactNode }) {
+      return (
+        <QueryClientProvider client={client}>{children}</QueryClientProvider>
+      )
+    }
+
+    renderHook(() => useStatusCatalog(null), { wrapper: Wrapper })
+
+    const query = client
+      .getQueryCache()
+      .find({ queryKey: ['beads', 'statuses', null] })
+    // Belt and braces: confirm the entry registered with cwd=null —
+    // otherwise the test below would silently cover a stale cache
+    // from a prior render.
+    if (!query) throw new Error('expected query entry for cwd=null')
+    // The registered queryFn is the same closure the hook wires up —
+    // invoking it out of band drives the L103-107 guard with cwd=null
+    // captured in scope. The throw must surface unchanged to the
+    // caller's `error` channel if the `enabled` gate ever regressed.
+    const queryFn = query.options.queryFn as () => Promise<unknown>
+    expect(queryFn).toBeDefined()
+    await expect(queryFn()).rejects.toThrow('useStatusCatalog: cwd is null')
+    // The throw must short-circuit before any `commands.bdStatuses`
+    // call — otherwise a regression that flipped the order would
+    // still hit the wire and burn a real repo roundtrip from the
+    // defensive path.
+    expect(mockBdStatuses).not.toHaveBeenCalled()
+  })
+
   it('surfaces the typed error when the IPC call fails', async () => {
     mockBdStatuses.mockResolvedValue({
       status: 'error',
