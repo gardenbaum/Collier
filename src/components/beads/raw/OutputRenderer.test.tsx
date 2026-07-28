@@ -69,6 +69,46 @@ describe('OutputRenderer', () => {
     expect(pre.textContent).toBe('a\nb\nc')
   })
 
+  it('renders an empty array as the "(empty list)" list <pre>', () => {
+    render(<OutputRenderer value={wrap([])} />)
+    const pre = screen.getByTestId('output-list')
+    expect(pre).toBeInTheDocument()
+    expect(pre.textContent).toBe('(empty list)')
+  })
+
+  it('renders null and missing table cells as empty <td>s while still stringifying defined cells', () => {
+    render(
+      <OutputRenderer
+        value={wrap([
+          { id: 'a', name: null, note: undefined, tag: 'x' },
+          { id: 'b' },
+        ])}
+      />
+    )
+    const rows = screen.getAllByTestId('output-row')
+    expect(rows).toHaveLength(2)
+
+    // First row: defined cells render as strings, null/undefined cells stay empty.
+    const firstRow = rows[0]
+    if (!firstRow) throw new Error('expected first output-row to be present')
+    const firstCells = firstRow.querySelectorAll('td')
+    expect(firstCells).toHaveLength(4)
+    expect(firstCells[0]?.textContent).toBe('a')
+    expect(firstCells[1]?.textContent).toBe('')
+    expect(firstCells[2]?.textContent).toBe('')
+    expect(firstCells[3]?.textContent).toBe('x')
+
+    // Second row: only `id` is defined; every other cell is empty.
+    const secondRow = rows[1]
+    if (!secondRow) throw new Error('expected second output-row to be present')
+    const secondCells = secondRow.querySelectorAll('td')
+    expect(secondCells).toHaveLength(4)
+    expect(secondCells[0]?.textContent).toBe('b')
+    expect(secondCells[1]?.textContent).toBe('')
+    expect(secondCells[2]?.textContent).toBe('')
+    expect(secondCells[3]?.textContent).toBe('')
+  })
+
   it('renders an object value as a pretty-printed <pre>', () => {
     render(<OutputRenderer value={wrap({ id: 'a', nested: { x: 1 } })} />)
     const pre = screen.getByTestId('output-object')
