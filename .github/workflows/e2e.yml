@@ -154,7 +154,15 @@ jobs:
           rm -rf /tmp/e2e-workspace-large
           scripts/make-large-fixture.sh /tmp/e2e-workspace-large 1200
           # Sanity: must expose >=1000 issues.
-          count=$(cd /tmp/e2e-workspace-large && bd list --all --json | python3 -c "import sys, json; print(len(json.load(sys.stdin)))")
+          #
+          # `bd list --all --json` returns a JSON envelope
+          # ({"data":[...], "meta":{...}}) since beads 0.x. Counting the
+          # top-level keys (`len(json.load(...))`) gives 2 (data, meta),
+          # not the issue count. Read `d["data"]` to get the actual list.
+          # Pre-PR-#93, `bd list --json` returned a raw array; that broke
+          # silently when beads switched to the envelope format.
+          count=$(cd /tmp/e2e-workspace-large && bd list --all --json \
+            | python3 -c "import sys, json; d=json.load(sys.stdin); print(len(d.get('data', d) if isinstance(d, dict) else d))")
           if [ "$count" -lt 1000 ]; then
             echo "FAIL: large fixture seeded only $count issues (expected >= 1000)" >&2
             exit 1
