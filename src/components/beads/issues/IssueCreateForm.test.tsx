@@ -254,3 +254,142 @@ describe('IssueCreateForm', () => {
     expect(mockBdCreate).not.toHaveBeenCalled()
   })
 })
+
+// ponytail: cover the handleAddLabel guards (empty / whitespace / duplicate),
+// handleRemoveLabel via the chip's X button, and the titleError-clear path
+// on subsequent typing. Without these, the dead-code branches in
+// handleAddLabel/handleRemoveLabel stay at 0% and the titleError-onChange
+// branch stays at one-sided coverage.
+describe('IssueCreateForm — label guards + remove + titleError clear', () => {
+  it('does not add a label chip when Enter is pressed with an empty input', async () => {
+    const { IssueCreateForm } = await importSut()
+    render(
+      <IssueCreateForm cwd="/fake" onClose={vi.fn()} onCreated={vi.fn()} />
+    )
+
+    const labelInput = screen.getByTestId(
+      'create-labels-input'
+    ) as HTMLInputElement
+    // Empty input + Enter → handleAddLabel returns early on the trimmed-empty
+    // guard (line 103). No chip wrapper should be rendered.
+    fireEvent.keyDown(labelInput, { key: 'Enter' })
+
+    expect(labelInput.value).toBe('')
+    expect(screen.queryByTestId('create-labels-chips')).not.toBeInTheDocument()
+  })
+
+  it('does not add a label chip when Enter is pressed with whitespace-only input', async () => {
+    const { IssueCreateForm } = await importSut()
+    render(
+      <IssueCreateForm cwd="/fake" onClose={vi.fn()} onCreated={vi.fn()} />
+    )
+
+    const labelInput = screen.getByTestId(
+      'create-labels-input'
+    ) as HTMLInputElement
+    setNativeValue(labelInput, '   ')
+    fireEvent.keyDown(labelInput, { key: 'Enter' })
+
+    expect(labelInput.value).toBe('   ')
+    expect(screen.queryByTestId('create-labels-chips')).not.toBeInTheDocument()
+  })
+
+  it('clears the input but skips the duplicate chip when the same label is re-entered', async () => {
+    const { IssueCreateForm } = await importSut()
+    render(
+      <IssueCreateForm cwd="/fake" onClose={vi.fn()} onCreated={vi.fn()} />
+    )
+
+    const labelInput = screen.getByTestId(
+      'create-labels-input'
+    ) as HTMLInputElement
+
+    // First add: trim → 'urgent', labels was [] → not duplicate → add.
+    setNativeValue(labelInput, 'urgent')
+    fireEvent.keyDown(labelInput, { key: 'Enter' })
+    expect(screen.getByTestId('create-label-chip-urgent')).toBeInTheDocument()
+    expect(labelInput.value).toBe('')
+
+    // Second add: trim → 'urgent', labels now contains 'urgent' → duplicate
+    // branch (lines 105-106): clear input and return without adding a second
+    // chip.
+    setNativeValue(labelInput, 'urgent')
+    fireEvent.keyDown(labelInput, { key: 'Enter' })
+
+    expect(labelInput.value).toBe('')
+    expect(screen.getAllByTestId('create-label-chip-urgent')).toHaveLength(1)
+  })
+
+  it('removes a label chip when its X button is clicked', async () => {
+    const { IssueCreateForm } = await importSut()
+    render(
+      <IssueCreateForm cwd="/fake" onClose={vi.fn()} onCreated={vi.fn()} />
+    )
+
+    const labelInput = screen.getByTestId(
+      'create-labels-input'
+    ) as HTMLInputElement
+    setNativeValue(labelInput, 'urgent')
+    fireEvent.keyDown(labelInput, { key: 'Enter' })
+    expect(screen.getByTestId('create-label-chip-urgent')).toBeInTheDocument()
+
+    // Click the X button on the chip → handleRemoveLabel runs (line 113,
+    // inline arrow on line 263).
+    fireEvent.click(screen.getByTestId('create-label-chip-remove-urgent'))
+
+    expect(
+      screen.queryByTestId('create-label-chip-urgent')
+    ).not.toBeInTheDocument()
+    expect(screen.queryByTestId('create-labels-chips')).not.toBeInTheDocument()
+  })
+
+  it('removes only the clicked chip and keeps the other labels', async () => {
+    const { IssueCreateForm } = await importSut()
+    render(
+      <IssueCreateForm cwd="/fake" onClose={vi.fn()} onCreated={vi.fn()} />
+    )
+
+    const labelInput = screen.getByTestId(
+      'create-labels-input'
+    ) as HTMLInputElement
+
+    setNativeValue(labelInput, 'urgent')
+    fireEvent.keyDown(labelInput, { key: 'Enter' })
+    setNativeValue(labelInput, 'frontend')
+    fireEvent.keyDown(labelInput, { key: 'Enter' })
+
+    expect(screen.getByTestId('create-label-chip-urgent')).toBeInTheDocument()
+    expect(screen.getByTestId('create-label-chip-frontend')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByTestId('create-label-chip-remove-urgent'))
+
+    expect(
+      screen.queryByTestId('create-label-chip-urgent')
+    ).not.toBeInTheDocument()
+    expect(screen.getByTestId('create-label-chip-frontend')).toBeInTheDocument()
+  })
+
+  it('clears the title-required error when the user types in the title field', async () => {
+    const { IssueCreateForm } = await importSut()
+    render(
+      <IssueCreateForm cwd="/fake" onClose={vi.fn()} onCreated={vi.fn()} />
+    )
+
+    // Submit empty → titleError set.
+    fireEvent.click(screen.getByTestId('create-submit'))
+    await waitFor(() => {
+      expect(screen.getByTestId('create-title-error')).toBeInTheDocument()
+    })
+
+    // Typing into the title should take the clear-error branch (line 191).
+    const titleInput = screen.getByTestId('create-title') as HTMLInputElement
+    setNativeValue(titleInput, 'X')
+
+    await waitFor(() => {
+      expect(screen.queryByTestId('create-title-error')).not.toBeInTheDocument()
+    })
+
+    // No mutation should have been triggered by the validation alone.
+    expect(mockBdCreate).not.toHaveBeenCalled()
+  })
+})
