@@ -1,0 +1,161 @@
+{
+  // Collier Renovate policy. Encodes the manual decisions made in PRs
+  // #172 (undici skip) and #175 (eslint v10 react-version pin).
+  //
+  // - Section A: ecosystem-locked pins (`enabled: false`) for known-broken majors.
+  // - Section B: catch-all dashboard approval for any other npm major.
+  // - Section C: auto-merge groups for monorepo package families (minor/patch only).
+  // - Section D: Rust cargo policy (trust minor/patch auto-merge, gate majors).
+
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "description": "Renovate policy — see PR #172 (undici skip), PR #175 (eslint v10 react-version pin).",
+
+  // Monday 06:00 Europe/Zurich — matches maintainer review cadence.
+  "schedule": ["before 6am on monday"],
+
+  "packageRules": [
+
+    // ─── SECTION A: ecosystem-locked pins (enabled: false) ─────────────
+    // These will 100% break CI today. We know about the upstream
+    // constraint; flip enabled back to true once it clears.
+
+    {
+      // undici is pinned via package.json#overrides to ^7.28.0 because
+      // jsdom@29 imports undici/lib/handler/wrap-handler.js, removed
+      // in undici v8. Re-enable when jsdom ships a version compatible
+      // with undici v8. (PR #172)
+      "description": "undici pinned via package.json#overrides to ^7.28.0; jsdom@29.x requires removed undici v7 internal. Drop rule when jsdom supports undici v8.",
+      "matchPackageNames": ["undici"],
+      "enabled": false
+    },
+
+    {
+      // jsdom is the root cause of the undici pin. Any jsdom major bump
+      // would also need the undici pin lifted. Disable here too.
+      "description": "jsdom@29 requires undici v7 internals (see undici rule). Re-enable together with undici when jsdom≥30 ships undici-v8 compat.",
+      "matchPackageNames": ["jsdom"],
+      "enabled": false
+    },
+
+    {
+      // eslint v10 removed rule-context APIs still used by eslint-plugin-react
+      // 7.37.5. PR #175 worked around this by hard-pinning settings.react.version
+      // to "19.2.7". Re-enable when eslint-plugin-react ships a major that
+      // supports eslint v10 cleanly.
+      "description": "eslint v10 removed rule-context APIs still used by eslint-plugin-react 7.37.5. PR #175 pinned settings.react.version='19.2.7' to bypass broken detect path.",
+      "matchPackageNames": [
+        "eslint",
+        "@eslint/js",
+        "eslint-plugin-react",
+        "globals"
+      ],
+      "enabled": false
+    },
+
+    // ─── SECTION B: catch-all safety net for npm majors ───────────────
+    // Any npm major bump not explicitly disabled above goes to the
+    // dependency dashboard for manual approval (matches the cadence
+    // used in PRs #169 / #170 / #175).
+
+    {
+      "description": "Catch-all: any npm major bump not explicitly disabled above goes to the dependency dashboard for manual approval.",
+      "matchDatasources": ["npm"],
+      "matchUpdateTypes": ["major"],
+      "dependencyDashboardApproval": true
+    },
+
+    // ─── SECTION C: batched auto-merge groups (minor/patch only) ──────
+    // Package families that publish together belong in one PR.
+    // `matchUpdateTypes: [minor, patch]` keeps majors out (they hit B).
+
+    {
+      "description": "@radix-ui/* primitives release together; one PR/week.",
+      "matchPackagePatterns": ["^@radix-ui/"],
+      "matchUpdateTypes": ["minor", "patch"],
+      "groupName": "radix-ui",
+      "groupKey": "radix-ui-primitives"
+    },
+
+    {
+      "description": "@tauri-apps/* JS bindings release in lockstep with Tauri core; one PR/week.",
+      "matchPackagePatterns": ["^@tauri-apps/"],
+      "matchUpdateTypes": ["minor", "patch"],
+      "groupName": "tauri-js-bindings",
+      "groupKey": "tauri-js-bindings"
+    },
+
+    {
+      "description": "@tanstack/* packages release together.",
+      "matchPackagePatterns": ["^@tanstack/"],
+      "matchUpdateTypes": ["minor", "patch"],
+      "groupName": "tanstack",
+      "groupKey": "tanstack-react-stack"
+    },
+
+    {
+      "description": "DefinitelyTyped types release independently — batch them to limit churn.",
+      "matchPackagePatterns": ["^@types/"],
+      "matchUpdateTypes": ["minor", "patch"],
+      "groupName": "definitely-typed",
+      "groupKey": "definitely-typed"
+    },
+
+    {
+      "description": "vitest + vite + @vitejs/plugin-react + @vitest/coverage + @testing-library/* release together.",
+      "matchPackageNames": [
+        "vitest",
+        "vite",
+        "@vitejs/plugin-react",
+        "@vitest/coverage-v8",
+        "@testing-library/jest-dom",
+        "@testing-library/react",
+        "@testing-library/user-event",
+        "rollup-plugin-visualizer"
+      ],
+      "matchUpdateTypes": ["minor", "patch"],
+      "groupName": "vite-vitest-stack",
+      "groupKey": "vite-vitest-stack"
+    },
+
+    {
+      "description": "@wdio/* monorepo releases are coordinated.",
+      "matchPackagePatterns": ["^@wdio/"],
+      "matchUpdateTypes": ["minor", "patch"],
+      "groupName": "wdio",
+      "groupKey": "wdio-monorepo"
+    },
+
+    {
+      "description": "eslint-config-prettier, eslint-plugin-react-hooks, eslint-plugin-react-refresh, eslint-plugin-react-compiler, babel-plugin-react-compiler, jscpd — minor/patch only.",
+      "matchPackageNames": [
+        "eslint-config-prettier",
+        "eslint-plugin-react-hooks",
+        "eslint-plugin-react-refresh",
+        "eslint-plugin-react-compiler",
+        "babel-plugin-react-compiler",
+        "jscpd"
+      ],
+      "matchUpdateTypes": ["minor", "patch"],
+      "groupName": "eslint-tooling",
+      "groupKey": "eslint-tooling"
+    },
+
+    // ─── SECTION D: Rust (Cargo) policy ────────────────────────────────
+    // Minor/patch trusted, cargo check is the safety net. Major gated.
+
+    {
+      "description": "All Cargo deps: minor/patch go through (cargo check is the gate).",
+      "matchManagers": ["cargo"],
+      "matchUpdateTypes": ["minor", "patch"],
+      "groupName": "rust-deps",
+      "groupKey": "rust-deps"
+    },
+
+    {
+      "description": "Cargo major bumps (tokio 2.x, tauri 3.x, chrono 1.x, etc.) require manual review.",
+      "matchManagers": ["cargo"],
+      "matchUpdateTypes": ["major"],
+      "dependencyDashboardApproval": true
+    }
+  ]
+}
