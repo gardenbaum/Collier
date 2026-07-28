@@ -481,6 +481,122 @@ describe('useBeadsRealtimeSync', () => {
     ).toBeUndefined()
   })
 
+  it('short-circuits patchIssueIntoLists when setQueriesData finds a matching query with undefined data', async () => {
+    // On app boot the Rust watcher can fire `beads-issue-created`
+    // or `beads-issue-updated` BEFORE the first `useIssueList`
+    // fetch resolves — the cache entry exists (registered by the
+    // hook the moment it mounts) but its data is still undefined.
+    // `setQueriesData`'s updater receives that undefined `prev`
+    // and the L80 `if (!prev) return prev` guard must fire so the
+    // boot path stays silent instead of throwing or, worse,
+    // collapsing the existing list cache to undefined on a future
+    // refactor that drops the guard. This test exercises the
+    // guard directly: seed the cache with a query entry that
+    // matches the realtime-sync prefix but holds no data yet,
+    // fire an updated event from the active repo, and assert
+    // the entry is still present with data still undefined.
+    const qc = makeQueryClient()
+    // Build an empty query entry in the cache so setQueriesData's
+    // findAll picks it up but the updater receives prev === undefined.
+    // A bare `setQueryData(key, undefined)` would be a no-op
+    // (TanStack Query treats undefined data as "delete"), so we
+    // have to reach into the cache directly.
+    qc.getQueryCache().build(qc, {
+      queryKey: ['beads', 'list', REPO],
+    })
+    // Belt-and-braces: confirm the entry registered with
+    // undefined data — otherwise the assertions below would
+    // silently exercise a different branch.
+    expect(qc.getQueryData<Issue[]>(['beads', 'list', REPO])).toBeUndefined()
+    useWorkspaceStore.setState({ repoPath: REPO })
+
+    renderWithClient(qc)
+    await act(async () => {
+      await Promise.resolve()
+    })
+
+    await act(async () => {
+      emit('beads-issue-updated', {
+        repo_path: REPO,
+        issue: makeIssue({ id: 'beads-1', status: 'closed' }),
+      })
+    })
+
+    // The list cache entry is still in the cache (no error
+    // thrown) and its data is still undefined — the L80 guard
+    // short-circuited and returned prev (undefined) unchanged
+    // rather than letting TanStack Query's setData see an
+    // undefined result and silently delete the entry on a
+    // refactor that drops the guard.
+    expect(qc.getQueryData<Issue[]>(['beads', 'list', REPO])).toBeUndefined()
+    expect(
+      qc.getQueryCache().find({ queryKey: ['beads', 'list', REPO] })
+    ).toBeDefined()
+    // The unrelated show-cache write at L90 of the source is
+    // permitted to run (it operates on a different key), so the
+    // show cache should now hold the freshly-emitted issue — this
+    // guards against a future regression where the L80 guard
+    // accidentally short-circuits the whole patchIssueIntoLists
+    // call instead of just the list iteration.
+    expect(
+      qc.getQueryData<Issue>(['beads', 'show', REPO, 'beads-1'])?.status
+    ).toBe('closed')
+  })
+
+  it('short-circuits removeIssueFromCaches when setQueriesData finds a matching query with undefined data', async () => {
+    // Same boot-race as the created/updated path above, but for
+    // `beads-issue-deleted`: the watcher can fire a delete event
+    // before the first `useIssueList` fetch resolves. The cache
+    // entry exists with undefined data; setQueriesData's updater
+    // receives prev === undefined; the L105 ternary's `prev ?`
+    // picks the false branch (returns prev unchanged). The
+    // `removeQueries` call at L107 still runs against the show
+    // cache (unrelated to L105), so we assert the show cache
+    // is dropped but the list cache stays at undefined.
+    const qc = makeQueryClient()
+    qc.getQueryCache().build(qc, {
+      queryKey: ['beads', 'list', REPO],
+    })
+    // Pre-seed a show cache for the issue that will be "deleted"
+    // so we can verify the L107 removeQueries call still fires
+    // (it's not the branch under test, but it's the only proof
+    // the delete handler ran end-to-end).
+    qc.setQueryData<Issue>(
+      ['beads', 'show', REPO, 'beads-1'],
+      makeIssue({ id: 'beads-1' })
+    )
+    expect(qc.getQueryData<Issue[]>(['beads', 'list', REPO])).toBeUndefined()
+    useWorkspaceStore.setState({ repoPath: REPO })
+
+    renderWithClient(qc)
+    await act(async () => {
+      await Promise.resolve()
+    })
+
+    await act(async () => {
+      emit('beads-issue-deleted', {
+        repo_path: REPO,
+        issue_id: 'beads-1',
+      })
+    })
+
+    // The list cache entry stays at undefined — L105's false
+    // branch returned prev (undefined) unchanged instead of
+    // letting a refactor that drops the guard write
+    // `undefined` into the cache (which TanStack Query treats
+    // as a delete signal).
+    expect(qc.getQueryData<Issue[]>(['beads', 'list', REPO])).toBeUndefined()
+    expect(
+      qc.getQueryCache().find({ queryKey: ['beads', 'list', REPO] })
+    ).toBeDefined()
+    // The show cache removal at L107 still ran — the entry we
+    // pre-seeded above is gone. This is the proof the delete
+    // handler executed end-to-end and didn't bail before L107.
+    expect(
+      qc.getQueryData<Issue>(['beads', 'show', REPO, 'beads-1'])
+    ).toBeUndefined()
+  })
+
   it('discards a listener that resolves after the hook unmounts', async () => {
     // Race: listen() is asynchronous, so it can resolve after the
     // effect's cleanup has already flipped `isMounted = false`.
