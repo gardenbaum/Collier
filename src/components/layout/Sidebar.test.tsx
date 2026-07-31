@@ -14,7 +14,12 @@
  * is covered by IssueListView.test.tsx.
  */
 import { render, screen, act } from '@/test/test-utils'
+import { render as renderRaw } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+import type { ReactNode } from 'react'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { I18nextProvider } from 'react-i18next'
+import i18n from '@/i18n/config'
 import { Sidebar } from './Sidebar'
 import { useIssueFilterStore } from '@/store/issue-filter-store'
 import { useWorkspaceStore } from '@/store/workspace-store'
@@ -685,5 +690,88 @@ describe('Sidebar — chip payload shape (AND composition proof)', () => {
       const clearAll = screen.getByTestId('sidebar-filter-clear-all')
       expect(clearAll).toHaveAttribute('aria-label', 'Clear all filters')
     })
+  })
+})
+
+describe('Sidebar — queryFn defensive null guard', () => {
+  // The `enabled: repoPath !== null` gate on both `labelsQuery` and
+  // `assigneesQuery` keeps the queryFn from running automatically
+  // while no workspace is selected, but the queryFn itself still
+  // carries the same null-check (Sidebar.tsx L150 and L174) — the
+  // comment in the file calls it a defensive backstop for a future
+  // regression of the `enabled` gate. These tests exercise that
+  // backstop directly by rendering the Sidebar with repoPath=null
+  // (which seeds a cache entry whose queryFn closure captures
+  // repoPath=null) and then invoking the registered queryFn out of
+  // band. The resolved `[]` is the only observable proof that the
+  // inner guard still fires — without it, a regression that flipped
+  // or removed the guard would silently compile and only surface as
+  // a runtime crash from the wired `bdLabelListAll` / `bdAssigneeListAll`
+  // call with a null repo path.
+  function renderWithClient(
+    client: QueryClient,
+    ui: React.ReactElement
+  ): { rerender: (ui: React.ReactElement) => void; unmount: () => void } {
+    function Wrapper({ children }: { children: ReactNode }) {
+      return (
+        <QueryClientProvider client={client}>
+          <I18nextProvider i18n={i18n}>{children}</I18nextProvider>
+        </QueryClientProvider>
+      )
+    }
+    return renderRaw(ui, { wrapper: Wrapper })
+  }
+
+  it('labelsQuery queryFn returns [] when repoPath is null', async () => {
+    const client = new QueryClient({
+      defaultOptions: {
+        queries: { retry: false, gcTime: 0 },
+      },
+    })
+    useWorkspaceStore.setState({ repoPath: null })
+    renderWithClient(client, <Sidebar />)
+
+    const query = client
+      .getQueryCache()
+      .find({ queryKey: ['beads', 'labels', null] })
+    // Belt and braces: confirm the entry registered with repoPath=null
+    // — otherwise the test below would silently cover a stale cache
+    // from a prior render.
+    if (!query) throw new Error('expected query entry for labels / null')
+    const queryFn = query.options.queryFn as () => Promise<unknown>
+    expect(queryFn).toBeDefined()
+    // The registered queryFn is the same closure the hook wires up
+    // — invoking it out of band drives the L150 guard with
+    // repoPath=null captured in scope. The return [] must surface
+    // unchanged to the caller's `data` channel if the `enabled` gate
+    // ever regressed.
+    await expect(queryFn()).resolves.toEqual([])
+    // The guard must short-circuit before any `commands.bdLabelListAll`
+    // call — otherwise a regression that flipped the order would
+    // still hit the wire and burn a real repo roundtrip from the
+    // defensive path.
+    expect(mockBdLabelListAll).not.toHaveBeenCalled()
+  })
+
+  it('assigneesQuery queryFn returns [] when repoPath is null', async () => {
+    // See companion test above for the rationale. Same pattern,
+    // different queryFn — Sidebar.tsx L174 covers the assignees
+    // query; L150 covers the labels query.
+    const client = new QueryClient({
+      defaultOptions: {
+        queries: { retry: false, gcTime: 0 },
+      },
+    })
+    useWorkspaceStore.setState({ repoPath: null })
+    renderWithClient(client, <Sidebar />)
+
+    const query = client
+      .getQueryCache()
+      .find({ queryKey: ['beads', 'assignees', null] })
+    if (!query) throw new Error('expected query entry for assignees / null')
+    const queryFn = query.options.queryFn as () => Promise<unknown>
+    expect(queryFn).toBeDefined()
+    await expect(queryFn()).resolves.toEqual([])
+    expect(mockBdAssigneeListAll).not.toHaveBeenCalled()
   })
 })
