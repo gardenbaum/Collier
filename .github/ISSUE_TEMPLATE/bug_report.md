@@ -1,8 +1,8 @@
 ---
 name: Bug Report
 about: Something Collier does is broken, wrong, or unexpected
-title: "bug: "
-labels: ["bug"]
+title: 'bug: '
+labels: ['bug']
 ---
 
 ## Summary
@@ -27,14 +27,14 @@ What actually happened. Include the exact text of any error message, toast, or c
 
 ## Environment
 
-| | |
-| --- | --- |
-| Collier version | (from the About dialog, or `git rev-parse HEAD`) |
-| Beads (`bd`) version | output of `bd --version` |
-| OS | (e.g. macOS 15.2, Ubuntu 24.04, Windows 11 23H2) |
-| Tauri / webview | (e.g. WebKit 618, Edge 131) — visible in dev tools |
-| Install method | (release DMG/MSI/AppImage, `bun run tauri:dev`, packaged build) |
-| Beads repo state | (clean init, existing project, monorepo, etc.) |
+|                      |                                                                 |
+| -------------------- | --------------------------------------------------------------- |
+| Collier version      | (from the About dialog, or `git rev-parse HEAD`)                |
+| Beads (`bd`) version | output of `bd --version`                                        |
+| OS                   | (e.g. macOS 15.2, Ubuntu 24.04, Windows 11 23H2)                |
+| Tauri / webview      | (e.g. WebKit 618, Edge 131) — visible in dev tools              |
+| Install method       | (release DMG/MSI/AppImage, `bun run tauri:dev`, packaged build) |
+| Beads repo state     | (clean init, existing project, monorepo, etc.)                  |
 
 ## Logs / Screenshots
 

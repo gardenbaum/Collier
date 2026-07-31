@@ -1,8 +1,8 @@
 ---
 name: Feature Request
 about: Propose a new capability or change to existing behaviour
-title: "feat: "
-labels: ["enhancement"]
+title: 'feat: '
+labels: ['enhancement']
 ---
 
 ## Problem / Use Case

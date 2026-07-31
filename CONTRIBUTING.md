@@ -39,17 +39,17 @@ bun run tauri:dev    # full desktop app in dev mode
 
 ## Scripts
 
-| Command | What it does |
-| --- | --- |
-| `bun run dev` | Vite dev server (web only) |
-| `bun run build` | Type-check + production web build |
-| `bun run test` | Vitest in watch mode |
-| `bun run test:run` | Vitest, single run (CI mode) |
-| `bun run test:coverage` | Vitest with coverage report |
-| `bun run check:all` | Full quality gate (see below) |
-| `bun run fix:all` | Auto-fix lint, format, and rust clippy |
-| `bun run tauri:dev` | Native window with hot reload |
-| `bun run tauri:build` | Production desktop bundle |
+| Command                 | What it does                           |
+| ----------------------- | -------------------------------------- |
+| `bun run dev`           | Vite dev server (web only)             |
+| `bun run build`         | Type-check + production web build      |
+| `bun run test`          | Vitest in watch mode                   |
+| `bun run test:run`      | Vitest, single run (CI mode)           |
+| `bun run test:coverage` | Vitest with coverage report            |
+| `bun run check:all`     | Full quality gate (see below)          |
+| `bun run fix:all`       | Auto-fix lint, format, and rust clippy |
+| `bun run tauri:dev`     | Native window with hot reload          |
+| `bun run tauri:build`   | Production desktop bundle              |
 
 ### `check:all` — the PR gate
 
@@ -100,7 +100,7 @@ We use [Conventional Commits](https://www.conventionalcommits.org/). The header 
 
 - Imperative mood ("add", not "added"), no trailing period
 - Scope is the module or area (`ui`, `store`, `tauri`, `beads`, `ci`, `docs`)
-- Body explains *why*, not *what* — the diff already shows *what*
+- Body explains _why_, not _what_ — the diff already shows _what_
 - Footer references issues (`Closes #123`) and notes breaking changes (`BREAKING CHANGE:`)
 
 Examples:
