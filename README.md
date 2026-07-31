@@ -284,9 +284,19 @@ implementation details and the upstream-updater-flow diagram.
 
 - **[Developer Docs](docs/developer/)** - Architecture, patterns, and detailed guides
 - **[User Guide](docs/userguide/)** - End-user documentation template
-- **[Using This Template](docs/USING_THIS_TEMPLATE.md)** - Archive: setup notes from when Collier was a starter template. Keep for historical reference; new contributors should read AGENTS.md instead.
+- **[CONTRIBUTING.md](CONTRIBUTING.md)** - Setup, branch / commit / PR conventions, quality-gate requirements
+- **[Using This Template](docs/USING_THIS_TEMPLATE.md)** - Archive: setup notes from when Collier was a starter template. Keep for historical reference; new contributors should read CONTRIBUTING.md instead.
 - **[CHANGELOG.md](CHANGELOG.md)** - Release notes (Keep a Changelog format)
 - **[SECURITY.md](docs/SECURITY.md)** - Vulnerability reporting and security model
+
+## Issue & PR Templates
+
+When opening an issue or PR, GitHub will offer these templates
+automatically:
+
+- **Bug report** (`.github/ISSUE_TEMPLATE/bug_report.md`) — reproduction steps, environment, logs
+- **Feature request** (`.github/ISSUE_TEMPLATE/feature_request.md`) — use case, proposed behaviour, scope
+- **Pull request** (`.github/PULL_REQUEST_TEMPLATE.md`) — checklist for tests, `bun run check:all`, coverage
 
 ## License
 
