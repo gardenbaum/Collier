@@ -144,11 +144,12 @@
     // Minor/patch trusted, cargo check is the safety net. Major gated.
 
     {
-      "description": "All Cargo deps: minor/patch go through (cargo check is the gate).",
+      "description": "All Cargo deps: minor/patch go through (cargo check is the gate). Explicit dependencyDashboardApproval: false bypasses Renovate's default for lockfile maintenance.",
       "matchManagers": ["cargo"],
       "matchUpdateTypes": ["minor", "patch"],
       "groupName": "rust-deps",
-      "groupSlug": "rust-deps"
+      "groupSlug": "rust-deps",
+      "dependencyDashboardApproval": false
     },
 
     {
