@@ -58,6 +58,7 @@ import { useIssueFieldUpdate } from '@/hooks/useIssueFieldUpdate'
 import { colors, radius, space, type } from '@/lib/design-tokens'
 import { PriorityDot } from './badges/PriorityDot'
 import { StatusPill } from './badges/StatusPill'
+import { priorityToLabel } from './priority-label'
 
 // Status set comes from `useStatusCatalog` (which reads
 // `bd statuses --json`) — the M6 contract. Hardcoding the 5
@@ -73,18 +74,6 @@ import { StatusPill } from './badges/StatusPill'
 // fixture data and the test contract match. `toLabel` is the
 // only surface that needs the human-friendly "P1" form.
 const ALL_PRIORITIES: readonly IssuePriority[] = ['P0', 'P1', 'P2', 'P3', 'P4']
-const priorityToLabel = (p: IssuePriority): string => {
-  // ponytail: in practice the wire value is the bare integer 0..4;
-  // when a specta-only string union slips through, map it back.
-  if (typeof p === 'string' && p.startsWith('P')) {
-    const n = Number.parseInt(p.slice(1), 10)
-    if (Number.isFinite(n) && n >= 0 && n <= 4) return `P${n}`
-    return p
-  }
-  const n = Number(p)
-  if (Number.isFinite(n) && n >= 0 && n <= 4) return `P${n}`
-  return String(p)
-}
 const priorityToValue = (p: IssuePriority): string => {
   // Same dance as `priorityToLabel` but for the <option value="">
   // — we always want the bare integer so the rendered DOM matches
