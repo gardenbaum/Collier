@@ -90,7 +90,7 @@ Key files to check:
 - `README.md`
 - `docs/USING_THIS_TEMPLATE.md`
 - `docs/CONTRIBUTING.md`
-- `docs/SECURITY.md`
+- `SECURITY.md`
 - `docs/tasks.md`
 - All files under `docs/developer/`
 - `scripts/prepare-release.js` (help text)

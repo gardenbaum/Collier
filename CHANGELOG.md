@@ -148,7 +148,7 @@ First public release of Collier, a cross-platform desktop GUI for
 - Rust dependency audit: zero vulnerabilities; 19 documented
   transitive exceptions (gtk-rs, glib, bincode 1.3.3,
   proc-macro-error, paste and the unic family) recorded in
-  `src-tauri/.cargo/audit.toml` and `docs/SECURITY.md`.
+  `src-tauri/.cargo/audit.toml` and `SECURITY.md`.
 
 [Unreleased]: https://github.com/gardenbaum/Collier/compare/v0.1.0...HEAD
 [0.1.0]: https://github.com/gardenbaum/Collier/releases/tag/v0.1.0

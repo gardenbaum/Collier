@@ -286,7 +286,7 @@ implementation details and the upstream-updater-flow diagram.
 - **[User Guide](docs/userguide/)** - End-user documentation template
 - **[Using This Template](docs/USING_THIS_TEMPLATE.md)** - Archive: setup notes from when Collier was a starter template. Keep for historical reference; new contributors should read AGENTS.md instead.
 - **[CHANGELOG.md](CHANGELOG.md)** - Release notes (Keep a Changelog format)
-- **[SECURITY.md](docs/SECURITY.md)** - Vulnerability reporting and security model
+- **[SECURITY.md](SECURITY.md)** - Vulnerability reporting and security model
 
 ## License
 
