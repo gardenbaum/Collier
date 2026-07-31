@@ -70,34 +70,34 @@
 
     {
       "description": "@radix-ui/* primitives release together; one PR/week.",
-      "matchPackagePatterns": ["^@radix-ui/"],
+      "matchPackageNames": ["^@radix-ui/.*"],
       "matchUpdateTypes": ["minor", "patch"],
       "groupName": "radix-ui",
-      "groupKey": "radix-ui-primitives"
+      "groupSlug": "radix-ui-primitives"
     },
 
     {
       "description": "@tauri-apps/* JS bindings release in lockstep with Tauri core; one PR/week.",
-      "matchPackagePatterns": ["^@tauri-apps/"],
+      "matchPackageNames": ["^@tauri-apps/.*"],
       "matchUpdateTypes": ["minor", "patch"],
       "groupName": "tauri-js-bindings",
-      "groupKey": "tauri-js-bindings"
+      "groupSlug": "tauri-js-bindings"
     },
 
     {
       "description": "@tanstack/* packages release together.",
-      "matchPackagePatterns": ["^@tanstack/"],
+      "matchPackageNames": ["^@tanstack/.*"],
       "matchUpdateTypes": ["minor", "patch"],
       "groupName": "tanstack",
-      "groupKey": "tanstack-react-stack"
+      "groupSlug": "tanstack-react-stack"
     },
 
     {
       "description": "DefinitelyTyped types release independently — batch them to limit churn.",
-      "matchPackagePatterns": ["^@types/"],
+      "matchPackageNames": ["^@types/.*"],
       "matchUpdateTypes": ["minor", "patch"],
       "groupName": "definitely-typed",
-      "groupKey": "definitely-typed"
+      "groupSlug": "definitely-typed"
     },
 
     {
@@ -114,15 +114,15 @@
       ],
       "matchUpdateTypes": ["minor", "patch"],
       "groupName": "vite-vitest-stack",
-      "groupKey": "vite-vitest-stack"
+      "groupSlug": "vite-vitest-stack"
     },
 
     {
       "description": "@wdio/* monorepo releases are coordinated.",
-      "matchPackagePatterns": ["^@wdio/"],
+      "matchPackageNames": ["^@wdio/.*"],
       "matchUpdateTypes": ["minor", "patch"],
       "groupName": "wdio",
-      "groupKey": "wdio-monorepo"
+      "groupSlug": "wdio-monorepo"
     },
 
     {
@@ -137,7 +137,7 @@
       ],
       "matchUpdateTypes": ["minor", "patch"],
       "groupName": "eslint-tooling",
-      "groupKey": "eslint-tooling"
+      "groupSlug": "eslint-tooling"
     },
 
     // ─── SECTION D: Rust (Cargo) policy ────────────────────────────────
@@ -148,7 +148,7 @@
       "matchManagers": ["cargo"],
       "matchUpdateTypes": ["minor", "patch"],
       "groupName": "rust-deps",
-      "groupKey": "rust-deps"
+      "groupSlug": "rust-deps"
     },
 
     {
