@@ -84,6 +84,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `useBeadsRealtimeSync` in `src/hooks/`). The performance
   delta is large enough that the 1200-issue fixture stays
   smooth on a 30 Hz scroll.
+- `build.yml` manual workflow no longer creates draft releases or fake
+  `__manual-*` tags; it now builds with `bun run tauri build <bundles>`
+  and uploads the bundles purely as workflow artifacts.
 
 ## [0.1.0] - 2026-06-23
 
@@ -149,7 +152,3 @@ First public release of Collier, a cross-platform desktop GUI for
 
 [Unreleased]: https://github.com/gardenbaum/Collier/compare/v0.1.0...HEAD
 [0.1.0]: https://github.com/gardenbaum/Collier/releases/tag/v0.1.0
-
-### Changed
-
-- `build.yml` manual workflow no longer creates draft releases or fake `__manual-*` tags; it now builds with `bun run tauri build <bundles>` and uploads the bundles purely as workflow artifacts.

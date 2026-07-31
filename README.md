@@ -2,15 +2,16 @@
 
 Collier is a cross-platform desktop application that provides a graphical user interface for **Beads**. Built with **Tauri v2**, **React**, and **TypeScript**, following opinionated patterns that help both human developers and AI coding agents build well-architected apps.
 
-## Why This Template?
+## About Collier
 
-Most Tauri starters give you a blank canvas. This template gives you a **working application** with patterns already established:
+Collier is a working application, not a starter template. The patterns below are the established conventions — see [AGENTS.md](AGENTS.md) for the AI-agent version of the same guide:
 
-- **Type-safe Rust-TypeScript bridge** via tauri-specta.
-- **Performance patterns enforced by tooling** - all the usual linting plus ast-grep for common anti-patterns
-- **Multi-window architecture** already working (quick pane with global shortcut as a demo)
-- **Cross-platform ready** with platform-specific title bars, window controls, and native menu integration
+- **Type-safe Rust-TypeScript bridge** via tauri-specta with auto-generated bindings + ESM-style exports
+- **Performance patterns enforced by tooling** - linting plus ast-grep for common anti-patterns
+- **Multi-window architecture** (quick pane with global shortcut)
+- **Cross-platform ready** with platform-specific title bars and window controls
 - **i18n built-in** with RTL support
+- **Beads integration** - all issue/dependency data flows through the bd CLI subprocess
 
 ## Stack
 
@@ -201,8 +202,8 @@ publishing a **draft** GitHub Release.
 3. **Commit, tag, push**:
 
    ```bash
-   bun run release:prepare v1.2.3   # updates versions, runs check:all
-   git push origin chore/production-ready --tags   # or merge to main first
+   bun run release:prepare 0.x.y   # updates versions, runs check:all
+   git push origin main --tags      # after the PR with the version bump is merged
    ```
 
 4. **Publish the draft** — once the workflow finishes, open the draft
@@ -261,8 +262,8 @@ to match the new repository.
 # 1. bump versions in package.json, src-tauri/Cargo.toml, src-tauri/tauri.conf.json
 bun run check:all
 git add .
-git commit -m "chore: release v1.2.3"
-git tag v1.2.3
+git commit -m "chore: release 0.x.y"
+git tag 0.x.y
 git push origin main --tags
 ```
 
@@ -283,9 +284,19 @@ implementation details and the upstream-updater-flow diagram.
 
 - **[Developer Docs](docs/developer/)** - Architecture, patterns, and detailed guides
 - **[User Guide](docs/userguide/)** - End-user documentation template
-- **[Using This Template](docs/USING_THIS_TEMPLATE.md)** - Setup and workflow guide
+- **[CONTRIBUTING.md](CONTRIBUTING.md)** - Setup, branch / commit / PR conventions, quality-gate requirements
+- **[Using This Template](docs/USING_THIS_TEMPLATE.md)** - Archive: setup notes from when Collier was a starter template. Keep for historical reference; new contributors should read CONTRIBUTING.md instead.
 - **[CHANGELOG.md](CHANGELOG.md)** - Release notes (Keep a Changelog format)
 - **[SECURITY.md](docs/SECURITY.md)** - Vulnerability reporting and security model
+
+## Issue & PR Templates
+
+When opening an issue or PR, GitHub will offer these templates
+automatically:
+
+- **Bug report** (`.github/ISSUE_TEMPLATE/bug_report.md`) — reproduction steps, environment, logs
+- **Feature request** (`.github/ISSUE_TEMPLATE/feature_request.md`) — use case, proposed behaviour, scope
+- **Pull request** (`.github/PULL_REQUEST_TEMPLATE.md`) — checklist for tests, `bun run check:all`, coverage
 
 ## License
 
