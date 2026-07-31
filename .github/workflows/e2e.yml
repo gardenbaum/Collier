@@ -34,7 +34,7 @@ jobs:
         uses: oven-sh/setup-bun@v2
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@1.96.0
 
       - name: Cache Rust dependencies
         uses: swatinem/rust-cache@v2

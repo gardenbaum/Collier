@@ -157,6 +157,16 @@
       "matchManagers": ["cargo"],
       "matchUpdateTypes": ["major"],
       "dependencyDashboardApproval": true
+    },
+
+    {
+      // rust-toolchain.toml channel field — keep in sync with dtolnay/rust-toolchain@*
+      // pin used in the GitHub Actions workflows. rangeStrategy: pin ensures the
+      // channel always resolves to a specific released version (e.g. 1.96.0) so
+      // local builds and CI never diverge.
+      "description": "rust-toolchain.toml channel field, kept in sync with the dtolnay/rust-toolchain@* pins in .github/workflows/*.yml.",
+      "matchDepTypes": ["toolchain"],
+      "rangeStrategy": "pin"
     }
   ]
 }
