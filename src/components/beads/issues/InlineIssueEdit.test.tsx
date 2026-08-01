@@ -50,6 +50,17 @@ vi.mock('sonner', () => ({
 }))
 
 const importSut = () => import('./InlineIssueEdit')
+// `priorityToLabel` is `@internal` and lives in the sibling file
+// `./priority-label` (kept separate so `InlineIssueEdit.tsx` stays
+// components-only for `react-refresh/only-export-components`). Production
+// code only feeds it values from `ALL_PRIORITIES` (string form) or
+// `issue.priority` (bare integer form, via `priorityToValue`), so the
+// numeric + P-prefix edge-case branches are dead in the integration
+// tests above. Importing it directly lets us cover the defensive
+// fallbacks without spying on String.prototype or hacking through the
+// JSX.
+const importPriorityToLabel = () =>
+  import('./priority-label').then(m => m.priorityToLabel)
 
 const baseIssue: Issue = {
   id: 'beads-42',
@@ -887,5 +898,82 @@ describe('InlineAssigneeEdit — assignees query error path', () => {
     expect(select.options.length).toBe(1)
     expect(select.options[0]?.value).toBe('__unassigned__')
     consoleErrorSpy.mockRestore()
+  })
+})
+
+// ponytail: `priorityToLabel` is the helper that bridges the two wire
+// shapes Rust's `#[repr(u8)] Serialize_repr` and specta's variant-name
+// string union produce. The component's integration tests above only
+// exercise the happy paths (string form via `ALL_PRIORITIES`, numeric
+// form via `priorityToValue`). The defensive fallbacks below cover
+// everything else: out-of-range integers, NaN/Infinity, non-P-prefixed
+// strings, and P-prefixed strings whose suffix isn't a valid integer.
+describe('priorityToLabel — direct unit tests (defensive fallbacks)', () => {
+  it('maps a bare integer 0..4 to the P-form (production wire format)', async () => {
+    // This is the path `priorityToValue(issue.priority)` would also
+    // take if `priorityToLabel` were ever called with the integer form
+    // directly (e.g. via the `PriorityDot` fallback). The numeric
+    // branch (`const n = Number(p)`) and its `in-range` arm must both
+    // fire to return `P2`.
+    const priorityToLabel = await importPriorityToLabel()
+    expect(priorityToLabel(0 as unknown as Issue['priority'])).toBe('P0')
+    expect(priorityToLabel(2 as unknown as Issue['priority'])).toBe('P2')
+    expect(priorityToLabel(4 as unknown as Issue['priority'])).toBe('P4')
+  })
+
+  it('falls back to String(p) when the integer is out of range', async () => {
+    // 99 is finite and ≥0 but > 4, so the `Number.isFinite(n) && n >= 0 && n <= 4`
+    // guard fails and we hit `return String(p)` at the bottom of the
+    // function. The component never produces this shape, but if a
+    // future deserializer change widens the Rust enum and a stale
+    // frontend sees a value > 4, we still render *something* instead
+    // of crashing the `<option>` map.
+    const priorityToLabel = await importPriorityToLabel()
+    expect(priorityToLabel(99 as unknown as Issue['priority'])).toBe('99')
+    expect(priorityToLabel(-1 as unknown as Issue['priority'])).toBe('-1')
+  })
+
+  it('falls back to String(p) when the input is NaN or non-finite', async () => {
+    // `Number.isFinite(NaN)` is false → out-of-range branch → `String(NaN)`
+    // is `'NaN'`. Defensive: real data should never carry NaN, but the
+    // helper is the last line of defense before the DOM render.
+    const priorityToLabel = await importPriorityToLabel()
+    expect(priorityToLabel(Number.NaN as unknown as Issue['priority'])).toBe(
+      'NaN'
+    )
+    expect(
+      priorityToLabel(Number.POSITIVE_INFINITY as unknown as Issue['priority'])
+    ).toBe('Infinity')
+  })
+
+  it('returns the input unchanged when a P-prefixed string is out of range', async () => {
+    // The string branch fires (typeof p === 'string' && p.startsWith('P')),
+    // the parsed integer is finite but > 4, so the `n <= 4` arm fails
+    // and we hit `return p` (the defensive fallback). Same shape that
+    // a future specta bump might emit if the Rust enum gains a new
+    // variant the frontend hasn't picked up yet.
+    const priorityToLabel = await importPriorityToLabel()
+    expect(priorityToLabel('P9' as unknown as Issue['priority'])).toBe('P9')
+    expect(priorityToLabel('P42' as unknown as Issue['priority'])).toBe('P42')
+  })
+
+  it('returns the input unchanged when a P-prefixed string has a non-numeric suffix', async () => {
+    // `Number.parseInt('foo', 10)` is NaN → `Number.isFinite` is false
+    // → falls to `return p`. Same defensive shape as the out-of-range
+    // integer case above; covered separately so the failure mode is
+    // unambiguous if one branch regresses.
+    const priorityToLabel = await importPriorityToLabel()
+    expect(priorityToLabel('Pfoo' as unknown as Issue['priority'])).toBe('Pfoo')
+    expect(priorityToLabel('P-1' as unknown as Issue['priority'])).toBe('P-1')
+  })
+
+  it('falls back to String(p) when the input is not P-prefixed and not numeric', async () => {
+    // The outer `typeof p === 'string' && p.startsWith('P')` guard fails
+    // (no P prefix), so we drop into the numeric branch. `Number('foo')`
+    // is NaN → `Number.isFinite` is false → `return String(p)` returns
+    // the original input verbatim. Same shape as a future migration
+    // that renames the variant prefix.
+    const priorityToLabel = await importPriorityToLabel()
+    expect(priorityToLabel('foo' as unknown as Issue['priority'])).toBe('foo')
   })
 })
