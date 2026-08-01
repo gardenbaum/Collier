@@ -71,6 +71,8 @@ jobs:
       - name: Install Rust stable
         if: steps.skip_check.outputs.should_run == 'true'
         uses: dtolnay/rust-toolchain@1.96.0
+        with:
+          components: rustfmt, clippy
 
       - name: Rust cache
         if: steps.skip_check.outputs.should_run == 'true'
