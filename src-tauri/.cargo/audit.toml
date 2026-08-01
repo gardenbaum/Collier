@@ -12,7 +12,7 @@
 # stay clean and the rationale is auditable.
 #
 # Each ignored ID below is grouped by category with a one-line justification.
-# Detailed reasoning lives in docs/SECURITY.md.
+# Detailed reasoning lives in SECURITY.md.
 
 [advisories]
 ignore = [

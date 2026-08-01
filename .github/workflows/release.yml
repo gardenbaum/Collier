@@ -31,7 +31,9 @@ jobs:
         uses: oven-sh/setup-bun@v2
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@1.96.0
+        with:
+          components: rustfmt, clippy
 
       - name: Cache Rust dependencies
         uses: swatinem/rust-cache@v2
@@ -98,7 +100,9 @@ jobs:
         uses: oven-sh/setup-bun@v2
 
       - name: Install Rust stable
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@1.96.0
+        with:
+          components: rustfmt, clippy
 
       - name: Rust cache
         uses: swatinem/rust-cache@v2

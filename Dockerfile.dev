@@ -12,7 +12,10 @@
 #   cd src-tauri && cargo test
 #   cd .. && bun run tauri build
 
-FROM rust:1.81-bookworm
+# Pin to 1.96 to match rust-toolchain.toml + dtolnay/rust-toolchain@* in
+# .github/workflows/*.yml. See PR #204 — when rust-toolchain.toml bumps via
+# Renovate, this line should bump too.
+FROM rust:1.96-bookworm
 
 # System deps fuer Tauri v2 + WebKitGTK
 # Diese Liste ist explizit (nicht aus einem Image-Tag) damit Coolify

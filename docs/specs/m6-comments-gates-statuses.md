@@ -196,7 +196,7 @@ pubkeyFingerprint, buildRunNumber }`.
 - Required GitHub secrets documented:
   - inline in `.github/workflows/release.yml`,
   - in `docs/developer/releases.md` (the `Initial Setup` section),
-  - in `docs/SECURITY.md` (the security-policy table).
+  - in `SECURITY.md` (the security-policy table).
 - `CHANGELOG.md` is backfilled with both the M5 entry (ARIA grid /
   tree / modal / vim-style keyboard navigation) and the M6 entry
   (comments / custom statuses / GatesView / large-backlog perf /
