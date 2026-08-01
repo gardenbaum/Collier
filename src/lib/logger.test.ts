@@ -213,6 +213,27 @@ describe('logger', () => {
       // only care that no test-visible error escaped.
       expect(mockWriteLogLine).toHaveBeenCalled()
     })
+
+    it('JSON.stringifies a structured object error from writeLogLine', async () => {
+      // ponytail: the Rust side returns a typed error envelope
+      // (e.g. `{ kind: 'IoError', message: 'disk full' }`) when
+      // the diagnostic file write fails — not a bare string. The
+      // FE-side branch on line 175 needs to keep that envelope
+      // readable in the eventual .catch() log line, so it
+      // stringifies the object instead of letting `new Error({...})`
+      // produce "[object Object]". The throw is still swallowed
+      // by .catch in log(), so the test contract is the same:
+      // no unhandled rejection.
+      const { logger } = await loadLogger(false)
+      mockWriteLogLine.mockResolvedValue({
+        status: 'error',
+        error: { kind: 'IoError', message: 'disk full' },
+      })
+      logger.setDiagnosticLogging(true)
+      logger.warn('structured-fail')
+      await new Promise(r => setTimeout(r, 0))
+      expect(mockWriteLogLine).toHaveBeenCalled()
+    })
   })
 
   describe('setDiagnosticLogging / isDiagnosticLoggingEnabled', () => {
