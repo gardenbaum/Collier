@@ -489,6 +489,7 @@ export function EpicView({
                 isExpanded={expanded.has(epic.id)}
                 isKeyboardSelected={selectedRowId === epic.id}
                 selectedRowId={selectedRowId}
+                virtualIndex={virtualItem.index}
                 epicIndex={virtualItem.index + 1}
                 epicCount={epics.length}
                 positionStyle={{
@@ -540,6 +541,8 @@ interface EpicTreeRowProps {
    * child — no extra store subscription needed here.
    */
   selectedRowId: string | null
+  /** M6 perf: zero-based virtual item index used by measureElement. */
+  virtualIndex: number
   /**
    * M5 a11y: 1-based position of this epic within the visible
    * tree, used to set `aria-posinset` on the treeitem. Required
@@ -573,6 +576,7 @@ function EpicTreeRow({
   isExpanded,
   isKeyboardSelected,
   selectedRowId,
+  virtualIndex,
   epicIndex,
   epicCount,
   positionStyle,
@@ -599,6 +603,7 @@ function EpicTreeRow({
       data-kbd-nav="row"
       data-row-id={epic.id}
       data-epic-id={epic.id}
+      data-index={virtualIndex}
       data-expanded={isExpanded}
       data-row-selected={isKeyboardSelected ? 'true' : 'false'}
       tabIndex={isKeyboardSelected ? 0 : -1}
