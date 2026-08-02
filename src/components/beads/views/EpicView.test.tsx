@@ -660,6 +660,37 @@ describe('EpicView', () => {
       expect(estimateRowHeight(true, 10)).toBe(72 + 10 * 32 + 9 * 2 + 4)
     })
 
+    it('marks each mounted row with its zero-based virtual index', async () => {
+      mockBdList.mockResolvedValue({
+        status: 'ok',
+        data: [
+          makeEpic({ id: 'epic-auth', priority: 'P1' }),
+          makeEpic({ id: 'epic-perf', priority: 'P2' }),
+          makeEpic({ id: 'epic-release', priority: 'P3' }),
+        ],
+      })
+
+      const { EpicView } = await importSut()
+      render(
+        <EpicView
+          cwd="/fake"
+          onOpenIssue={() => undefined}
+          containerHeight={200}
+        />
+      )
+
+      await waitFor(() => {
+        expect(screen.getAllByTestId('epic-row')).toHaveLength(3)
+      })
+
+      const rows = screen.getAllByTestId('epic-row')
+      expect(rows.map(row => row.getAttribute('data-index'))).toEqual([
+        '0',
+        '1',
+        '2',
+      ])
+    })
+
     it('virtualizes a 60-epic list so the DOM only carries the viewport slice + overscan', async () => {
       // 60 epics, containerHeight=200. With ROW_HEIGHT=72 +
       // OVERSCAN=5, ~3 visible + 2*5 overscan = ~13 rows
